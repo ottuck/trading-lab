@@ -162,10 +162,10 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | 1. AWS 자격 증명 | 사용자 | IAM 사용자(Lightsail 권한만)의 액세스 키를 만들고 개발 PC에서 `aws configure`로 입력 (키는 Claude·저장소에 넘기지 않음) |
 | 2. 서버 생성 | 사용자 실행 | `cd infra/lightsail && terraform init && terraform plan && terraform apply` → 인스턴스(서울 2GB, Ubuntu 24.04), Static IP, 자동 스냅샷, 방화벽(브라우저 SSH만). 출력된 `static_ip`를 메모 |
 | 3. 토스 허용 IP | 사용자 | WTS > 설정 > Open API > 허용 IP에 `static_ip` 추가 |
-| 4. deploy key | 서버 + Claude | Lightsail 콘솔의 브라우저 SSH로 접속해 `ssh-keygen -t ed25519 -f ~/.ssh/github_deploy -N "" -C quant-lab-server` → 공개키(`.pub`)를 GitHub 저장소에 **읽기 전용** deploy key로 등록 (`gh repo deploy-key add`) |
-| 5. 저장소·부트스트랩 | 서버 | `git clone git@github.com:ottuck/quant-lab.git` → `sudo bash deploy/bootstrap.sh` (Docker·Tailscale·스왑·비밀값·백업 cron) |
-| 6. Tailscale | 사용자 | `sudo tailscale up --ssh` 후 링크로 로그인, `sudo tailscale serve --bg 8000`. 개발 PC·휴대폰에도 Tailscale 설치 |
-| 7. 토스 키 | 사용자 | `/etc/quant-lab/toss.env`에 키 입력 (서버에서 직접) |
+| 4. Tailscale 먼저 | 사용자 | Lightsail 콘솔의 브라우저 SSH에서 `curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up --ssh --hostname quant-lab` → 링크로 로그인. 개발 PC에도 Tailscale 설치·로그인 |
+| 5. 원격 작업 | Claude (개발 PC → `tailscale ssh ubuntu@quant-lab`) | deploy key 생성 → `gh repo deploy-key add`(읽기 전용) → `git clone` → `sudo bash deploy/bootstrap.sh` → `sudo tailscale serve --bg 8000` |
+| 6. 토스 키 | 사용자 | `/etc/quant-lab/toss.env`에 키 입력 (`tailscale ssh` 또는 브라우저 SSH, 키는 대화에 붙이지 않음) |
+| 7. Tailscale 접근 제한 | 사용자 | 필요하면 Tailscale ACL에서 서버 접근을 본인 기기로만 제한 (개인 tailnet이면 기본값으로 충분) |
 | 8. 배포·봇 시작 | 서버 | 로컬에서 토스를 호출하는 프로세스를 모두 멈춘 뒤 `bash deploy/deploy.sh` → `docker compose -f deploy/compose.prod.yaml exec api python -m quant_lab.cli bot create qqq-sma QQQ --params fast=50,slow=200` → 화면에서 시작 |
 
 브라우저 SSH용 22번 포트(Lightsail 콘솔 대역만)는 Tailscale SSH가 동작하면 `aws_lightsail_instance_public_ports`에서 지워 인바운드를 모두 닫는다. Terraform 상태 파일(`*.tfstate`)은 개발 PC에만 두고 Git에 넣지 않는다.
