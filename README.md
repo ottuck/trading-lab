@@ -45,6 +45,19 @@ cd backend
 uv run python -m quant_lab.cli sync-bars QQQ VOO   # 토스 일봉을 DB에 동기화 (처음엔 전체, 이후 증분)
 uv run python -m quant_lab.cli backtest QQQ --params fast=50,slow=200          # SMA 교차
 uv run python -m quant_lab.cli backtest QQQ --strategy donchian --params entry=55,exit=20 --start 2010-01-04 --save
+uv run python -m quant_lab.cli bot create qqq-sma QQQ --params fast=50,slow=200   # DRY RUN 봇 (STOPPED)
+uv run python -m quant_lab.cli bot list
+uv run python -m quant_lab.cli bot cmd <봇 ID> START                                # START·PAUSE·STOP·RUN_ONCE
+uv run python -m quant_lab.cli replay QQQ --start 2024-01-02 --end 2026-09-30      # 정기 평가 재생 vs 백테스트
+```
+
+## 운영 배포
+
+서울 리전 VM 1대에서 Docker Compose로 실행하고 화면은 Tailscale로만 엽니다. 절차는 [project.md 6절](docs/project.md).
+
+```bash
+sudo bash deploy/bootstrap.sh   # 새 서버에서 한 번
+bash deploy/deploy.sh           # 배포할 때마다 (main 기준)
 ```
 
 ## 토스 API 탐색

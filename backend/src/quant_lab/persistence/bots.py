@@ -1,0 +1,169 @@
+"""봇·명령·이벤트 저장소."""
+
+import uuid
+from datetime import datetime
+from decimal import Decimal
+from typing import Any
+
+from sqlalchemy import delete, select, update
+from sqlalchemy.orm import Session
+
+from quant_lab.domain.bot import BotState, CommandKind
+from quant_lab.domain.portfolio import CostModel, Portfolio, RiskLimits
+from quant_lab.persistence.backtests import to_jsonable
+from quant_lab.persistence.models import (
+    BotAccountRow,
+    BotRow,
+    CommandRow,
+    DecisionRow,
+    EventRow,
+    RunRow,
+    SimOrderRow,
+)
+
+
+def create_bot(
+    session: Session,
+    *,
+    name: str,
+    symbol: str,
+    strategy: str,
+    params: dict[str, int],
+    initial_cash: Decimal,
+    costs: CostModel,
+    limits: RiskLimits,
+    now: datetime,
+) -> BotRow:
+    bot = BotRow(
+        name=name,
+        symbol=symbol,
+        strategy=strategy,
+        params=params,
+        state=BotState.STOPPED,
+        initial_cash=initial_cash,
+        commission_rate=costs.commission_rate,
+        slippage_bps=costs.slippage_bps,
+        risk=to_jsonable(limits),
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(bot)
+    session.flush()
+    session.add(
+        BotAccountRow(
+            bot_id=bot.id,
+            cash=initial_cash,
+            qty=0,
+            avg_cost=Decimal(0),
+            realized_pnl=Decimal(0),
+            updated_at=now,
+        )
+    )
+    return bot
+
+
+def bot_costs(bot: BotRow) -> CostModel:
+    return CostModel(commission_rate=bot.commission_rate, slippage_bps=bot.slippage_bps)
+
+
+def bot_limits(bot: BotRow) -> RiskLimits:
+    def dec(key: str) -> Decimal | None:
+        value = bot.risk.get(key)
+        return None if value is None else Decimal(value)
+
+    return RiskLimits(
+        max_position_value=dec("max_position_value"), max_order_value=dec("max_order_value")
+    )
+
+
+def get_bot(session: Session, bot_id: int, *, for_update: bool = False) -> BotRow | None:
+    stmt = select(BotRow).where(BotRow.id == bot_id)
+    if for_update:
+        stmt = stmt.with_for_update()
+    return session.scalars(stmt).first()
+
+
+def list_bots(session: Session) -> list[BotRow]:
+    return list(session.scalars(select(BotRow).order_by(BotRow.id)))
+
+
+def set_bot_state(
+    session: Session, bot: BotRow, state: BotState, reason: str | None, now: datetime
+) -> None:
+    bot.state = state
+    bot.state_reason = reason
+    bot.updated_at = now
+
+
+def load_account(session: Session, bot_id: int) -> Portfolio:
+    row = session.get_one(BotAccountRow, bot_id)
+    return Portfolio(
+        cash=row.cash, qty=row.qty, avg_cost=row.avg_cost, realized_pnl=row.realized_pnl
+    )
+
+
+def save_account(session: Session, bot_id: int, pf: Portfolio, now: datetime) -> None:
+    session.execute(
+        update(BotAccountRow)
+        .where(BotAccountRow.bot_id == bot_id)
+        .values(
+            cash=pf.cash,
+            qty=pf.qty,
+            avg_cost=pf.avg_cost,
+            realized_pnl=pf.realized_pnl,
+            updated_at=now,
+        )
+    )
+
+
+def pending_order(session: Session, bot_id: int) -> SimOrderRow | None:
+    stmt = select(SimOrderRow).where(SimOrderRow.bot_id == bot_id, SimOrderRow.status == "PENDING")
+    return session.scalars(stmt).first()
+
+
+def add_event(
+    session: Session,
+    at: datetime,
+    level: str,
+    kind: str,
+    message: str,
+    *,
+    bot_id: int | None = None,
+    run_id: uuid.UUID | None = None,
+    data: dict[str, Any] | None = None,
+) -> None:
+    session.add(
+        EventRow(
+            at=at,
+            level=level,
+            kind=kind,
+            message=message,
+            bot_id=bot_id,
+            run_id=run_id,
+            data=to_jsonable(data) if data is not None else None,
+        )
+    )
+
+
+def enqueue_command(session: Session, bot_id: int, kind: CommandKind, now: datetime) -> CommandRow:
+    cmd = CommandRow(bot_id=bot_id, kind=kind, created_at=now)
+    session.add(cmd)
+    session.flush()
+    return cmd
+
+
+def unprocessed_commands(session: Session) -> list[CommandRow]:
+    stmt = (
+        select(CommandRow)
+        .where(CommandRow.processed_at.is_(None))
+        .order_by(CommandRow.created_at, CommandRow.id)
+        .with_for_update(skip_locked=True)
+    )
+    return list(session.scalars(stmt))
+
+
+def delete_bot(session: Session, bot_id: int) -> None:
+    """replay 등 임시 봇 정리용. 운영 봇에는 쓰지 않는다."""
+    for model in (EventRow, SimOrderRow, DecisionRow, RunRow, CommandRow, BotAccountRow):
+        session.execute(delete(model).where(model.bot_id == bot_id))
+    session.execute(delete(BotRow).where(BotRow.id == bot_id))

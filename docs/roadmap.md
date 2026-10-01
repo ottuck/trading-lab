@@ -5,7 +5,7 @@
 
 ## 현재 위치
 
-**Phase 3 대기.** Phase 2(토스 어댑터·일봉 저장·전략·백테스트 CLI)를 마쳤다. 첫 전략 기본값 `sma_cross` 50/200은 사용자 확인 대기. 다음은 Worker DRY RUN.
+**Phase 4 진행.** API·화면·운영 구성(Docker·Compose·스크립트)을 마치고 로컬에서 운영 구성으로 확인했다. 남은 것은 Lightsail·Tailscale 준비(사용자)와 첫 서버 배포다.
 
 ## 진행 순서
 
@@ -16,8 +16,8 @@
 | 0 | 토스 API 검증 | 완료 | [tossApi.md](tossApi.md) 6절의 확인 항목 전부 기록, 첫 종목·봉 주기 결정 |
 | 1 | 프로젝트 기반 | 완료 | 새 PC에서 README대로 설치·테스트 통과, CI 녹색 |
 | 2 | 시세·전략·백테스트 (CLI) | 완료 | 같은 조건 재실행 결과 일치, 미래 데이터 참조 테스트 통과 |
-| 3 | Worker DRY RUN (로컬) | 대기 | 중복 주문 0건, 장애 주입 시 신규 주문 차단, 재시작 후 `PAUSED` |
-| 4 | 배포·운영 화면 | 대기 | Tailscale로 서버 대시보드 접속, 정기 DRY RUN이 서버에서 실행 |
+| 3 | Worker DRY RUN (로컬) | 완료 | 중복 주문 0건, 장애 주입 시 신규 주문 차단, 재시작 후 `PAUSED` |
+| 4 | 배포·운영 화면 | 진행 | Tailscale로 서버 대시보드 접속, 정기 DRY RUN이 서버에서 실행 |
 | 5 | MWP 마무리·운영 검증 | 대기 | 2주 무개입 운영, 백테스트·설정 화면, 한계 문서화 |
 
 ## Phase 0 — 토스 API 검증
@@ -78,22 +78,35 @@
 
 ## Phase 3 — Worker DRY RUN (로컬)
 
-- [ ] 토스 캘린더와 XNYS 비교 (불일치 시 신규 주문 차단)
-- [ ] Worker 루프: 명령 처리, `next_evaluation_at`, heartbeat
-- [ ] 평가 1회 유스케이스 (project.md 4절 흐름), 판단 유일 키
-- [ ] 봇 상태 전이와 재시작 복구 (`PAUSED`)
-- [ ] 장애 주입 테스트: API 오류·데이터 지연·DB 끊김·Worker 2개 동시 실행
-- [ ] 로컬에서는 저장된 봉으로 시간을 돌려 며칠치를 재생하는 모드
+- [x] 토스 캘린더와 XNYS 비교 (토스가 거래일이 아니라고 하면 판단 없이 `SKIPPED`)
+- [x] Worker 루프: advisory lock(단일 Worker), heartbeat, 명령 처리, `next_evaluation_at` 도래 봇 평가
+- [x] 평가 1회 유스케이스: 완료 봉 확인·검증 → T+1 시가 체결 → 판단 → 모의 주문, 한 트랜잭션
+- [x] 중복 방지: 판단 유일 키 + 봇당 대기 주문 1개 부분 유일 인덱스, 같은 봉 재평가는 무동작
+- [x] 봇 상태 전이(`START`·`PAUSE`·`STOP`·`RUN_ONCE`)와 재시작 후 `PAUSED` 복구
+- [x] 오류 분류: 403·인증 반복·예상 못한 오류 → `ERROR`, 토스 일시 장애·데이터 지연 → `SKIPPED` 후 15분 뒤 재시도
+- [x] 장애 주입 테스트: 데이터 지연, 확정 전 봉, 캘린더 불일치, 403, 5xx, 판단 누락, DB 중복 삽입, Worker 2개 (총 63개)
+- [x] `replay` CLI: 저장된 봉으로 과거 거래일마다 정기 평가를 재생해 백테스트와 체결 비교
+- [x] 로컬 실동작: 봇 생성 → `START` → 2026-09-30 판단(BUY 대기), 두 번째 Worker 대기, 강제 종료 후 재시작 시 `PAUSED`
+- [x] CI에 `alembic check` (모델과 마이그레이션 불일치 검출)
+
+### Phase 3 결과: replay와 백테스트 비교 (QQQ, 2026-10-01)
+
+| 전략 | 구간 | 평가 | 체결 (replay / 백테스트) | 일치 |
+| --- | --- | ---: | ---: | --- |
+| `sma_cross` 50/200 | 2024-01-02 ~ 2026-09-30 | 689회 OK | 3 / 3 | 예 |
+| `donchian` 20/10, 1회 주문 $5,000 한도 | 2025-01-02 ~ 2026-09-30 | 437회 OK | 17 / 17 | 예 |
 
 ## Phase 4 — 배포·운영 화면
 
-- [ ] FastAPI: 상태·포지션·실행 기록·이벤트 조회, 명령 기록 API
-- [ ] 화면: 대시보드, 로그, 종목 차트 (project.md 8절)
-- [ ] `deploy/compose.prod.yaml` (migrate → api·worker), 정적 파일 포함 이미지
-- [ ] Lightsail 서울 2GB 생성, Static IP, 방화벽 차단, Tailscale, `tailscale serve`
-- [ ] 서버 IP를 토스 허용 목록에 등록, Worker 시작
-- [ ] `deploy/README.md` 서버 준비·배포·백업·복원 절차
-- [ ] 매일 `pg_dump` 백업과 Lightsail 자동 스냅샷
+- [x] FastAPI: 봇 상태·모의 잔고(종가 평가)·마지막 판단·대기 주문·실행 기록, 판단·주문·이벤트·일봉·백테스트 조회, 명령 등록(202)
+- [x] 화면: 대시보드(실행 여부 → 판단 이유 → 잔고·주문), 차트(캔들·거래량·SMA·신호·체결 마커), 로그(수준 필터). 10초 polling, KST 표시
+- [x] 단일 Docker 이미지(프론트 빌드 포함, non-root), `deploy/compose.prod.yaml`(db → migrate → api·worker, api는 127.0.0.1만, 토스 키는 worker만)
+- [x] `deploy/bootstrap.sh`(Docker·Tailscale·스왑·비밀값·백업 cron), `deploy.sh`, `backup.sh`
+- [x] 로컬에서 운영 구성 실행 확인: 마이그레이션 후 api·worker 기동, 화면 200, api 컨테이너에 토스 변수 0개
+- [ ] **(사용자)** Lightsail 서울 2GB 생성·Static IP, Tailscale 계정, GitHub deploy key 등록
+- [ ] 서버 준비(project.md 6절 절차), 서버 IP를 토스 허용 목록에 등록, 첫 배포
+- [ ] 서버에서 봇 생성·시작, Tailscale로 대시보드 접속 확인
+- [ ] 첫 정기 평가(마감 + 2시간)와 백업 1회 확인
 
 ## Phase 5 — MWP 마무리·운영 검증
 

@@ -38,6 +38,10 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run python -m mypy
+      - name: migrations match models
+        env:
+          DATABASE_URL: postgresql+psycopg://quant:quant@localhost:5432/quant_lab
+        run: uv run alembic upgrade head && uv run alembic check
       - run: uv run pytest
 
   frontend:

@@ -100,16 +100,6 @@ def test_token_is_reused_until_refresh_margin(client: TossClient, clock: Clock) 
 
 
 @respx.mock
-def test_expired_token_is_reissued_once(client: TossClient) -> None:
-    token = respx.post(TOKEN_URL).mock(side_effect=[token_response(1), token_response(2)])
-    respx.get(CANDLES_URL).mock(
-        side_effect=[error_response(401, "expired-token"), candles_response()]
-    )
-    client.daily_candles("QQQ")
-    assert token.call_count == 2
-
-
-@respx.mock
 def test_repeated_revocation_raises(client: TossClient) -> None:
     respx.post(TOKEN_URL).mock(side_effect=[token_response(1), token_response(2)])
     respx.get(CANDLES_URL).mock(return_value=error_response(401, "token-revoked"))

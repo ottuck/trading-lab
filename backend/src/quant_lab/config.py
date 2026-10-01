@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -19,6 +20,11 @@ class Settings(BaseSettings):
     toss_client_secret: SecretStr | None = None
 
     worker_heartbeat_interval_s: float = 15.0
+    # stored: DB에 저장된 봉만 사용 (토스 호출 없음, 로컬 기본값). toss: 운영 서버.
+    worker_market_source: Literal["stored", "toss"] = "stored"
+
+    # 빌드된 프론트엔드 위치. 있으면 API 서버가 함께 제공한다.
+    frontend_dist: Path = REPO_ROOT / "frontend" / "dist"
 
 
 @lru_cache
