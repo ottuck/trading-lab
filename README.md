@@ -15,6 +15,7 @@
 - **시세 수집** — 토스 일봉을 상장일부터 받아 PostgreSQL에 캐시하고, 누락·중복·비거래일·이상치를 검사합니다. 수정주가가 바뀌면 자동으로 전체를 다시 받습니다.
 - **백테스트** — 전략 4종(골든크로스 50/200, Faber 200일선, Connors RSI(2), 터틀 돌파)을 매수 후 보유와 비교합니다. CLI와 화면 모두에서 실행·저장합니다.
 - **정기 DRY RUN** — Worker가 미국 정규장 마감 2시간 뒤 완료된 일봉으로 판단하고, 다음 거래일 시가로 모의 체결합니다.
+- **텔레그램 알림** — 경고·오류, 매매 신호, 모의 체결, Worker 재시작을 휴대폰으로 받습니다. 매일 나오는 HOLD는 보내지 않습니다.
 - **운영 화면** — 실행 상태 → 마지막 판단 이유 → 모의 잔고 순서로 보여주는 대시보드, 캔들 차트(신호·체결 마커), 백테스트, 로그. 시작·일시정지·중지·수동 실행.
 
 ## 설계에서 신경 쓴 것
@@ -97,6 +98,8 @@ uv run python -m quant_lab.cli backtest QQQ --params fast=50,slow=200 --save    
 uv run python -m quant_lab.cli bot create qqq-sma QQQ --params fast=50,slow=200 # DRY RUN 봇
 uv run python -m quant_lab.cli bot cmd <봇 ID> START                            # START·PAUSE·STOP·RUN_ONCE
 uv run python -m quant_lab.cli replay QQQ --start 2024-01-02 --end 2026-09-30   # 정기 평가 재생 vs 백테스트
+uv run python -m quant_lab.cli notify chat-id                                   # 텔레그램 채팅 ID 확인 (봇에게 먼저 메시지)
+uv run python -m quant_lab.cli notify test                                      # 텔레그램 테스트 메시지
 uv run scripts/toss_probe.py                                                    # 토스 API 읽기 전용 탐색
 ```
 

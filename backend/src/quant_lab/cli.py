@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
 from quant_lab.adapters.market_calendar import get_calendar
+from quant_lab.adapters.telegram import TelegramClient
 from quant_lab.adapters.toss.client import TossClient
 from quant_lab.application.backtesting import backtest_symbol
 from quant_lab.application.bar_sync import sync_daily_bars
@@ -228,6 +229,33 @@ def cmd_replay(args: argparse.Namespace) -> int:
     return 0 if same else 1
 
 
+def _telegram() -> TelegramClient:
+    settings = get_settings()
+    if settings.telegram_bot_token is None:
+        raise SystemExit("TELEGRAM_BOT_TOKEN이 설정되지 않았습니다 (.env).")
+    return TelegramClient(
+        settings.telegram_bot_token.get_secret_value(), settings.telegram_chat_id or ""
+    )
+
+
+def cmd_notify_chat_id(args: argparse.Namespace) -> int:
+    chats = _telegram().recent_chat_ids()
+    if not chats:
+        print("최근 메시지가 없습니다. 텔레그램에서 봇에게 아무 메시지나 보낸 뒤 다시 실행하세요.")
+        return 1
+    for chat_id, name in chats:
+        print(f"TELEGRAM_CHAT_ID={chat_id}  ({name})")
+    return 0
+
+
+def cmd_notify_test(args: argparse.Namespace) -> int:
+    if not get_settings().telegram_chat_id:
+        raise SystemExit("TELEGRAM_CHAT_ID가 없습니다. 먼저 notify chat-id로 확인하세요.")
+    _telegram().send("✅ Quant Lab 알림 테스트 (DRY RUN)")
+    print("보냈습니다.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="quant_lab.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -270,6 +298,13 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("--keep", action="store_true", help="재생에 쓴 임시 봇과 기록을 남김")
     _add_cost_args(rp)
     rp.set_defaults(func=cmd_replay)
+
+    notify = sub.add_parser("notify", help="텔레그램 알림 설정 확인")
+    notify_sub = notify.add_subparsers(dest="notify_command", required=True)
+    notify_sub.add_parser("chat-id", help="봇에게 메시지를 보낸 채팅 ID 확인").set_defaults(
+        func=cmd_notify_chat_id
+    )
+    notify_sub.add_parser("test", help="테스트 메시지 전송").set_defaults(func=cmd_notify_test)
     return parser
 
 
@@ -278,6 +313,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if isinstance(stream, io.TextIOWrapper):
             stream.reconfigure(encoding="utf-8")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # 요청 URL(토큰 포함)을 남기지 않는다
     args = build_parser().parse_args(argv)
     code: int = args.func(args)
     return code

@@ -46,9 +46,9 @@ EOF
   chmod 600 "$ENV_DIR/env"
   echo "DB 비밀번호를 생성했습니다."
 fi
-if [[ ! -f "$ENV_DIR/toss.env" ]]; then
-  printf 'TOSS_CLIENT_ID=\nTOSS_CLIENT_SECRET=\n' > "$ENV_DIR/toss.env"
-  chmod 600 "$ENV_DIR/toss.env"
+if [[ ! -f "$ENV_DIR/worker.env" ]]; then
+  printf 'TOSS_CLIENT_ID=\nTOSS_CLIENT_SECRET=\nTELEGRAM_BOT_TOKEN=\nTELEGRAM_CHAT_ID=\n' > "$ENV_DIR/worker.env"
+  chmod 600 "$ENV_DIR/worker.env"
 fi
 
 echo "== 매일 DB 백업 (KST 12:00 = 03:00 UTC, 7일 보관) =="
@@ -63,7 +63,7 @@ cat <<EOF
 준비가 끝났습니다. 남은 수동 단계:
   1) sudo tailscale up --ssh            # 출력된 링크로 로그인
   2) sudo tailscale serve --bg 8000     # tailnet 안에서만 https로 화면 제공
-  3) sudo nano ${ENV_DIR}/toss.env      # TOSS_CLIENT_ID, TOSS_CLIENT_SECRET 입력
+  3) sudo nano ${ENV_DIR}/worker.env      # 토스 키, 텔레그램 토큰·채팅 ID 입력
   4) 토스 WTS > 설정 > Open API > 허용 IP에 송신 IP 추가: ${public_ip}
   5) 로컬 PC의 토스 탐색 스크립트·Worker를 멈춘 뒤 (토큰은 client당 1개)
      bash ${REPO_DIR}/deploy/deploy.sh
