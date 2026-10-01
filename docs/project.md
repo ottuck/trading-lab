@@ -170,6 +170,19 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 
 브라우저 SSH용 22번 포트(Lightsail 콘솔 대역만)는 Tailscale SSH가 동작하면 `aws_lightsail_instance_public_ports`에서 지워 인바운드를 모두 닫는다. Terraform 상태 파일(`*.tfstate`)은 개발 PC에만 두고 Git에 넣지 않는다.
 
+### 로컬 운영 리허설 (서버 생성 전, 2026-10-01~)
+
+Lightsail도 VM 한 대에 같은 Compose를 올리는 구조라, 서버가 준비되기 전까지 **개발 PC에서 운영 구성 그대로** 돌린다. 운영 이력(판단·모의 체결)을 미리 쌓고, 서버로 옮길 때 백업·복원 절차를 함께 검증한다.
+
+| 항목 | 내용 |
+| --- | --- |
+| 비밀값 | `C:Users<사용자>.quant-labenv`, `worker.env` (서버의 `/etc/quant-lab`과 같은 형식, 저장소 밖) |
+| 실행 | `QL_ENV_DIR=<위 경로> docker compose -f deploy/compose.prod.yaml up -d --build` (Compose 이름 `quant-lab-prod`, 개발용 DB와 분리) |
+| 접속 | `tailscale serve --bg 8000` → `https://<PC 이름>.<tailnet>.ts.net` (tailnet 안에서만) |
+| 토스 | 개발 PC 공인 IP가 허용 목록에 있어야 한다. 이 Worker가 토큰을 가지므로, 동작 중에는 개발용 CLI(`sync-bars`, `toss_probe`)로 토스를 호출하지 않는다 |
+| 한계 | PC가 꺼지거나 절전에 들어가면 평가가 빠진다 (`missed_sessions` 경고). 가정용 IP가 바뀌면 토스 403 → 봇 `ERROR` |
+| 서버로 이전 | 로컬 Worker 정지 → `pg_dump` → 서버에서 `pg_restore` → 서버 Worker 시작 → 로컬 스택 `down`. Worker를 두 곳에서 동시에 돌리지 않는다 |
+
 ### 로컬 개발
 
 개발 PC에서는 `compose.yaml`로 PostgreSQL만 띄우고 API·Worker·프론트엔드는 각각 직접 실행한다. **토스 client는 계정당 1개만 발급된다 (2026-10-01 확인).** 같은 client로 토큰을 발급하면 다른 쪽 토큰이 무효화되므로, 서버 Worker가 동작한 뒤로는 로컬에서 토스를 호출하지 않는다. 로컬 개발은 저장된 봉(서버 DB 덤프)이나 합성 데이터로 한다. Worker는 기본값 `WORKER_MARKET_SOURCE=stored`로 토스를 호출하지 않고, 운영 서버만 `toss`로 둔다. 로컬 호출이 꼭 필요하면 서버 Worker를 멈추고 호출한 뒤 다시 시작한다. 허용 IP는 여러 개 등록할 수 있어 개발 PC IP와 서버 IP를 함께 둔다.
