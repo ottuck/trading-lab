@@ -47,7 +47,7 @@ EOF
   echo "DB 비밀번호를 생성했습니다."
 fi
 if [[ ! -f "$ENV_DIR/worker.env" ]]; then
-  printf 'TOSS_CLIENT_ID=\nTOSS_CLIENT_SECRET=\nTELEGRAM_BOT_TOKEN=\nTELEGRAM_CHAT_ID=\n' > "$ENV_DIR/worker.env"
+  printf 'TOSS_CLIENT_ID=\nTOSS_CLIENT_SECRET=\nTELEGRAM_BOT_TOKEN=\nTELEGRAM_CHAT_ID=\nHEARTBEAT_PING_URL=\n' > "$ENV_DIR/worker.env"
   chmod 600 "$ENV_DIR/worker.env"
 fi
 

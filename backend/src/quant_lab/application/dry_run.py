@@ -8,6 +8,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from enum import StrEnum
 
 import httpx
@@ -20,6 +21,7 @@ from quant_lab.application.bar_sync import DEFAULT_SETTLE
 from quant_lab.application.market import MarketData
 from quant_lab.domain.bars import TradingCalendar, check_daily_bars, is_completed
 from quant_lab.domain.bot import BotState
+from quant_lab.domain.portfolio import Portfolio, money
 from quant_lab.domain.strategy import STRATEGIES, Strategy
 from quant_lab.domain.trading import Action, DecisionRecord, Fill, decide, execute
 from quant_lab.persistence.backtests import to_jsonable
@@ -226,7 +228,7 @@ def _evaluate(
         outcome = EvaluationOutcome(
             run_id, RunStatus.OK, target, f"{target} 판단은 이미 있음", fill=fill
         )
-        return _commit_ok(session, bot, outcome, calendar, now)
+        return _commit_ok(session, bot, outcome, calendar, now, _summary(bot, pf, bars[-1].close))
 
     # Worker가 멈춰 있던 동안의 거래일은 소급 판단하지 않고 기록만 남긴다.
     last_decided = session.scalar(
@@ -296,7 +298,18 @@ def _evaluate(
     if decision.blocked:
         detail += f" (차단: {decision.blocked})"
     outcome = EvaluationOutcome(run_id, RunStatus.OK, target, detail, decision=decision, fill=fill)
-    return _commit_ok(session, bot, outcome, calendar, now)
+    return _commit_ok(session, bot, outcome, calendar, now, _summary(bot, pf, bars[-1].close))
+
+
+def _summary(bot: BotRow, pf: Portfolio, close: Decimal) -> dict[str, str | int]:
+    """알림·로그용 잔고 요약 (판단일 종가 기준 평가)."""
+    equity = pf.equity(close)
+    return {
+        "equity": str(money(equity)),
+        "total_return": str(round(equity / bot.initial_cash - 1, 6)),
+        "qty": pf.qty,
+        "close": str(close),
+    }
 
 
 def _commit_ok(
@@ -305,6 +318,7 @@ def _commit_ok(
     outcome: EvaluationOutcome,
     calendar: TradingCalendar,
     now: datetime,
+    summary: dict[str, str | int],
 ) -> EvaluationOutcome:
     assert outcome.session_date is not None
     bot.next_evaluation_at = next_evaluation_time(calendar, outcome.session_date)
@@ -337,7 +351,7 @@ def _commit_ok(
         outcome.detail,
         bot_id=bot.id,
         run_id=outcome.run_id,
-        data={"action": action} if action else None,
+        data={"action": action, **summary} if action else summary,
     )
     session.commit()
     return outcome

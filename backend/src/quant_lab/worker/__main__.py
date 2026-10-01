@@ -16,6 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from quant_lab import __version__
+from quant_lab.adapters.heartbeat_ping import HeartbeatPinger
 from quant_lab.adapters.market_calendar import get_calendar
 from quant_lab.adapters.telegram import TelegramClient
 from quant_lab.adapters.toss.client import TossClient
@@ -87,6 +88,8 @@ def run(stop: threading.Event) -> None:
         )
         session.commit()
     worker.recover_after_restart()
+    pinger = HeartbeatPinger(settings.heartbeat_ping_url) if settings.heartbeat_ping_url else None
+    log.info("외부 heartbeat %s", "켜짐" if pinger else "꺼짐 (HEARTBEAT_PING_URL 없음)")
 
     while not stop.is_set():
         try:
@@ -95,6 +98,9 @@ def run(stop: threading.Event) -> None:
             worker.tick()
             if notifier is not None:
                 notifier.poll()
+            # DB 기록·명령 처리까지 성공한 주기에만 외부로 생존 신호를 보낸다.
+            if pinger is not None:
+                pinger.maybe_ping()
         except SQLAlchemyError:
             # DB 오류 중에는 판단·주문을 만들지 않는다 (project.md 3절 원칙 5).
             log.exception("DB 오류, 다음 주기에 다시 시도")
