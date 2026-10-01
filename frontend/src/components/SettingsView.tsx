@@ -1,108 +1,129 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { backtestApi, botApi, type Bot, type BotConfig } from '../api'
-import { kstTime } from '../format'
-import { paramsText, parseParams, STRATEGY_LABEL } from '../strategies'
+import { api, botApi, type Bot, type BotConfig } from '../api'
+import { ago, money } from '../format'
+import { presetOf, SLIPPAGE_CHOICES, strategyTitle, useStrategies } from '../strategies'
+import { StrategyPicker } from './BacktestView'
+import { Term } from './Help'
 
 type Draft = {
   strategy: string
-  params: string
-  commission: string // %
-  slippage: string // bp
-  maxPosition: string
-  maxOrder: string
+  params: Record<string, number>
+  slippage: string
+  maxPosition: string // 빈 값이면 제한 없음
 }
 
 function toDraft(bot?: Bot): Draft {
   return {
     strategy: bot?.strategy ?? 'sma_cross',
-    params: bot ? paramsText(bot.params) : 'fast=50,slow=200',
-    commission: bot ? String(Number(bot.commission_rate) * 100) : '0.1',
-    slippage: bot?.slippage_bps ?? '5',
+    params: bot?.params ?? { fast: 50, slow: 200 },
+    slippage: bot ? String(Number(bot.slippage_bps)) : '5',
     maxPosition: bot?.risk.max_position_value ?? '',
-    maxOrder: bot?.risk.max_order_value ?? '',
   }
 }
 
-function toConfig(d: Draft): BotConfig {
+function toConfig(d: Draft, bot?: Bot): BotConfig {
   return {
     strategy: d.strategy,
-    params: parseParams(d.params),
-    commission_rate: String(Number(d.commission) / 100),
+    params: d.params,
+    commission_rate: bot?.commission_rate ?? '0.001', // 토스증권 요율 고정 (화면에서 바꾸지 않음)
     slippage_bps: d.slippage,
     max_position_value: d.maxPosition || null,
-    max_order_value: d.maxOrder || null,
+    max_order_value: bot?.risk.max_order_value ?? null,
   }
 }
 
 function ConfigFields({ draft, onChange }: { draft: Draft; onChange: (d: Draft) => void }) {
-  const { data: strategies } = useQuery({ queryKey: ['strategies'], queryFn: backtestApi.strategies, refetchInterval: false })
+  const { list, byName } = useStrategies()
+  const info = byName[draft.strategy]
+  const current = presetOf(info, draft.params)
   const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch })
-  const pick = (name: string) => {
-    const s = strategies?.find((x) => x.name === name)
-    set({ strategy: name, params: s ? paramsText(s.default_params) : draft.params })
-  }
   return (
-    <>
-      <label>
-        전략
-        <select value={draft.strategy} onChange={(e) => pick(e.target.value)}>
-          {(strategies ?? []).map((s) => (
-            <option key={s.name} value={s.name}>
-              {STRATEGY_LABEL[s.name] ?? s.name}
-            </option>
+    <div className="stack">
+      <div>
+        <div className="label" style={{ marginBottom: 6 }}>
+          어떤 전략으로 할까요?
+        </div>
+        <StrategyPicker
+          list={list}
+          value={draft.strategy}
+          onChange={(name) => set({ strategy: name, params: byName[name]?.default_params ?? {} })}
+        />
+      </div>
+      {info && info.presets.length > 1 && (
+        <div className="controls">
+          <span className="label">반응 속도</span>
+          {info.presets.map((p) => (
+            <button key={p.key} className={`seg ${current?.key === p.key ? 'active' : ''}`} onClick={() => set({ params: p.params })}>
+              {p.label}
+            </button>
           ))}
-        </select>
-      </label>
-      <label>
-        파라미터
-        <input value={draft.params} onChange={(e) => set({ params: e.target.value })} size={22} />
-      </label>
-      <label>
-        수수료 %
-        <input value={draft.commission} onChange={(e) => set({ commission: e.target.value })} size={5} />
-      </label>
-      <label>
-        슬리피지 bp
-        <input value={draft.slippage} onChange={(e) => set({ slippage: e.target.value })} size={4} />
-      </label>
-      <label>
-        최대 보유 금액 $
-        <input value={draft.maxPosition} placeholder="제한 없음" onChange={(e) => set({ maxPosition: e.target.value })} size={9} />
-      </label>
-      <label>
-        1회 주문 한도 $
-        <input value={draft.maxOrder} placeholder="제한 없음" onChange={(e) => set({ maxOrder: e.target.value })} size={9} />
-      </label>
-    </>
+          {!current && <span className="faint small">직접 설정한 값 사용 중</span>}
+        </div>
+      )}
+      <div className="controls">
+        <span className="label">
+          <Term k="체결 가격 가정" />
+        </span>
+        {SLIPPAGE_CHOICES.map((c) => (
+          <button key={c.bps} className={`seg ${c.bps === draft.slippage ? 'active' : ''}`} onClick={() => set({ slippage: c.bps })} title={c.hint}>
+            {c.label}
+          </button>
+        ))}
+      </div>
+      <div className="controls">
+        <span className="label">
+          <Term k="최대 투자 금액" />
+        </span>
+        <button className={`seg ${!draft.maxPosition ? 'active' : ''}`} onClick={() => set({ maxPosition: '' })}>
+          가진 현금 전부
+        </button>
+        <span className="dollar">
+          $
+          <input
+            inputMode="numeric"
+            placeholder="직접 입력"
+            value={draft.maxPosition}
+            onChange={(e) => set({ maxPosition: e.target.value.replace(/[^0-9]/g, '') })}
+            size={8}
+          />
+        </span>
+      </div>
+      <div className="faint small">
+        <Term k="수수료">수수료</Term>는 토스증권 요율(0.1%)이 자동으로 적용돼요.
+      </div>
+    </div>
   )
 }
 
 function History({ botId }: { botId: number }) {
-  const { data } = useQuery({ queryKey: ['history', botId], queryFn: () => botApi.history(botId) })
+  const { data } = useQuery({ queryKey: ['history', botId], queryFn: () => api.activity(botId, 'config_change') })
   if (!data?.length) return null
   return (
     <>
-      <h3>변경 이력</h3>
-      <table>
-        <tbody>
-          {data.map((e) => (
-            <tr key={e.id}>
-              <td className="nowrap">{kstTime(e.at)}</td>
-              <td>{e.message}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <h3>바꾼 기록</h3>
+      <ul className="activity">
+        {data.map((a) => (
+          <li key={a.id}>
+            <span className="icon">{a.icon}</span>
+            <div>
+              <div className="title">{a.title}</div>
+              {a.body && <div className="muted small body">{a.body}</div>}
+              <div className="faint small">{ago(a.at)}</div>
+            </div>
+          </li>
+        ))}
+      </ul>
     </>
   )
 }
 
 function BotSettings({ bot }: { bot: Bot }) {
   const qc = useQueryClient()
+  const { byName } = useStrategies()
   const [draft, setDraft] = useState(() => toDraft(bot))
   const save = useMutation({
-    mutationFn: () => botApi.updateConfig(bot.id, toConfig(draft)),
+    mutationFn: () => botApi.updateConfig(bot.id, toConfig(draft, bot)),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['bots'] })
       void qc.invalidateQueries({ queryKey: ['history', bot.id] })
@@ -110,28 +131,24 @@ function BotSettings({ bot }: { bot: Bot }) {
   })
   const running = bot.state === 'RUNNING'
   return (
-    <section className="panel">
+    <section className="card stack">
       <div className="panel-head">
-        <h2>
-          {bot.name} <span className="muted">· {bot.symbol}</span>
-        </h2>
-        <span className="muted small">초기 현금 ${Number(bot.account.initial_cash).toLocaleString()} (생성 후 변경 불가)</span>
+        <div className="card-title" style={{ marginBottom: 0 }}>
+          {bot.name} <span className="sub">{bot.symbol} · {strategyTitle(byName[bot.strategy], bot.strategy)}</span>
+        </div>
+        <span className="muted small">시작 금액 {money(bot.account.initial_cash)}</span>
       </div>
-      {running && <p className="notice">실행 중에는 설정을 바꿀 수 없습니다. 대시보드에서 일시정지한 뒤 변경하세요.</p>}
-      <form
-        className="form"
-        onSubmit={(e) => {
-          e.preventDefault()
-          save.mutate()
-        }}
-      >
+      {running && <div className="notice">돌아가는 중에는 바꿀 수 없어요. 홈에서 [잠시 멈춤]을 누른 뒤 바꿔 주세요.</div>}
+      <fieldset disabled={running} className="plain">
         <ConfigFields draft={draft} onChange={setDraft} />
-        <button type="submit" className="primary" disabled={running || save.isPending}>
+      </fieldset>
+      <div className="controls">
+        <button className="primary" disabled={running || save.isPending} onClick={() => save.mutate()}>
           저장
         </button>
-        {save.isSuccess && <span className="up small">저장했습니다. 다음 판단부터 적용됩니다.</span>}
+        {save.isSuccess && <span className="up small">저장했어요. 다음 판단부터 적용돼요.</span>}
         {save.error && <span className="down small">{save.error.message}</span>}
-      </form>
+      </div>
       <History botId={bot.id} />
     </section>
   )
@@ -139,46 +156,55 @@ function BotSettings({ bot }: { bot: Bot }) {
 
 function NewBot() {
   const qc = useQueryClient()
+  const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
-  const [symbol, setSymbol] = useState('QQQ')
+  const [symbol, setSymbol] = useState('VOO')
   const [cash, setCash] = useState('10000')
   const [draft, setDraft] = useState(() => toDraft())
   const create = useMutation({
     mutationFn: () => botApi.create({ ...toConfig(draft), name, symbol, initial_cash: cash }),
     onSuccess: () => {
       setName('')
+      setOpen(false)
       void qc.invalidateQueries({ queryKey: ['bots'] })
     },
   })
+  if (!open) {
+    return (
+      <button className="link" onClick={() => setOpen(true)}>
+        + 봇 하나 더 만들기
+      </button>
+    )
+  }
   return (
-    <section className="panel">
-      <h2>새 봇</h2>
-      <p className="muted small">중지 상태로 만들어집니다. 대시보드에서 시작하세요. 토스가 지원하는 미국 종목이어야 합니다.</p>
-      <form
-        className="form"
-        onSubmit={(e) => {
-          e.preventDefault()
-          create.mutate()
-        }}
-      >
+    <section className="card stack">
+      <div className="card-title" style={{ marginBottom: 0 }}>
+        새 봇 만들기
+      </div>
+      <div className="form">
         <label>
           이름
-          <input value={name} onChange={(e) => setName(e.target.value)} size={12} required />
+          <input value={name} onChange={(e) => setName(e.target.value)} size={12} placeholder="예: voo-봇" />
         </label>
         <label>
           종목
-          <input value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} size={6} required />
+          <input value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} size={6} />
         </label>
         <label>
-          초기 현금 $
-          <input value={cash} onChange={(e) => setCash(e.target.value)} size={8} />
+          시작 금액 $
+          <input value={cash} inputMode="numeric" onChange={(e) => setCash(e.target.value.replace(/[^0-9]/g, ''))} size={8} />
         </label>
-        <ConfigFields draft={draft} onChange={setDraft} />
-        <button type="submit" className="primary" disabled={create.isPending}>
+      </div>
+      <ConfigFields draft={draft} onChange={setDraft} />
+      <div className="controls">
+        <button className="primary" disabled={create.isPending || !name} onClick={() => create.mutate()}>
           만들기
         </button>
+        <button className="ghost" onClick={() => setOpen(false)}>
+          취소
+        </button>
         {create.error && <span className="down small">{create.error.message}</span>}
-      </form>
+      </div>
     </section>
   )
 }

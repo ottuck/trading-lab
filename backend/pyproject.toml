@@ -51,3 +51,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+
+[tool.ruff.lint.per-file-ignores]
+# 사용자에게 보이는 문장은 줄 길이 제한에서 제외한다
+"src/quant_lab/application/messages.py" = ["E501"]

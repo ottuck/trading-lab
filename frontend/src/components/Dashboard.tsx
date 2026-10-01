@@ -2,22 +2,22 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { api, type Bot, type BotState, type CommandKind } from '../api'
 import { ago, kstTime, money, percent, signedMoney, tone } from '../format'
-import { sourceLabel } from '../source'
-import { paramsText, STRATEGY_LABEL } from '../strategies'
+import { strategyTitle, useStrategies } from '../strategies'
+import { Term } from './Help'
 import { PriceChart } from './PriceChart'
 
 const STATE_LABEL: Record<BotState, string> = {
-  RUNNING: '실행 중',
-  PAUSED: '일시정지',
-  STOPPED: '중지',
-  ERROR: '오류',
+  RUNNING: '돌아가는 중',
+  PAUSED: '잠시 멈춤',
+  STOPPED: '멈춤',
+  ERROR: '문제 발생',
 }
 
 const COMMANDS: { kind: CommandKind; label: string; style: string; enabled: (s: BotState) => boolean }[] = [
   { kind: 'START', label: '매매 시작', style: 'go', enabled: (s) => s !== 'RUNNING' },
-  { kind: 'PAUSE', label: '일시정지', style: '', enabled: (s) => s === 'RUNNING' },
+  { kind: 'PAUSE', label: '잠시 멈춤', style: '', enabled: (s) => s === 'RUNNING' },
   { kind: 'STOP', label: '매매 중단', style: 'danger', enabled: (s) => s !== 'STOPPED' },
-  { kind: 'RUN_ONCE', label: '수동 1회 실행', style: 'primary', enabled: () => true },
+  { kind: 'RUN_ONCE', label: '지금 판단해 보기', style: 'primary', enabled: () => true },
 ]
 
 function useNow(intervalMs = 30_000) {
@@ -32,19 +32,19 @@ function useNow(intervalMs = 30_000) {
 function clock(d: Date, timeZone: string) {
   return new Intl.DateTimeFormat('ko-KR', {
     timeZone,
-    month: '2-digit',
-    day: '2-digit',
+    month: 'numeric',
+    day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
   }).format(d)
 }
 
-function KV({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
+function KV({ label, children, className }: { label: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
     <div className="kv">
       <span className="label">{label}</span>
-      <span className={`value ${className ?? ''}`}>{children}</span>
+      <span className={`value md ${className ?? ''}`}>{children}</span>
     </div>
   )
 }
@@ -54,26 +54,21 @@ function Controls({ bot }: { bot: Bot }) {
   const [sent, setSent] = useState<string | null>(null)
   const mutation = useMutation({
     mutationFn: (kind: CommandKind) => api.command(bot.id, kind),
-    onSuccess: (_, kind) => {
-      setSent(`${kind} 명령을 보냈습니다. Worker가 15초 안에 처리합니다.`)
+    onSuccess: () => {
+      setSent('요청했어요. 15초 안에 반영돼요.')
       void qc.invalidateQueries({ queryKey: ['bots'] })
     },
-    onError: (e) => setSent(`명령 실패: ${e.message}`),
+    onError: (e) => setSent(`요청하지 못했어요: ${e.message}`),
   })
   const send = (kind: CommandKind) => {
-    if (kind === 'STOP' && !window.confirm('봇을 중단할까요? 대기 중인 모의 주문은 남아 있습니다.')) return
+    if (kind === 'STOP' && !window.confirm('매매를 중단할까요? 예정된 거래는 그대로 남아요.')) return
     mutation.mutate(kind)
   }
   return (
     <>
       <div className="controls">
         {COMMANDS.map((c) => (
-          <button
-            key={c.kind}
-            className={c.style}
-            disabled={!c.enabled(bot.state) || mutation.isPending}
-            onClick={() => send(c.kind)}
-          >
+          <button key={c.kind} className={c.style} disabled={!c.enabled(bot.state) || mutation.isPending} onClick={() => send(c.kind)}>
             {c.label}
           </button>
         ))}
@@ -86,42 +81,46 @@ function Controls({ bot }: { bot: Bot }) {
 function StatusCard({ bot }: { bot: Bot }) {
   const now = useNow()
   const run = bot.last_run
+  const runOk = run?.status === 'OK'
   return (
     <section className="card stack">
       <div className="card-title" style={{ marginBottom: 0 }}>
-        봇 상태
+        내 봇
       </div>
       <div className="controls">
-        <span className="badge dry">DRY RUN</span>
+        <span className="badge dry">
+          <Term k="모의 투자" />
+        </span>
         <span className={`badge state-${bot.state}`}>{STATE_LABEL[bot.state]}</span>
       </div>
-      {bot.state_reason && <div className={bot.state === 'ERROR' ? 'alert' : 'notice'}>{bot.state_reason}</div>}
+      {bot.state_reason && (
+        <div className={bot.state === 'ERROR' ? 'alert' : 'notice'}>
+          {bot.state === 'PAUSED' ? '프로그램이 다시 켜져서 잠시 멈췄어요. [매매 시작]을 눌러 주세요.' : bot.state_reason}
+        </div>
+      )}
       <div className="kv-grid">
-        <KV label="한국시간" className="md">{clock(now, 'Asia/Seoul')}</KV>
-        <KV label="미국 동부시간" className="md">{clock(now, 'America/New_York')}</KV>
-        <KV label="다음 평가" className="md">
+        <KV label="한국 시각">{clock(now, 'Asia/Seoul')}</KV>
+        <KV label="뉴욕 시각">{clock(now, 'America/New_York')}</KV>
+        <KV label="다음 판단">
           {bot.state === 'RUNNING' ? (
             <>
-              {kstTime(bot.next_evaluation_at)} <span className="muted small">{ago(bot.next_evaluation_at)}</span>
+              {kstTime(bot.next_evaluation_at).replace(' KST', '')}{' '}
+              <span className="muted small">{ago(bot.next_evaluation_at)}</span>
             </>
           ) : (
-            <span className="muted">실행 중 아님</span>
+            <span className="muted">멈춘 상태예요</span>
           )}
         </KV>
-        <KV
-          label="마지막 실행"
-          className={run?.status === 'OK' ? 'up' : run?.status === 'ERROR' ? 'down' : run ? 'warn' : ''}
-        >
+        <KV label="마지막 판단" className={runOk ? 'up' : run?.status === 'ERROR' ? 'down' : run ? 'warn' : ''}>
           {run ? (
             <>
-              {run.status} <span className="muted small">{ago(run.started_at)}</span>
+              {runOk ? '정상' : run.status === 'ERROR' ? '실패' : '미룸'} <span className="muted small">{ago(run.started_at)}</span>
             </>
           ) : (
             '—'
           )}
         </KV>
       </div>
-      {run?.detail && run.status !== 'OK' && <div className="notice">{run.detail}</div>}
       <Controls bot={bot} />
     </section>
   )
@@ -132,21 +131,23 @@ function AccountCard({ bot }: { bot: Bot }) {
   return (
     <section className="card stack">
       <div className="card-title" style={{ marginBottom: 0 }}>
-        모의 계좌 <span className="sub">실제 토스 계좌 아님</span>
+        내 모의 투자금 <span className="sub">실제 계좌와 무관해요</span>
       </div>
       <div className="kv">
-        <span className="label">평가 자산</span>
+        <span className="label">
+          <Term k="지금 가치" />
+        </span>
         <span className="value big">{money(a.equity)}</span>
         <span className={`small ${tone(a.total_return)}`} style={{ fontWeight: 700 }}>
-          {percent(a.total_return)} <span className="muted">· 초기 {money(a.initial_cash)}</span>
+          {percent(a.total_return)} <span className="muted">· 시작 {money(a.initial_cash)}</span>
         </span>
       </div>
       <div className="kv-grid">
-        <KV label="현금">{money(a.cash)}</KV>
-        <KV label="미실현 손익" className={tone(a.unrealized_pnl)}>
+        <KV label="남은 현금">{money(a.cash)}</KV>
+        <KV label={<Term k="평가 손익" />} className={tone(a.unrealized_pnl)}>
           {signedMoney(a.unrealized_pnl)}
         </KV>
-        <KV label="실현 손익" className={tone(a.realized_pnl)}>
+        <KV label={<Term k="확정 손익" />} className={tone(a.realized_pnl)}>
           {signedMoney(a.realized_pnl)}
         </KV>
       </div>
@@ -159,106 +160,105 @@ function HoldingsCard({ bot }: { bot: Bot }) {
   const ret = a.qty && Number(a.avg_cost) ? String(Number(a.last_close) / Number(a.avg_cost) - 1) : null
   return (
     <section className="card">
-      <div className="card-title">
-        보유 종목 <span className="sub">({a.qty ? 1 : 0}개)</span>
-      </div>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>종목</th>
-              <th className="num">수량</th>
-              <th className="num">평균 단가</th>
-              <th className="num">종가</th>
-              <th className="num">평가금</th>
-              <th className="num">손익</th>
-              <th className="num">수익률</th>
-            </tr>
-          </thead>
-          <tbody>
-            {a.qty ? (
-              <tr>
-                <td>
-                  <strong>{bot.symbol}</strong> <span className="muted small">{a.last_close_date}</span>
-                </td>
-                <td className="num">{a.qty}</td>
-                <td className="num">{money(a.avg_cost)}</td>
-                <td className="num">{money(a.last_close)}</td>
-                <td className="num">{money(a.market_value)}</td>
-                <td className={`num ${tone(a.unrealized_pnl)}`}>{signedMoney(a.unrealized_pnl)}</td>
-                <td className={`num ${tone(ret)}`}>{percent(ret)}</td>
-              </tr>
-            ) : (
-              <tr>
-                <td colSpan={7} className="empty">
-                  보유 종목 없음
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <div className="card-title">들고 있는 주식</div>
+      {a.qty ? (
+        <div className="holding">
+          <div>
+            <div className="value md">{bot.symbol}</div>
+            <div className="muted small">
+              {a.qty}주 · 산 가격 {money(a.avg_cost)}
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div className="value md">{money(a.market_value)}</div>
+            <div className={`small ${tone(a.unrealized_pnl)}`} style={{ fontWeight: 700 }}>
+              {signedMoney(a.unrealized_pnl)} ({percent(ret)})
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="empty">아직 들고 있는 주식이 없어요. 현금으로 기다리는 중이에요.</div>
+      )}
+      {a.qty > 0 && <div className="chart-foot">지금 가격 {money(a.last_close)} ({a.last_close_date} 장 마감 기준)</div>}
     </section>
   )
 }
 
 function DecisionCard({ bot }: { bot: Bot }) {
   const d = bot.last_decision
+  const [more, setMore] = useState(false)
+  const head = d?.action === 'BUY' ? '🟢 매수 신호' : d?.action === 'SELL' ? '🔴 매도 신호' : d?.holding ? '✋ 그대로 들고 있기' : '⏳ 기다리기'
   return (
     <section className="card">
       <div className="card-title">
-        마지막 판단 <span className="sub">{STRATEGY_LABEL[bot.strategy] ?? bot.strategy}</span>
+        <Term k="오늘의 판단" />
+        {d && <span className="sub">{d.session_date} 장 마감 기준</span>}
       </div>
       {d ? (
         <>
-          <div className="controls">
-            <span className={`badge action-${d.action}`}>{d.action}</span>
-            <span>
-              <strong>{d.session_date}</strong> <span className="muted">종가 기준</span>
-            </span>
-          </div>
-          <div className="reason">{d.reason}</div>
-          <div className="muted small mono">
-            {Object.entries(d.indicators)
-              .map(([k, v]) => `${k} ${Number(v).toFixed(2)}`)
-              .join('  ·  ')}
-          </div>
-          {d.blocked && <div className="alert">차단: {d.blocked}</div>}
-          {bot.pending_order && (
-            <div className="notice">
-              다음 거래일 시가에 {bot.pending_order.side === 'BUY' ? '매수' : '매도'} 체결 예정 (모의)
+          <div className="value md">{head}</div>
+          <div className="reason">{d.plain_action || d.reason}</div>
+          {d.plain_reason && <p className="muted" style={{ margin: '6px 0 0' }}>{d.plain_reason}</p>}
+          {d.blocked && <div className="alert">사지 못했어요: {d.blocked}</div>}
+          <button className="link" onClick={() => setMore(!more)}>
+            {more ? '숨기기' : '자세한 숫자 보기'}
+          </button>
+          {more && (
+            <div className="muted small mono">
+              {d.reason} ·{' '}
+              {Object.entries(d.indicators)
+                .map(([k, v]) => `${k} ${Number(v).toFixed(2)}`)
+                .join(' · ')}
             </div>
           )}
         </>
       ) : (
-        <p className="muted">아직 판단이 없습니다. 시작하면 최근 완료 봉으로 바로 판단합니다.</p>
+        <p className="muted">아직 판단이 없어요. [매매 시작]을 누르면 가장 최근 가격으로 바로 판단해요.</p>
       )}
     </section>
   )
 }
 
-function SetupCard({ bot }: { bot: Bot }) {
-  const risk = bot.risk
+function StrategyCard({ bot }: { bot: Bot }) {
+  const { byName } = useStrategies()
+  const info = byName[bot.strategy]
   return (
     <section className="card">
-      <div className="card-title">전략·데이터</div>
-      <div className="kv-grid">
-        <KV label="전략" className="md">{STRATEGY_LABEL[bot.strategy] ?? bot.strategy}</KV>
-        <KV label="파라미터">
-          <span className="mono" style={{ fontSize: 14 }}>
-            {paramsText(bot.params)}
-          </span>
-        </KV>
-        <KV label="비용" className="md">
-          {Number(bot.commission_rate) * 100}% · {bot.slippage_bps}bp
-        </KV>
-        <KV label="1회 주문 한도" className="md">{risk.max_order_value ? money(risk.max_order_value) : '없음'}</KV>
-        <KV label="최신 거래일" className="md">{bot.data_latest_date ?? '—'}</KV>
-        <KV label="데이터 수신">
-          <span style={{ fontSize: 14 }}>{bot.data_fetched_at ? ago(bot.data_fetched_at) : '—'}</span>
-        </KV>
+      <div className="card-title">전략</div>
+      <div className="value md">{strategyTitle(info, bot.strategy)}</div>
+      {info && <p className="muted" style={{ margin: '6px 0 10px' }}>{info.summary}</p>}
+      {info && (
+        <div className="controls">
+          <span className="chip">위험 {info.risk}</span>
+          <span className="chip">거래 {info.trades}</span>
+          <span className="chip">{bot.symbol}</span>
+        </div>
+      )}
+      <div className="chart-foot">
+        가격 정보: {bot.data_latest_date ?? '—'} 장 마감까지 · {bot.data_fetched_at ? `${ago(bot.data_fetched_at)} 업데이트` : '—'}
       </div>
-      <div className="chart-foot">{sourceLabel(bot.data_source)}</div>
+    </section>
+  )
+}
+
+function ActivityCard({ botId }: { botId: number }) {
+  const { data } = useQuery({ queryKey: ['activity', botId], queryFn: () => api.activity(botId) })
+  return (
+    <section className="card">
+      <div className="card-title">최근 활동</div>
+      {!data?.length && <div className="empty">아직 활동이 없어요.</div>}
+      <ul className="activity">
+        {data?.map((a) => (
+          <li key={a.id} className={`lvl-${a.level}`}>
+            <span className="icon">{a.icon}</span>
+            <div>
+              <div className="title">{a.title}</div>
+              {a.body && <div className="muted small body">{a.body}</div>}
+              <div className="faint small">{ago(a.at)}</div>
+            </div>
+          </li>
+        ))}
+      </ul>
     </section>
   )
 }
@@ -268,69 +268,58 @@ function OrdersCard({ botId }: { botId: number }) {
   return (
     <section className="card">
       <div className="card-title">
-        모의 주문 <span className="sub">T 종가 판단 → T+1 시가 체결</span>
+        거래 내역 <span className="sub">모의 투자</span>
       </div>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>판단일</th>
-              <th>구분</th>
-              <th>상태</th>
-              <th>체결일</th>
-              <th className="num">수량</th>
-              <th className="num">가격</th>
-              <th className="num">수수료</th>
-              <th className="num">실현 손익</th>
-            </tr>
-          </thead>
-          <tbody>
-            {!data?.length && (
-              <tr>
-                <td colSpan={8} className="empty">
-                  모의 주문 없음
-                </td>
-              </tr>
-            )}
-            {data?.map((o) => (
-              <tr key={o.id}>
-                <td>{o.signal_date}</td>
-                <td className={o.side === 'BUY' ? 'up' : 'down'}>{o.side === 'BUY' ? '매수' : '매도'}</td>
-                <td>{o.status === 'PENDING' ? '다음 시가 대기' : o.status === 'FILLED' ? '체결' : '미체결'}</td>
-                <td>{o.fill_date ?? '—'}</td>
-                <td className="num">{o.qty ?? '—'}</td>
-                <td className="num">{money(o.price)}</td>
-                <td className="num">{money(o.commission)}</td>
-                <td className={`num ${tone(o.realized_pnl)}`}>{signedMoney(o.realized_pnl)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {!data?.length && <div className="empty">아직 거래가 없어요.</div>}
+      <ul className="trades">
+        {data?.map((o) => {
+          const buy = o.side === 'BUY'
+          const status = o.status === 'PENDING' ? '다음 장에 예정' : o.status === 'FILLED' ? '' : '사지 못함'
+          return (
+            <li key={o.id}>
+              <span className={`side ${buy ? 'up' : 'down'}`}>{buy ? '샀어요' : '팔았어요'}</span>
+              <div>
+                <div>
+                  {o.qty ? `${o.qty}주 · 한 주 ${money(o.price)}` : status}
+                  {o.qty && status ? ` · ${status}` : ''}
+                </div>
+                <div className="faint small">
+                  {o.fill_date ?? `${o.signal_date} 판단`} {o.commission ? `· 수수료 ${money(o.commission)}` : ''}
+                </div>
+              </div>
+              {o.realized_pnl != null && <span className={`pnl ${tone(o.realized_pnl)}`}>{signedMoney(o.realized_pnl)}</span>}
+            </li>
+          )
+        })}
+      </ul>
     </section>
   )
 }
 
 export function Dashboard({ bot }: { bot: Bot }) {
+  const { byName } = useStrategies()
   return (
     <>
       <div className="bot-heading">
         <h2>{bot.name}</h2>
         <span className="muted">
-          {bot.symbol} · {STRATEGY_LABEL[bot.strategy] ?? bot.strategy}
+          {bot.symbol} · {strategyTitle(byName[bot.strategy], bot.strategy)}
         </span>
       </div>
       <div className="row">
         <StatusCard bot={bot} />
         <AccountCard bot={bot} />
       </div>
-      <HoldingsCard bot={bot} />
       <div className="row">
         <DecisionCard bot={bot} />
-        <SetupCard bot={bot} />
+        <HoldingsCard bot={bot} />
       </div>
       <PriceChart bot={bot} />
-      <OrdersCard botId={bot.id} />
+      <div className="row">
+        <ActivityCard botId={bot.id} />
+        <OrdersCard botId={bot.id} />
+      </div>
+      <StrategyCard bot={bot} />
     </>
   )
 }
