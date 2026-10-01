@@ -140,3 +140,19 @@ class HealthResponse(BaseModel):
     version: str
     db: Literal["ok", "down"]
     worker: WorkerStatus | None
+
+
+class StrategyInfo(BaseModel):
+    name: str
+    default_params: dict[str, int]
+
+
+class BacktestRequest(BaseModel):
+    symbol: str
+    strategy: str
+    params: dict[str, int] = {}
+    start: date | None = None
+    end: date | None = None
+    initial_cash: Decimal = Decimal(10_000)
+    commission_rate: Decimal = Decimal("0.001")
+    slippage_bps: Decimal = Decimal(5)

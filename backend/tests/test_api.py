@@ -94,3 +94,14 @@ def test_health_reports_worker_heartbeat(client: TestClient, session: Session) -
         "worker_id": "w1",
         "last_seen_at": body["worker"]["last_seen_at"],
     }
+
+
+def test_run_backtest_and_list(client: TestClient, bot_id: int) -> None:
+    body = {"symbol": "qqq", "strategy": "sma_cross", "params": {"fast": 3, "slow": 5}}
+    created = client.post("/api/backtests", json=body)
+    assert created.status_code == 201
+    detail = created.json()
+    assert detail["symbol"] == "QQQ" and detail["equity"]
+    assert [b["id"] for b in client.get("/api/backtests").json()] == [detail["id"]]
+    bad = client.post("/api/backtests", json={**body, "params": {"fast": 9, "slow": 5}})
+    assert bad.status_code == 400
