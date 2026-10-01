@@ -2,7 +2,8 @@
 
 import uuid
 from datetime import UTC, date, datetime
-from typing import Annotated
+from decimal import Decimal
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
@@ -14,6 +15,8 @@ from quant_lab.api.schemas import (
     BacktestRequest,
     BacktestSummary,
     BarView,
+    BotConfig,
+    BotCreate,
     BotView,
     CommandAccepted,
     CommandRequest,
@@ -24,9 +27,11 @@ from quant_lab.api.schemas import (
     StrategyInfo,
 )
 from quant_lab.application.backtesting import backtest_symbol
+from quant_lab.domain.bot import BotState
 from quant_lab.domain.portfolio import CostModel, RiskLimits
-from quant_lab.domain.strategy import STRATEGIES
-from quant_lab.persistence.bots import enqueue_command, get_bot, list_bots
+from quant_lab.domain.strategy import STRATEGIES, Strategy
+from quant_lab.persistence.backtests import to_jsonable
+from quant_lab.persistence.bots import add_event, create_bot, enqueue_command, get_bot, list_bots
 from quant_lab.persistence.db import get_session
 from quant_lab.persistence.models import (
     BacktestRow,
@@ -141,6 +146,111 @@ def bots(session: SessionDep) -> list[BotView]:
     return [_bot_view(session, b) for b in list_bots(session) if not b.name.startswith("replay-")]
 
 
+def _checked_strategy(config: BotConfig) -> Strategy:
+    factory = STRATEGIES.get(config.strategy)
+    if factory is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"알 수 없는 전략: {config.strategy}")
+    try:
+        return factory(**config.params)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"파라미터 오류: {exc}") from exc
+
+
+def _limits(config: BotConfig) -> RiskLimits:
+    return RiskLimits(
+        max_position_value=config.max_position_value, max_order_value=config.max_order_value
+    )
+
+
+def _changes(before: dict[str, Any], after: dict[str, Any]) -> str:
+    diff = [
+        f"{k} {before.get(k)} → {v}"
+        for k, v in after.items()
+        if str(before.get(k)) != str(v)
+        and not (before.get(k) is not None and v is not None and _same_number(before[k], v))
+    ]
+    return ", ".join(diff) or "변경 없음"
+
+
+def _same_number(a: object, b: object) -> bool:
+    try:
+        return Decimal(str(a)) == Decimal(str(b))
+    except ArithmeticError:
+        return False
+
+
+@router.post("/bots", status_code=status.HTTP_201_CREATED)
+def create(session: SessionDep, body: BotCreate) -> BotView:
+    strategy = _checked_strategy(body)
+    if session.scalar(select(BotRow.id).where(BotRow.name == body.name)) is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"같은 이름의 봇이 있습니다: {body.name}")
+    now = datetime.now(UTC)
+    bot = create_bot(
+        session,
+        name=body.name,
+        symbol=body.symbol.upper(),
+        strategy=strategy.name,
+        params=strategy.params,
+        initial_cash=body.initial_cash,
+        costs=CostModel(commission_rate=body.commission_rate, slippage_bps=body.slippage_bps),
+        limits=_limits(body),
+        now=now,
+    )
+    add_event(
+        session,
+        now,
+        "INFO",
+        "config_change",
+        f"봇 생성: {bot.symbol} {bot.strategy} {bot.params}",
+        bot_id=bot.id,
+        data={"after": body.model_dump(mode="json")},
+    )
+    session.commit()
+    return _bot_view(session, bot)
+
+
+@router.put("/bots/{bot_id}/config")
+def update_config(session: SessionDep, bot_id: int, body: BotConfig) -> BotView:
+    """실행 중에는 바꾸지 않는다. 일시정지·중지 후 바꾸고 다시 시작한다."""
+    bot = _require_bot(session, bot_id)
+    if bot.state == BotState.RUNNING:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "실행 중인 봇은 설정을 바꿀 수 없습니다. 일시정지 후 변경하세요.",
+        )
+    strategy = _checked_strategy(body)
+    before = {
+        "strategy": bot.strategy,
+        "params": bot.params,
+        "commission_rate": str(bot.commission_rate),
+        "slippage_bps": str(bot.slippage_bps),
+        **bot.risk,
+    }
+    after = {
+        "strategy": strategy.name,
+        "params": strategy.params,
+        "commission_rate": str(body.commission_rate),
+        "slippage_bps": str(body.slippage_bps),
+        **to_jsonable(_limits(body)),
+    }
+    now = datetime.now(UTC)
+    bot.strategy, bot.params = strategy.name, strategy.params
+    bot.commission_rate, bot.slippage_bps = body.commission_rate, body.slippage_bps
+    bot.risk = to_jsonable(_limits(body))
+    bot.updated_at = now
+    add_event(
+        session,
+        now,
+        "INFO",
+        "config_change",
+        f"설정 변경: {_changes(before, after)}",
+        bot_id=bot.id,
+        data={"before": before, "after": after},
+    )
+    session.commit()
+    return _bot_view(session, bot)
+
+
 @router.get("/bots/{bot_id}")
 def bot(session: SessionDep, bot_id: int) -> BotView:
     return _bot_view(session, _require_bot(session, bot_id))
@@ -186,6 +296,7 @@ def events(
     session: SessionDep,
     bot_id: int | None = None,
     level: str | None = None,
+    kind: str | None = None,
     limit: Annotated[int, Query(le=500)] = 100,
 ) -> list[EventView]:
     stmt = select(EventRow).order_by(EventRow.at.desc(), EventRow.id.desc()).limit(limit)
@@ -193,6 +304,8 @@ def events(
         stmt = stmt.where(EventRow.bot_id == bot_id)
     if level:
         stmt = stmt.where(EventRow.level == level.upper())
+    if kind:
+        stmt = stmt.where(EventRow.kind == kind)
     return [EventView.model_validate(r, from_attributes=True) for r in session.scalars(stmt)]
 
 

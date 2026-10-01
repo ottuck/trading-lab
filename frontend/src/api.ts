@@ -183,3 +183,29 @@ export const backtestApi = {
       body: JSON.stringify(body),
     }),
 }
+
+export type BotConfig = {
+  strategy: string
+  params: Record<string, number>
+  commission_rate: string
+  slippage_bps: string
+  max_position_value: string | null
+  max_order_value: string | null
+}
+
+export type BotCreate = BotConfig & { name: string; symbol: string; initial_cash: string }
+
+export type ConfigEvent = EventItem & { data: { before?: Record<string, unknown>; after?: Record<string, unknown> } | null }
+
+const json = (method: string, body: unknown): RequestInit => ({
+  method,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+})
+
+export const botApi = {
+  create: (body: BotCreate) => request<Bot>('/api/bots', json('POST', body)),
+  updateConfig: (botId: number, body: BotConfig) => request<Bot>(`/api/bots/${botId}/config`, json('PUT', body)),
+  history: (botId: number) =>
+    request<ConfigEvent[]>(`/api/events?bot_id=${botId}&kind=config_change&limit=20`),
+}
