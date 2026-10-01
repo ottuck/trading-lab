@@ -112,12 +112,15 @@
 ## Phase 4 — 배포·운영 화면
 
 - [x] FastAPI: 봇 상태·모의 잔고(종가 평가)·마지막 판단·대기 주문·실행 기록, 판단·주문·이벤트·일봉·백테스트 조회, 명령 등록(202)
-- [x] 화면: 대시보드(실행 여부 → 판단 이유 → 잔고·주문), 차트(캔들·거래량·SMA·신호·체결 마커), 로그(수준 필터). 10초 polling, KST 표시
+- [x] 화면: 홈(봇 상태 → 오늘의 판단 → 잔고·주문·최근 활동), 차트(캔들·거래량·이동평균·신호·체결 마커). 10초 polling, KST 표시
 - [x] 단일 Docker 이미지(프론트 빌드 포함, non-root), `deploy/compose.prod.yaml`(db → migrate → api·worker, api는 127.0.0.1만, 토스 키는 worker만)
 - [x] `deploy/bootstrap.sh`(Docker·Tailscale·스왑·비밀값·백업 cron), `deploy.sh`, `backup.sh`
 - [x] 로컬에서 운영 구성 실행 확인: 마이그레이션 후 api·worker 기동, 화면 200, api 컨테이너에 토스 변수 0개
 - [x] Terraform(`infra/lightsail`): 인스턴스·Static IP·자동 스냅샷·방화벽, `terraform validate` 통과
 - [x] 로컬 운영 리허설 시작 (2026-10-01): 개발 PC에서 운영 Compose + 실제 토스 + 텔레그램 + Tailscale serve, 첫 판단 2026-09-30 BUY 대기
+- [x] 첫 모의 체결 (2026-10-02): QQQ 13주 @ $742.88(10-01 시가 + 5bp), 수수료 $9.65. 단 아래 장애로 07:00 대신 08:16에 체결
+  - 장애: 03:25 Windows 업데이트 자동 재부팅 → 로그인 전이라 Docker Desktop이 안 떠서 약 5시간 정지. Healthchecks가 03:44에 DOWN 알림(감시는 정상 동작). 로그인 후 Docker 시작 → 컨테이너는 재시작 정책으로 자동 복귀 → 봇은 설계대로 PAUSED → START 후 밀린 평가 1회로 정상 체결(체결가는 봉 데이터로 정해져 지연과 무관)
+  - 교훈: 개인 PC는 업데이트 재부팅·로그인 의존이 있어 무인 운영에 맞지 않음. 리허설 동안은 Windows 업데이트 일시 중지 + Docker Desktop 로그인 시 자동 시작으로 버티고, 근본 해결은 서버 이전
 - [ ] **(사용자)** AWS 액세스 키 설정 후 `terraform apply`, Tailscale 계정, deploy key 공개키 전달
 - [ ] 서버 준비(project.md 6절 절차), 서버 IP를 토스 허용 목록에 등록, 첫 배포
 - [ ] 서버에서 봇 생성·시작, Tailscale로 대시보드 접속 확인
