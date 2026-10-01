@@ -260,7 +260,15 @@ def event_message(
             True,
         )
 
-    if kind == "restart_pause":
+    if kind == "restart_resume":
+        return Message(
+            "🔄",
+            f"{obj(who)} 이어서 실행해요",
+            "프로그램이 다시 켜졌어요. 멈춘 동안 밀린 판단이 있으면 바로 처리해요.",
+            "INFO",
+            True,
+        )
+    if kind == "restart_pause":  # 2026-10-02 이전 기록
         return Message(
             "⏸️",
             f"{obj(who)} 잠시 멈췄어요",

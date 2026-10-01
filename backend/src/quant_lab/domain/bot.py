@@ -36,8 +36,3 @@ def apply_command(state: BotState, command: CommandKind) -> BotState:
             return BotState.STOPPED
         case CommandKind.RUN_ONCE:
             return state
-
-
-def state_after_restart(state: BotState) -> BotState:
-    """Worker 재시작 뒤에는 실행 중이던 봇을 일시정지로 둔다. 사람이 확인하고 재개한다."""
-    return BotState.PAUSED if state is BotState.RUNNING else state
