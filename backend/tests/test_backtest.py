@@ -6,10 +6,11 @@ from typing import ClassVar
 
 import pytest
 
-from quant_lab.domain.backtest import Action, run_backtest
+from quant_lab.domain.backtest import run_backtest
 from quant_lab.domain.bars import DailyBar
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.domain.strategy import Signal, SmaCross
+from quant_lab.domain.trading import Action
 from tests.fakes import make_bars
 
 NO_COST = CostModel(commission_rate=Decimal(0), slippage_bps=Decimal(0))

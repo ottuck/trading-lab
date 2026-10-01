@@ -1,45 +1,17 @@
 """일봉 백테스트. 정기 DRY RUN과 같은 규칙을 쓴다 (project.md 7절).
 
-T일 종가로 판단 → T+1일 시가(+슬리피지)로 체결. 매수 수량은 체결 시점의 현금으로 정한다.
+판단·체결 규칙은 domain/trading.py를 그대로 쓴다.
 """
 
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from enum import StrEnum
 
 from quant_lab.domain.bars import DailyBar
 from quant_lab.domain.portfolio import CostModel, Portfolio, RiskLimits, affordable_qty
 from quant_lab.domain.strategy import Strategy
-
-
-class Action(StrEnum):
-    BUY = "BUY"
-    SELL = "SELL"
-    HOLD = "HOLD"
-
-
-@dataclass(frozen=True, slots=True)
-class DecisionRecord:
-    session_date: date
-    action: Action
-    target_long: bool
-    holding: bool
-    reason: str
-    indicators: dict[str, Decimal]
-    blocked: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class Fill:
-    side: Action
-    signal_date: date
-    fill_date: date
-    qty: int
-    price: Decimal
-    commission: Decimal
-    realized_pnl: Decimal | None
+from quant_lab.domain.trading import Action, DecisionRecord, Fill, decide, execute
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,7 +73,7 @@ def run_backtest(
     for i, bar in enumerate(bars):
         # 1) 전날 판단을 오늘 시가로 체결한다.
         if pending is not None:
-            fill = _execute(pf, pending, bar, costs, limits)
+            fill = execute(pf, pending, bar, costs, limits)
             if fill is not None:
                 fills.append(fill)
             pending = None
@@ -114,7 +86,7 @@ def run_backtest(
 
         # 2) 오늘 종가까지 보고 판단한다. bars[: i + 1] 밖의 데이터는 전략에 넘기지 않는다.
         if i >= start:
-            record = _decide(strategy, bars[: i + 1], pf, costs, limits)
+            record = decide(strategy, bars[: i + 1], pf, costs, limits)
             if record is not None:
                 decisions.append(record)
                 if record.action is not Action.HOLD:
@@ -137,58 +109,6 @@ def run_backtest(
         metrics=_metrics(equity, fills, initial_cash),
         pending=pending,
     )
-
-
-def _decide(
-    strategy: Strategy,
-    history: Sequence[DailyBar],
-    pf: Portfolio,
-    costs: CostModel,
-    limits: RiskLimits,
-) -> DecisionRecord | None:
-    holding = pf.qty > 0
-    signal = strategy.signal(history, holding)
-    if signal is None:
-        return None
-    today = history[-1]
-    action = Action.HOLD
-    blocked = None
-    if signal.long and not holding:
-        est = costs.buy_price(today.close)
-        if affordable_qty(pf.cash, est, costs, limits, Decimal(0)) > 0:
-            action = Action.BUY
-        else:
-            blocked = "현금 또는 위험 한도 부족으로 매수 불가"
-    elif not signal.long and holding:
-        action = Action.SELL
-    return DecisionRecord(
-        session_date=today.session_date,
-        action=action,
-        target_long=signal.long,
-        holding=holding,
-        reason=signal.reason,
-        indicators=signal.indicators,
-        blocked=blocked,
-    )
-
-
-def _execute(
-    pf: Portfolio, order: DecisionRecord, bar: DailyBar, costs: CostModel, limits: RiskLimits
-) -> Fill | None:
-    if order.action is Action.BUY:
-        price = costs.buy_price(bar.open)
-        qty = affordable_qty(pf.cash, price, costs, limits, pf.qty * price)
-        if qty == 0:
-            return None
-        commission = costs.commission(qty * price)
-        pf.buy(qty, price, commission)
-        pnl = None
-    else:
-        price = costs.sell_price(bar.open)
-        qty = pf.qty
-        commission = costs.commission(qty * price)
-        pnl = pf.sell(qty, price, commission)
-    return Fill(order.action, order.session_date, bar.session_date, qty, price, commission, pnl)
 
 
 def _ratio(value: float) -> Decimal:
