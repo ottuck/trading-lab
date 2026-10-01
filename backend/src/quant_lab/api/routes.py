@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from quant_lab.api.schemas import (
     AccountView,
     BacktestDetail,
+    BacktestRequest,
     BacktestSummary,
     BarView,
     BotView,
@@ -20,7 +21,11 @@ from quant_lab.api.schemas import (
     EventView,
     OrderView,
     RunView,
+    StrategyInfo,
 )
+from quant_lab.application.backtesting import backtest_symbol
+from quant_lab.domain.portfolio import CostModel, RiskLimits
+from quant_lab.domain.strategy import STRATEGIES
 from quant_lab.persistence.bots import enqueue_command, get_bot, list_bots
 from quant_lab.persistence.db import get_session
 from quant_lab.persistence.models import (
@@ -208,6 +213,37 @@ def bars(
         )
         for r in reversed(rows)
     ]
+
+
+@router.get("/strategies")
+def strategies() -> list[StrategyInfo]:
+    return [StrategyInfo(name=n, default_params=f().params) for n, f in STRATEGIES.items()]
+
+
+@router.post("/backtests", status_code=status.HTTP_201_CREATED)
+def run_backtest(session: SessionDep, body: BacktestRequest) -> BacktestDetail:
+    """일봉 1종목 백테스트는 수 초면 끝나서 요청 안에서 실행한다 (스레드풀, 토스 호출 없음)."""
+    factory = STRATEGIES.get(body.strategy)
+    if factory is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"알 수 없는 전략: {body.strategy}")
+    try:
+        strategy = factory(**body.params)
+        run = backtest_symbol(
+            session,
+            body.symbol.upper(),
+            strategy,
+            initial_cash=body.initial_cash,
+            costs=CostModel(commission_rate=body.commission_rate, slippage_bps=body.slippage_bps),
+            limits=RiskLimits(),
+            start=body.start,
+            end=body.end,
+            now=datetime.now(UTC),
+            save=True,
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    assert run.saved_id is not None
+    return backtest(session, run.saved_id)
 
 
 @router.get("/backtests")
