@@ -10,7 +10,7 @@ from quant_lab.persistence.bots import add_event
 NOW = datetime(2026, 10, 1, tzinfo=UTC)
 
 
-def test_only_important_new_events_are_sent(engine: Engine, session: Session) -> None:
+def test_new_events_are_sent_once(engine: Engine, session: Session) -> None:
     make_session: Callable[[], Session] = sessionmaker(engine)
     add_event(session, NOW, "ERROR", "run_error", "시작 전 오류")
     session.commit()
@@ -24,6 +24,11 @@ def test_only_important_new_events_are_sent(engine: Engine, session: Session) ->
     add_event(session, NOW, "WARN", "run_skipped", "데이터 지연")
     session.commit()
 
-    assert notifier.poll() == 3
+    assert notifier.poll() == 4
     assert notifier.poll() == 0
-    assert [m.split("\n")[0] for m in sent] == ["ℹ️ BUY 판단", "ℹ️ BUY 10주 체결", "⚠️ 데이터 지연"]
+    assert [m.split("\n")[0] for m in sent] == [
+        "✅ HOLD 판단",  # 매일 판단은 일일 점검으로 보낸다
+        "📈 BUY 판단",
+        "ℹ️ BUY 10주 체결",
+        "⚠️ 데이터 지연",
+    ]

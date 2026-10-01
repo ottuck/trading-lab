@@ -151,7 +151,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | 배포 (MWP) | 서버에서 `bash deploy/deploy.sh`: `main` pull → 이미지 빌드(프론트 포함 단일 이미지) → `compose up -d`. 저장소는 읽기 전용 deploy key로 받음. Compose 프로젝트 이름은 `quant-lab-prod` |
 | 마이그레이션 | `migrate` 일회성 서비스가 성공해야 api·worker가 시작 (`depends_on: service_completed_successfully`) |
 | 백업 | `deploy/backup.sh`를 cron이 매일 03:00 UTC(12:00 KST, 평가 시각과 겹치지 않음)에 실행, `pg_dump` 7일 보관 + Lightsail 자동 스냅샷. 파괴적 마이그레이션 전에는 수동 덤프 |
-| 모니터링 | 화면의 heartbeat·마지막 실행 표시, `docker compose logs`, **텔레그램 알림**: Worker가 `events` 테이블을 따라가며 경고·오류, 매매 신호(BUY/SELL), 모의 체결, 설정 변경, Worker 시작·재시작 일시정지를 보낸다. HOLD는 보내지 않는다. 알림 실패는 판단에 영향이 없다. Worker 자체가 죽은 것은 알릴 수 없어 화면 heartbeat로 확인한다 |
+| 모니터링 | 화면의 heartbeat·마지막 실행 표시, `docker compose logs`, **텔레그램 알림**: Worker가 `events` 테이블을 따라가며 경고·오류, 모의 체결, 설정 변경, Worker 시작·재시작 일시정지, 그리고 **매일 판단(HOLD 포함)을 평가 자산과 함께 일일 점검**으로 보낸다. 알림 실패는 판단에 영향이 없다. **외부 heartbeat**: `HEARTBEAT_PING_URL`(Healthchecks.io 등)에 5분마다 신호를 보내 Worker·PC·서버가 멈추면 외부 서비스가 알린다 |
 
 배포 자동화(GitHub Actions에서 Tailscale로 SSH 배포)는 수동 배포가 번거로워지면 도입한다. 서버 리소스는 처음부터 Terraform으로 관리한다.
 
@@ -169,6 +169,19 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | 8. 배포·봇 시작 | 서버 | 로컬에서 토스를 호출하는 프로세스를 모두 멈춘 뒤 `bash deploy/deploy.sh` → `docker compose -f deploy/compose.prod.yaml exec api python -m quant_lab.cli bot create qqq-sma QQQ --params fast=50,slow=200` → 화면에서 시작 |
 
 브라우저 SSH용 22번 포트(Lightsail 콘솔 대역만)는 Tailscale SSH가 동작하면 `aws_lightsail_instance_public_ports`에서 지워 인바운드를 모두 닫는다. Terraform 상태 파일(`*.tfstate`)은 개발 PC에만 두고 Git에 넣지 않는다.
+
+### 로컬 운영 리허설 (서버 생성 전, 2026-10-01~)
+
+Lightsail도 VM 한 대에 같은 Compose를 올리는 구조라, 서버가 준비되기 전까지 **개발 PC에서 운영 구성 그대로** 돌린다. 운영 이력(판단·모의 체결)을 미리 쌓고, 서버로 옮길 때 백업·복원 절차를 함께 검증한다.
+
+| 항목 | 내용 |
+| --- | --- |
+| 비밀값 | `C:Users<사용자>.quant-labenv`, `worker.env` (서버의 `/etc/quant-lab`과 같은 형식, 저장소 밖) |
+| 실행 | `QL_ENV_DIR=<위 경로> docker compose -f deploy/compose.prod.yaml up -d --build` (Compose 이름 `quant-lab-prod`, 개발용 DB와 분리) |
+| 접속 | `tailscale serve --bg 8000` → `https://<PC 이름>.<tailnet>.ts.net` (tailnet 안에서만) |
+| 토스 | 개발 PC 공인 IP가 허용 목록에 있어야 한다. 이 Worker가 토큰을 가지므로, 동작 중에는 개발용 CLI(`sync-bars`, `toss_probe`)로 토스를 호출하지 않는다 |
+| 한계 | PC가 꺼지거나 절전에 들어가면 평가가 빠진다 (`missed_sessions` 경고). 가정용 IP가 바뀌면 토스 403 → 봇 `ERROR` |
+| 서버로 이전 | 로컬 Worker 정지 → `pg_dump` → 서버에서 `pg_restore` → 서버 Worker 시작 → 로컬 스택 `down`. Worker를 두 곳에서 동시에 돌리지 않는다 |
 
 ### 로컬 개발
 

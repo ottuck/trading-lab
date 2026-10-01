@@ -15,8 +15,18 @@
 - **시세 수집** — 토스 일봉을 상장일부터 받아 PostgreSQL에 캐시하고, 누락·중복·비거래일·이상치를 검사합니다. 수정주가가 바뀌면 자동으로 전체를 다시 받습니다.
 - **백테스트** — 전략 4종(골든크로스 50/200, Faber 200일선, Connors RSI(2), 터틀 돌파)을 매수 후 보유와 비교합니다. CLI와 화면 모두에서 실행·저장합니다.
 - **정기 DRY RUN** — Worker가 미국 정규장 마감 2시간 뒤 완료된 일봉으로 판단하고, 다음 거래일 시가로 모의 체결합니다.
-- **텔레그램 알림** — 경고·오류, 매매 신호, 모의 체결, Worker 재시작을 휴대폰으로 받습니다. 매일 나오는 HOLD는 보내지 않습니다.
+- **알림** — 경고·오류, 매매 신호, 모의 체결, Worker 재시작과 매일 평가 자산을 텔레그램으로 받습니다. Worker나 서버 자체가 멈추면 외부 heartbeat(Healthchecks.io)가 알립니다.
 - **운영 화면** — 실행 상태 → 마지막 판단 이유 → 모의 잔고 순서로 보여주는 대시보드, 캔들 차트(신호·체결 마커), 백테스트, 로그. 시작·일시정지·중지·수동 실행.
+
+## 화면
+
+> 아래 캡처는 **합성 데이터(데모)** 입니다. 토스 시세는 제3자 배포가 금지돼 있어 `scripts/demo_seed.py`로 만든 가상 종목 `DEMO`를 씁니다.
+
+| 대시보드 | 차트 |
+| --- | --- |
+| ![대시보드: 실행 상태, 마지막 판단 이유, 모의 잔고, 최근 모의 주문](docs/images/dashboard.png) | ![차트: 캔들, SMA50/200, 신호와 모의 체결 마커](docs/images/chart.png) |
+
+![백테스트: 전략 4종 결과 목록, 전략 vs 매수 후 보유 지표와 자산 곡선, 체결 목록](docs/images/backtest.png)
 
 ## 설계에서 신경 쓴 것
 
@@ -101,6 +111,8 @@ uv run python -m quant_lab.cli replay QQQ --start 2024-01-02 --end 2026-09-30   
 uv run python -m quant_lab.cli notify chat-id                                   # 텔레그램 채팅 ID 확인 (봇에게 먼저 메시지)
 uv run python -m quant_lab.cli notify test                                      # 텔레그램 테스트 메시지
 uv run scripts/toss_probe.py                                                    # 토스 API 읽기 전용 탐색
+DATABASE_URL=postgresql+psycopg://quant:quant@localhost:5432/quant_lab_demo \
+  uv run python ../scripts/demo_seed.py                                         # 합성 데이터 데모 DB (README 캡처용)
 ```
 
 ## 검사
