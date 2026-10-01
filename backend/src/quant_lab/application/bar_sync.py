@@ -30,8 +30,9 @@ from quant_lab.persistence.bars import (
 )
 
 SOURCE = "toss"
-# 일봉 확정 시점 측정 전 임시값 (roadmap Phase 2). 측정 후 조정한다.
-DEFAULT_SETTLE = timedelta(minutes=30)
+# 정규장 마감 후 이만큼 지난 봉만 완료로 본다. 일봉 전략은 다음 날 시가에 체결하므로 넉넉히 둔다.
+# 저장 뒤에 값이 바뀌면 증분 동기화의 겹침 비교가 감지해 "resync"로 남긴다 (tossApi.md 6절 #6).
+DEFAULT_SETTLE = timedelta(hours=2)
 
 
 class DailyBarSource(Protocol):
