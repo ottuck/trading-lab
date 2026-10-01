@@ -116,7 +116,8 @@
 - [x] 단일 Docker 이미지(프론트 빌드 포함, non-root), `deploy/compose.prod.yaml`(db → migrate → api·worker, api는 127.0.0.1만, 토스 키는 worker만)
 - [x] `deploy/bootstrap.sh`(Docker·Tailscale·스왑·비밀값·백업 cron), `deploy.sh`, `backup.sh`
 - [x] 로컬에서 운영 구성 실행 확인: 마이그레이션 후 api·worker 기동, 화면 200, api 컨테이너에 토스 변수 0개
-- [ ] **(사용자)** Lightsail 서울 2GB 생성·Static IP, Tailscale 계정, GitHub deploy key 등록
+- [x] Terraform(`infra/lightsail`): 인스턴스·Static IP·자동 스냅샷·방화벽, `terraform validate` 통과
+- [ ] **(사용자)** AWS 액세스 키 설정 후 `terraform apply`, Tailscale 계정, deploy key 공개키 전달
 - [ ] 서버 준비(project.md 6절 절차), 서버 IP를 토스 허용 목록에 등록, 첫 배포
 - [ ] 서버에서 봇 생성·시작, Tailscale로 대시보드 접속 확인
 - [ ] 첫 정기 평가(마감 + 2시간)와 백업 1회 확인

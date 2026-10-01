@@ -31,3 +31,10 @@ Thumbs.db
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+crash.log
