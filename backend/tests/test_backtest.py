@@ -86,3 +86,12 @@ def test_risk_limit_caps_position() -> None:
     limits = RiskLimits(max_position_value=Decimal(1_000))
     result = run_backtest(bars, SpyStrategy(long_from=bars[0].session_date), CASH, NO_COST, limits)
     assert result.fills[0].qty == 10
+
+
+def test_risk_metrics_and_annual_returns() -> None:
+    bars = make_bars("X", [100 * (1.001**i) * (1 + 0.01 * (i % 3 - 1)) for i in range(400)])
+    m = run_backtest(bars, SmaCross(fast=5, slow=20), CASH, NO_COST).metrics
+    years = [y.year for y in m.annual_returns]
+    assert years == sorted(set(years)) and len(years) >= 2
+    assert m.benchmark_volatility > 0
+    assert m.benchmark_sharpe is not None and m.benchmark_sharpe > 0

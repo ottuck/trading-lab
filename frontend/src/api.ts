@@ -135,6 +135,12 @@ export type BacktestMetrics = {
   benchmark_total_return: Money
   benchmark_cagr: Money
   benchmark_max_drawdown: Money
+  // 2026-10-02 이후 저장된 백테스트에만 있음
+  volatility?: Money
+  sharpe?: Money | null
+  benchmark_volatility?: Money
+  benchmark_sharpe?: Money | null
+  annual_returns?: { year: number; strategy: Money; benchmark: Money }[]
 }
 
 export type BacktestSummary = {

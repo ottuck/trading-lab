@@ -97,6 +97,11 @@ function Detail({ id }: { id: string }) {
     ['연평균 (CAGR)', percent(m.cagr), percent(m.benchmark_cagr), m.cagr],
     ['최대 낙폭', percent(m.max_drawdown), percent(m.benchmark_max_drawdown), m.max_drawdown],
   ]
+  if (m.volatility !== undefined) {
+    const sh = (v: string | null | undefined) => (v == null ? '—' : Number(v).toFixed(2))
+    rows.push(['연 변동성', percent(m.volatility).replace('+', ''), percent(m.benchmark_volatility).replace('+', '')])
+    rows.push(['샤프 지수', sh(m.sharpe), sh(m.benchmark_sharpe)])
+  }
   return (
     <section className="panel">
       <div className="panel-head">
@@ -137,6 +142,36 @@ function Detail({ id }: { id: string }) {
         </div>
       </div>
       <EquityChart detail={data} />
+      {m.annual_returns && m.annual_returns.length > 0 && (
+        <>
+          <h3>연도별 수익률</h3>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>연도</th>
+                  <th className="num">전략</th>
+                  <th className="num">매수 후 보유</th>
+                  <th className="num">차이</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...m.annual_returns].reverse().map((y) => {
+                  const diff = String(Number(y.strategy) - Number(y.benchmark))
+                  return (
+                    <tr key={y.year}>
+                      <td>{y.year}</td>
+                      <td className={`num ${tone(y.strategy)}`}>{percent(y.strategy)}</td>
+                      <td className={`num ${tone(y.benchmark)}`}>{percent(y.benchmark)}</td>
+                      <td className={`num ${tone(diff)}`}>{percent(diff)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
       <h3>체결 ({data.fills.length}건, 최근 순)</h3>
       <table>
         <thead>
