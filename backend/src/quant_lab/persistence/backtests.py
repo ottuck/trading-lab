@@ -9,8 +9,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from quant_lab import __version__
-from quant_lab.domain.backtest import Action, BacktestResult
+from quant_lab.domain.backtest import BacktestResult
 from quant_lab.domain.portfolio import CostModel, RiskLimits
+from quant_lab.domain.trading import Action
 from quant_lab.persistence.models import BacktestRow
 
 

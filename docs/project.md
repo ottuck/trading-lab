@@ -90,30 +90,33 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 → 전략 판단 → 위험 검사 → 모의 주문 생성 → 상태·다음 평가 시각 저장 → heartbeat
 ```
 
-1. 시작하면 DB에서 설정, 미처리 명령, 마지막 실행, 포지션을 읽는다. 봇 상태는 `PAUSED`로 둔다.
-2. 단일 루프가 `commands`와 `next_evaluation_at`을 확인한다 (예: 30초마다).
-3. 봉은 누락·중복·지연·이상치를 검사한다. 부적합하면 판단 없이 `SKIPPED`와 사유를 기록한다.
-4. 판단 키에 유일 제약이 있으므로 같은 봉을 두 번 평가해도 두 번째는 충돌로 끝난다.
-5. 실패하면 봇을 `ERROR`로 바꾸고 신규 주문을 멈춘다. heartbeat가 끊기면 화면에 Worker 정지를 표시한다.
+1. **Worker는 하나만 동작한다.** 시작할 때 PostgreSQL advisory lock을 잡고, 못 잡으면 잡을 때까지 기다린다. 토스 토큰도 이 프로세스만 보유한다.
+2. 잠금을 얻으면 `RUNNING` 봇을 모두 `PAUSED`로 바꾸고 이벤트를 남긴다. 사람이 확인하고 `START`한다.
+3. 15초마다 heartbeat → 미처리 명령 → `RUNNING`이면서 `next_evaluation_at`이 지난 봇 평가 순서로 돈다.
+4. 평가 대상은 "정규장 마감 + 2시간이 지난 가장 최근 거래일"이다. 토스 캘린더가 거래일이 아니라고 하거나, 그날 봉이 없거나, 판단 구간 봉에 누락·이상치가 있으면 판단 없이 `SKIPPED`를 남기고 15분 뒤 다시 시도한다.
+5. 이전 대기 주문은 판단일 다음 거래일 시가로 체결한다. 체결·판단·주문·잔고 변경은 한 트랜잭션이다.
+6. `bot_id + symbol + session_date + mode` 유일 제약과 "봇당 대기 주문 1개" 부분 유일 인덱스가 중복 모의 주문을 막는다. 같은 봉을 다시 평가하면 아무것도 하지 않는다.
+7. 허용 IP·인증 오류(토스 403·401 반복)와 예상하지 못한 오류는 봇을 `ERROR`로 바꾼다. 토스 일시 장애(429·5xx·네트워크)는 `SKIPPED` 후 재시도한다.
+8. Worker가 멈춰 있던 동안의 거래일은 소급 판단하지 않고 `missed_sessions` 경고만 남긴다.
 
-봇 상태(`STOPPED`, `RUNNING`, `PAUSED`, `ERROR`)는 Worker 프로세스의 생존과 별개다.
+봇 상태(`STOPPED`, `RUNNING`, `PAUSED`, `ERROR`)는 Worker 프로세스의 생존과 별개다. 명령: `START`(→ RUNNING, 즉시 1회 평가), `PAUSE`(RUNNING → PAUSED), `STOP`, `RUN_ONCE`(상태는 그대로 두고 1회 평가).
 
-### 핵심 데이터 (초안)
+판단·체결 함수(`domain/trading.py`)는 백테스트와 Worker가 함께 쓴다. `replay` CLI로 과거 거래일마다 정기 평가를 재생해 백테스트와 체결이 같은지 확인한다.
+
+### 핵심 데이터
 
 | 테이블 | 내용 |
 | --- | --- |
-| `instruments` | 종목, 시장, 레버리지 배수, 활성 여부 |
 | `daily_bars` | `(symbol, session_date)` PK, 미국 거래일 기준. OHLCV(`numeric`, 정밀도 제한 없음, 수정주가), `source`, `fetched_at`. 1분봉은 필요해질 때 별도 테이블 |
-| `strategy_versions` | 전략 이름, 파라미터 JSON, 생성 시각 (변경 불가, 새 버전으로만 추가) |
-| `bots` | 종목, 실행 중 전략 버전, 상태, 위험 한도, `next_evaluation_at` |
-| `commands` | 화면 명령 큐 (`START`, `PAUSE`, `STOP`, `RUN_ONCE`, `BACKTEST`), 처리 상태 |
-| `runs` | 평가 1회 기록: `run_id`, 사용한 봉 시각, 결과, 오류 |
-| `decisions` | 신호, 사유, 위험 검사 결과. **유일 키** `bot_id + symbol + bar_ts + mode` |
-| `sim_orders` / `sim_fills` | 모의 주문·체결, 가격·수수료·슬리피지 가정 |
-| `positions` / `cash_ledger` | 모의 포지션, 현금 변동 원장 (잔고는 원장으로 계산) |
-| `backtests` | 조건(데이터 범위, 전략 버전, 비용)과 결과 요약·거래 목록 |
-| `events` | 심각도별 로그 (화면 로그 탭) |
-| `worker_heartbeat` | 마지막 생존 시각, 버전, 송신 IP |
+| `bots` | 종목, 전략 이름·파라미터, 상태·사유, 초기 현금, 수수료·슬리피지, 위험 한도, `next_evaluation_at` |
+| `bot_accounts` | 봇의 모의 현금·보유 수량·평균 단가·실현 손익 (실제 토스 계좌와 무관) |
+| `commands` | 화면 명령 큐 (`START`, `PAUSE`, `STOP`, `RUN_ONCE`), 처리 시각·결과 |
+| `runs` | 평가 1회: 계기(정기·수동), 대상 거래일, `OK`·`SKIPPED`·`ERROR`, 사유 |
+| `decisions` | 판단·사유·지표·차단 사유, **당시 전략·비용·위험 한도 스냅샷**. 유일 키 `bot_id + symbol + session_date + mode` |
+| `sim_orders` | 모의 주문(판단당 최대 1개): `PENDING` → `FILLED`·`UNFILLED`, 체결일·수량·가격·수수료·실현 손익 |
+| `backtests` | 입력 조건(데이터 범위, 전략·파라미터, 비용, 위험 한도, 코드 버전)과 지표·체결·판단·자산 곡선 |
+| `events` | 심각도별 기록 (화면 로그 탭) |
+| `worker_heartbeat` | Worker 마지막 생존 시각, 버전 |
 
 ## 5. 기술 스택
 
@@ -152,7 +155,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 
 ### 로컬 개발
 
-개발 PC에서는 `compose.yaml`로 PostgreSQL만 띄우고 API·Worker·프론트엔드는 각각 직접 실행한다. **토스 client는 계정당 1개만 발급된다 (2026-10-01 확인).** 같은 client로 토큰을 발급하면 다른 쪽 토큰이 무효화되므로, 서버 Worker가 동작한 뒤로는 로컬에서 토스를 호출하지 않는다. 로컬 개발은 저장된 봉(서버 DB 덤프)이나 합성 데이터로 한다. 로컬 호출이 꼭 필요하면 서버 Worker를 멈추고 호출한 뒤 다시 시작한다. 허용 IP는 여러 개 등록할 수 있어 개발 PC IP와 서버 IP를 함께 둔다.
+개발 PC에서는 `compose.yaml`로 PostgreSQL만 띄우고 API·Worker·프론트엔드는 각각 직접 실행한다. **토스 client는 계정당 1개만 발급된다 (2026-10-01 확인).** 같은 client로 토큰을 발급하면 다른 쪽 토큰이 무효화되므로, 서버 Worker가 동작한 뒤로는 로컬에서 토스를 호출하지 않는다. 로컬 개발은 저장된 봉(서버 DB 덤프)이나 합성 데이터로 한다. Worker는 기본값 `WORKER_MARKET_SOURCE=stored`로 토스를 호출하지 않고, 운영 서버만 `toss`로 둔다. 로컬 호출이 꼭 필요하면 서버 Worker를 멈추고 호출한 뒤 다시 시작한다. 허용 IP는 여러 개 등록할 수 있어 개발 PC IP와 서버 IP를 함께 둔다.
 
 ```bash
 docker compose up -d db
@@ -181,7 +184,7 @@ npm --prefix frontend run dev
 | 전략 | `sma_cross`(이동평균 교차), `donchian`(채널 돌파) 구현. 수량은 체결 시점 현금으로 정수 계산, 위험 한도(종목 최대 보유 금액, 1회 최대 주문 금액) 적용 |
 | 백테스트 데이터 | 토스 일봉 `adjusted=true`, 상장일부터 (QQQ 1999-03-10~, 닷컴·2008·2020·2022 하락장 포함) |
 | 비교 기준 | 같은 기간 매수 후 보유 |
-| 위험 한도 | 종목별 최대 보유 금액·1회 주문 금액(Phase 2 구현), 하루 주문 수·하루 손실 한도·주문 간 최소 간격(Phase 3 Worker) |
+| 위험 한도 | 종목별 최대 보유 금액·1회 주문 금액 구현. 일봉 1종목은 거래일당 판단 1회라 하루 주문 수는 구조적으로 1건 이하. 하루 손실 한도·주문 간 최소 간격은 다종목·장중 전략 도입 때 추가 |
 
 ## 8. 화면
 
