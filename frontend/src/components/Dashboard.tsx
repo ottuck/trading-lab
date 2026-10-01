@@ -95,7 +95,7 @@ function StatusCard({ bot }: { bot: Bot }) {
       </div>
       {bot.state_reason && (
         <div className={bot.state === 'ERROR' ? 'alert' : 'notice'}>
-          {bot.state === 'PAUSED' ? '프로그램이 다시 켜져서 잠시 멈췄어요. [매매 시작]을 눌러 주세요.' : bot.state_reason}
+          {bot.state === 'PAUSED' ? '잠시 멈춰 있어요. [매매 시작]을 누르면 다시 판단해요.' : bot.state_reason}
         </div>
       )}
       <div className="kv-grid">

@@ -49,14 +49,14 @@ def new_bot(session: Session, state: BotState = BotState.STOPPED) -> int:
     return bot.id
 
 
-def test_restart_pauses_running_bots(worker: Worker, session: Session) -> None:
+def test_restart_resumes_running_bots(worker: Worker, session: Session) -> None:
     running = new_bot(session, BotState.RUNNING)
     stopped = new_bot(session, BotState.STOPPED)
     worker.recover_after_restart()
     session.expire_all()
-    assert get_bot(session, running).state == BotState.PAUSED  # type: ignore[union-attr]
+    assert get_bot(session, running).state == BotState.RUNNING  # type: ignore[union-attr]
     assert get_bot(session, stopped).state == BotState.STOPPED  # type: ignore[union-attr]
-    assert "restart_pause" in session.scalars(select(EventRow.kind)).all()
+    assert session.scalars(select(EventRow.kind)).all() == ["restart_resume"]
 
 
 def test_start_command_runs_evaluation_once(worker: Worker, session: Session) -> None:

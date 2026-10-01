@@ -20,7 +20,6 @@ from quant_lab.domain.bot import (
     CommandKind,
     InvalidTransitionError,
     apply_command,
-    state_after_restart,
 )
 from quant_lab.persistence.bars import latest_session_date
 from quant_lab.persistence.bots import add_event, get_bot, set_bot_state
@@ -65,20 +64,22 @@ class Worker:
         self._watchlist_failing: set[str] = set()
 
     def recover_after_restart(self) -> None:
+        """실행 중이던 봇은 그대로 이어서 돈다. 밀린 평가는 다음 tick에서 바로 처리된다.
+
+        평가는 같은 봉을 두 번 판단하지 않고(유일 제약) 체결가는 봉 데이터로 정해지므로,
+        재시작 시점과 상관없이 결과가 같다. 재개했다는 사실만 알린다.
+        """
         now = self.now()
         with self.make_session() as session:
-            for bot in session.scalars(select(BotRow).with_for_update()):
-                new = state_after_restart(BotState(bot.state))
-                if new != bot.state:
-                    set_bot_state(session, bot, new, "Worker 재시작 후 확인 대기", now)
-                    add_event(
-                        session,
-                        now,
-                        "WARN",
-                        "restart_pause",
-                        "Worker 재시작으로 일시정지했습니다. 확인 후 재개하세요.",
-                        bot_id=bot.id,
-                    )
+            for bot in session.scalars(select(BotRow).where(BotRow.state == BotState.RUNNING)):
+                add_event(
+                    session,
+                    now,
+                    "INFO",
+                    "restart_resume",
+                    "Worker 재시작 후 이어서 실행합니다.",
+                    bot_id=bot.id,
+                )
             session.commit()
 
     def tick(self) -> list[EvaluationOutcome]:
