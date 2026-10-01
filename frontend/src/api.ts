@@ -32,6 +32,8 @@ export type Decision = {
   indicators: Record<string, string>
   blocked: string | null
   created_at: string
+  plain_reason: string
+  plain_action: string
 }
 
 export type Order = {
@@ -107,6 +109,8 @@ export const api = {
   bots: () => request<Bot[]>('/api/bots'),
   orders: (botId: number) => request<Order[]>(`/api/bots/${botId}/orders?limit=20`),
   decisions: (botId: number) => request<Decision[]>(`/api/bots/${botId}/decisions?limit=500`),
+  activity: (botId: number, kind?: string) =>
+    request<ActivityItem[]>(`/api/activity?bot_id=${botId}&limit=${kind ? 10 : 8}${kind ? `&kind=${kind}` : ''}`),
   events: (level?: string) =>
     request<EventItem[]>(`/api/events?limit=200${level ? `&level=${level}` : ''}`),
   bars: (symbol: string) => request<Bar[]>(`/api/bars/${symbol}?limit=750`),
@@ -118,7 +122,18 @@ export const api = {
     }),
 }
 
-export type StrategyInfo = { name: string; default_params: Record<string, number> }
+export type StrategyInfo = {
+  name: string
+  nickname: string
+  emoji: string
+  summary: string
+  risk: string
+  trades: string
+  presets: { key: string; label: string; params: Record<string, number> }[]
+  default_params: Record<string, number>
+}
+
+export type ActivityItem = { id: number; at: string; icon: string; title: string; body: string; level: string }
 
 export type BacktestMetrics = {
   start: string

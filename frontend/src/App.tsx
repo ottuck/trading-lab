@@ -3,15 +3,14 @@ import { useEffect, useState } from 'react'
 import { api } from './api'
 import { BacktestView } from './components/BacktestView'
 import { Dashboard } from './components/Dashboard'
-import { EventLog } from './components/EventLog'
+import { HelpButton } from './components/Help'
 import { SettingsView } from './components/SettingsView'
 import { ago } from './format'
 
 const TABS = {
-  dashboard: '📈 대시보드',
-  backtest: '🧪 백테스트',
-  settings: '⚙️ 봇 설정',
-  logs: '📋 로그',
+  dashboard: '🏠 홈',
+  backtest: '🧪 시험해 보기',
+  settings: '⚙️ 설정',
 } as const
 type Tab = keyof typeof TABS
 const REFRESH_MS = 10_000
@@ -34,11 +33,12 @@ function SystemStatus() {
   const w = data.worker
   return (
     <>
-      <span className={`dot ${data.db === 'ok' ? 'up' : 'down'}`}>DB</span>
-      <span className={`dot ${w?.alive ? 'up' : 'down'}`} title={w?.last_seen_at ?? ''}>
-        Worker{w?.alive ? '' : ` 정지${w?.last_seen_at ? ` (${ago(w.last_seen_at)})` : ''}`}
+      <span
+        className={`dot ${data.db === 'ok' && w?.alive ? 'up' : 'down'}`}
+        title={`DB ${data.db} · Worker ${w?.alive ? '정상' : '정지'} · v${data.version}`}
+      >
+        {data.db === 'ok' && w?.alive ? '정상 작동' : `프로그램 멈춤${w?.last_seen_at ? ` (${ago(w.last_seen_at)})` : ''}`}
       </span>
-      <span className="faint small">v{data.version}</span>
     </>
   )
 }
@@ -58,7 +58,7 @@ function RefreshControls() {
     <>
       <label className="toggle">
         <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
-        자동 새로고침 (10초)
+        자동 새로고침
       </label>
       <button className="primary" disabled={fetching > 0} onClick={() => void qc.invalidateQueries()}>
         새로고침
@@ -76,11 +76,12 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <h1>Quant Lab</h1>
-          <span className="badge dry">DRY RUN</span>
+          <span className="badge dry">모의 투자</span>
         </div>
         <div className="topbar-right">
           <SystemStatus />
           <RefreshControls />
+          <HelpButton />
         </div>
       </header>
       <nav className="tabs">
@@ -93,12 +94,11 @@ export default function App() {
       <main>
         {bots.error && <div className="alert">봇 정보를 불러오지 못했습니다: {bots.error.message}</div>}
         {tab === 'dashboard' && bots.data && !bots.data.length && (
-          <section className="card muted">봇이 없습니다. 봇 설정 탭에서 만드세요.</section>
+          <section className="card muted">아직 봇이 없어요. 설정 탭에서 만들어 주세요.</section>
         )}
         {tab === 'dashboard' && bots.data?.map((b) => <Dashboard key={b.id} bot={b} />)}
         {tab === 'backtest' && <BacktestView />}
         {tab === 'settings' && bots.data && <SettingsView bots={bots.data} />}
-        {tab === 'logs' && <EventLog />}
       </main>
     </>
   )
