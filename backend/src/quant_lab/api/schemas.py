@@ -87,6 +87,7 @@ class EventView(BaseModel):
     message: str
     bot_id: int | None
     run_id: uuid.UUID | None
+    data: dict[str, Any] | None
 
 
 class BarView(BaseModel):
@@ -156,3 +157,20 @@ class BacktestRequest(BaseModel):
     initial_cash: Decimal = Decimal(10_000)
     commission_rate: Decimal = Decimal("0.001")
     slippage_bps: Decimal = Decimal(5)
+
+
+class BotConfig(BaseModel):
+    """봇의 전략·비용·위험 한도. 바꾸면 이후 판단부터 적용되고 이력은 이벤트로 남는다."""
+
+    strategy: str
+    params: dict[str, int] = {}
+    commission_rate: Decimal = Decimal("0.001")
+    slippage_bps: Decimal = Decimal(5)
+    max_position_value: Decimal | None = None
+    max_order_value: Decimal | None = None
+
+
+class BotCreate(BotConfig):
+    name: str
+    symbol: str
+    initial_cash: Decimal = Decimal(10_000)

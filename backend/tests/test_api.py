@@ -16,7 +16,7 @@ from quant_lab.persistence.bars import upsert_daily_bars
 from quant_lab.persistence.bots import create_bot
 from quant_lab.persistence.db import get_session
 from quant_lab.persistence.heartbeat import record_heartbeat
-from quant_lab.persistence.models import CommandRow
+from quant_lab.persistence.models import BotRow, CommandRow
 from tests.fakes import WeekdayCalendar, make_bars
 
 CAL = WeekdayCalendar()
@@ -105,3 +105,30 @@ def test_run_backtest_and_list(client: TestClient, bot_id: int) -> None:
     assert [b["id"] for b in client.get("/api/backtests").json()] == [detail["id"]]
     bad = client.post("/api/backtests", json={**body, "params": {"fast": 9, "slow": 5}})
     assert bad.status_code == 400
+
+
+def test_bot_config_change_requires_pause(
+    client: TestClient, session: Session, bot_id: int
+) -> None:
+    config = {"strategy": "trend_filter", "params": {"sma": 4}, "max_order_value": "5000"}
+    assert client.put(f"/api/bots/{bot_id}/config", json=config).status_code == 409  # RUNNING
+
+    bot = session.get_one(BotRow, bot_id)
+    bot.state = BotState.PAUSED
+    session.commit()
+    updated = client.put(f"/api/bots/{bot_id}/config", json=config).json()
+    assert updated["strategy"] == "trend_filter"
+    assert updated["risk"]["max_order_value"] == "5000"
+    history = client.get("/api/events", params={"bot_id": bot_id, "kind": "config_change"}).json()
+    assert history[0]["data"]["before"]["strategy"] == "sma_cross"
+
+    created = client.post(
+        "/api/bots", json={"name": "voo", "symbol": "voo", "strategy": "sma_cross"}
+    )
+    assert created.status_code == 201 and created.json()["state"] == "STOPPED"
+    assert (
+        client.post(
+            "/api/bots", json={"name": "voo", "symbol": "VOO", "strategy": "sma_cross"}
+        ).status_code
+        == 409
+    )

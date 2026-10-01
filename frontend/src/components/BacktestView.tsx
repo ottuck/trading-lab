@@ -3,32 +3,10 @@ import { ColorType, createChart, LineSeries, type Time } from 'lightweight-chart
 import { useEffect, useRef, useState } from 'react'
 import { backtestApi, type BacktestDetail } from '../api'
 import { kstTime, money, percent, signedMoney, tone } from '../format'
-
-const STRATEGY_LABEL: Record<string, string> = {
-  sma_cross: '골든크로스 (이동평균 교차)',
-  trend_filter: 'Faber 추세 필터',
-  rsi2: 'Connors RSI(2)',
-  donchian: '터틀 채널 돌파',
-}
+import { paramsText, parseParams, STRATEGY_LABEL } from '../strategies'
 
 function cssVar(name: string) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-}
-
-function paramsText(p: Record<string, number>) {
-  return Object.entries(p)
-    .map(([k, v]) => `${k}=${v}`)
-    .join(',')
-}
-
-function parseParams(text: string): Record<string, number> {
-  return Object.fromEntries(
-    text
-      .split(',')
-      .map((s) => s.split('=').map((x) => x.trim()))
-      .filter(([k, v]) => k && v)
-      .map(([k, v]) => [k, Number(v)]),
-  )
 }
 
 function RunForm({ onDone }: { onDone: (id: string) => void }) {
