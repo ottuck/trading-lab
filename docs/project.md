@@ -146,12 +146,12 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | 비용 | 약 $12/월 (공인 IPv4 포함 번들. 생성 시 서울 리전 가격 확인). Tailscale·GitHub 비공개 저장소는 무료 |
 | 고정 IP | Lightsail Static IP를 붙이고 그 IP를 토스 허용 IP에 등록 |
 | 방화벽 | 처음엔 Lightsail 콘솔 브라우저 SSH(22번, 콘솔 대역만)만 허용. Tailscale SSH가 동작하면 인바운드 전부 차단 |
-| 비밀값 | 서버의 `/etc/quant-lab/env`(DB 비밀번호·`DATABASE_URL`, 부트스트랩이 생성)와 `/etc/quant-lab/toss.env`(토스 키, **worker 컨테이너에만** 주입). 둘 다 권한 600. **토스 키 만료 2027-09-28** (발급 2026-09-28, 1년). 만료 전 WTS에서 재발급하고 `toss.env` 교체 |
+| 비밀값 | 서버의 `/etc/quant-lab/env`(DB 비밀번호·`DATABASE_URL`, 부트스트랩이 생성)와 `/etc/quant-lab/worker.env`(토스 키·텔레그램 토큰, **worker 컨테이너에만** 주입). 둘 다 권한 600. **토스 키 만료 2027-09-28** (발급 2026-09-28, 1년). 만료 전 WTS에서 재발급하고 `worker.env` 교체 |
 | 서버 생성 | Terraform(`infra/lightsail`). 콘솔에서 손으로 만들지 않는다 |
 | 배포 (MWP) | 서버에서 `bash deploy/deploy.sh`: `main` pull → 이미지 빌드(프론트 포함 단일 이미지) → `compose up -d`. 저장소는 읽기 전용 deploy key로 받음. Compose 프로젝트 이름은 `quant-lab-prod` |
 | 마이그레이션 | `migrate` 일회성 서비스가 성공해야 api·worker가 시작 (`depends_on: service_completed_successfully`) |
 | 백업 | `deploy/backup.sh`를 cron이 매일 03:00 UTC(12:00 KST, 평가 시각과 겹치지 않음)에 실행, `pg_dump` 7일 보관 + Lightsail 자동 스냅샷. 파괴적 마이그레이션 전에는 수동 덤프 |
-| 모니터링 | 화면의 heartbeat·마지막 실행 표시와 `docker compose logs`. 외부 알림은 MWP 이후 |
+| 모니터링 | 화면의 heartbeat·마지막 실행 표시, `docker compose logs`, **텔레그램 알림**: Worker가 `events` 테이블을 따라가며 경고·오류, 매매 신호(BUY/SELL), 모의 체결, 설정 변경, Worker 시작·재시작 일시정지를 보낸다. HOLD는 보내지 않는다. 알림 실패는 판단에 영향이 없다. Worker 자체가 죽은 것은 알릴 수 없어 화면 heartbeat로 확인한다 |
 
 배포 자동화(GitHub Actions에서 Tailscale로 SSH 배포)는 수동 배포가 번거로워지면 도입한다. 서버 리소스는 처음부터 Terraform으로 관리한다.
 
@@ -164,7 +164,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | 3. 토스 허용 IP | 사용자 | WTS > 설정 > Open API > 허용 IP에 `static_ip` 추가 |
 | 4. Tailscale 먼저 | 사용자 | Lightsail 콘솔의 브라우저 SSH에서 `curl -fsSL https://tailscale.com/install.sh \| sh && sudo tailscale up --ssh --hostname quant-lab` → 링크로 로그인. 개발 PC에도 Tailscale 설치·로그인 |
 | 5. 원격 작업 | Claude (개발 PC → `tailscale ssh ubuntu@quant-lab`) | deploy key 생성 → `gh repo deploy-key add`(읽기 전용) → `git clone` → `sudo bash deploy/bootstrap.sh` → `sudo tailscale serve --bg 8000` |
-| 6. 토스 키 | 사용자 | `/etc/quant-lab/toss.env`에 키 입력 (`tailscale ssh` 또는 브라우저 SSH, 키는 대화에 붙이지 않음) |
+| 6. 토스 키·알림 | 사용자 | `/etc/quant-lab/worker.env`에 토스 키와 텔레그램 토큰·채팅 ID 입력 (`tailscale ssh` 또는 브라우저 SSH, 키는 대화에 붙이지 않음) |
 | 7. Tailscale 접근 제한 | 사용자 | 필요하면 Tailscale ACL에서 서버 접근을 본인 기기로만 제한 (개인 tailnet이면 기본값으로 충분) |
 | 8. 배포·봇 시작 | 서버 | 로컬에서 토스를 호출하는 프로세스를 모두 멈춘 뒤 `bash deploy/deploy.sh` → `docker compose -f deploy/compose.prod.yaml exec api python -m quant_lab.cli bot create qqq-sma QQQ --params fast=50,slow=200` → 화면에서 시작 |
 

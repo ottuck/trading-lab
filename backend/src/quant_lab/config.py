@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     toss_client_id: SecretStr | None = None
     toss_client_secret: SecretStr | None = None
 
+    # 텔레그램 알림 (Worker만 사용). 둘 다 있어야 켜진다.
+    telegram_bot_token: SecretStr | None = None
+    telegram_chat_id: str | None = None
+
     worker_heartbeat_interval_s: float = 15.0
     # stored: DB에 저장된 봉만 사용 (토스 호출 없음, 로컬 기본값). toss: 운영 서버.
     worker_market_source: Literal["stored", "toss"] = "stored"
