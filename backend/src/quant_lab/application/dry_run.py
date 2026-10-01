@@ -141,6 +141,9 @@ def _finish(
     to_error: bool = False,
 ) -> None:
     run = session.get_one(RunRow, outcome.run_id)
+    if level == "WARN" and _same_as_previous_run(session, bot_id, outcome):
+        # 같은 이유로 15분마다 재시도할 때 알림이 반복되지 않게, 두 번째부터는 INFO로 남긴다.
+        level = "INFO"
     run.status = outcome.status
     run.detail = outcome.detail
     run.session_date = outcome.session_date
@@ -161,6 +164,22 @@ def _finish(
         run_id=outcome.run_id,
     )
     session.commit()
+
+
+def _same_as_previous_run(session: Session, bot_id: int, outcome: EvaluationOutcome) -> bool:
+    previous = session.scalars(
+        select(RunRow)
+        .where(
+            RunRow.bot_id == bot_id, RunRow.id != outcome.run_id, RunRow.finished_at.is_not(None)
+        )
+        .order_by(RunRow.started_at.desc())
+        .limit(1)
+    ).first()
+    return (
+        previous is not None
+        and previous.status == outcome.status
+        and previous.detail == outcome.detail
+    )
 
 
 def _evaluate(
@@ -184,9 +203,9 @@ def _evaluate(
         raise _Skip(f"{target}: XNYS는 거래일이지만 토스 캘린더는 아닙니다")
 
     # 2) 완료 봉 수집·검증
-    sync = market.refresh(session, bot.symbol, now)
-    if sync is not None and sync.issues:
-        raise _Skip(f"새 일봉 품질 문제 {len(sync.issues)}건: {sync.issues[0].kind}")
+    # 동기화 결과의 품질 문제는 판단에 쓰는 구간(아래 window)만 막는다.
+    # 전체 이력에 섞인 오래된 이상치 때문에 봇이 영원히 멈추지 않게 한다.
+    market.refresh(session, bot.symbol, now)
     bars = load_daily_bars(session, bot.symbol, end=target)
     if not bars or bars[-1].session_date != target:
         last = bars[-1].session_date if bars else None

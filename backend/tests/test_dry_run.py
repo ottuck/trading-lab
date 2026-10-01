@@ -19,7 +19,7 @@ from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.domain.strategy import SmaCross
 from quant_lab.persistence.bars import upsert_daily_bars
 from quant_lab.persistence.bots import create_bot, get_bot, load_account
-from quant_lab.persistence.models import DecisionRow, SimOrderRow
+from quant_lab.persistence.models import DecisionRow, EventRow, SimOrderRow
 from tests.fakes import WeekdayCalendar, make_bars
 
 CAL = WeekdayCalendar()
@@ -140,6 +140,20 @@ def test_missing_latest_bar_skips_and_retries(
     bot = get_bot(session, bot_id)
     assert bot is not None and bot.state == BotState.RUNNING
     assert bot.next_evaluation_at == now + timedelta(minutes=15)
+
+    # 같은 이유로 다시 건너뛰면 경고(알림)는 처음 한 번만
+    evaluate_bot(
+        session,
+        bot_id,
+        market=FakeMarket(),
+        calendar=CAL,
+        now=now + timedelta(minutes=15),
+        trigger=Trigger.SCHEDULED,
+    )
+    levels = session.scalars(
+        select(EventRow.level).where(EventRow.kind == "run_skipped").order_by(EventRow.id)
+    ).all()
+    assert levels == ["WARN", "INFO"]
 
 
 def test_forbidden_puts_bot_in_error(session: Session, bars: list[DailyBar], bot_id: int) -> None:

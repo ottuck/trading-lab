@@ -62,6 +62,7 @@ class Worker:
         self.now = now
         self.watchlist = list(watchlist)
         self._watchlist_checked_at: datetime | None = None
+        self._watchlist_failing: set[str] = set()
 
     def recover_after_restart(self) -> None:
         now = self.now()
@@ -112,11 +113,15 @@ class Worker:
                     result = self.market.refresh(session, symbol, now)
                 except Exception as exc:
                     session.rollback()
+                    # 같은 종목이 계속 실패하면 경고(알림)는 처음 한 번만 남긴다.
+                    level = "INFO" if symbol in self._watchlist_failing else "WARN"
+                    self._watchlist_failing.add(symbol)
                     add_event(
-                        session, now, "WARN", "watchlist_sync", f"{symbol} 일봉 갱신 실패: {exc}"
+                        session, now, level, "watchlist_sync", f"{symbol} 일봉 갱신 실패: {exc}"
                     )
                     session.commit()
                     continue
+                self._watchlist_failing.discard(symbol)
                 if result is not None:
                     synced.append(f"{symbol}+{result.saved}")
         if synced:
