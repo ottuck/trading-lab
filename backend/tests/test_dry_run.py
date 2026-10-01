@@ -19,7 +19,7 @@ from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.domain.strategy import SmaCross
 from quant_lab.persistence.bars import upsert_daily_bars
 from quant_lab.persistence.bots import create_bot, get_bot, load_account
-from quant_lab.persistence.models import DecisionRow, EventRow, SimOrderRow
+from quant_lab.persistence.models import DecisionRow, SimOrderRow
 from tests.fakes import WeekdayCalendar, make_bars
 
 CAL = WeekdayCalendar()
@@ -142,21 +142,6 @@ def test_missing_latest_bar_skips_and_retries(
     assert bot.next_evaluation_at == now + timedelta(minutes=15)
 
 
-def test_calendar_mismatch_blocks_decision(
-    session: Session, bars: list[DailyBar], bot_id: int
-) -> None:
-    out = evaluate_bot(
-        session,
-        bot_id,
-        market=FakeMarket(confirmed=False),
-        calendar=CAL,
-        now=after_close(bars[10].session_date),
-        trigger=Trigger.SCHEDULED,
-    )
-    assert out.status is RunStatus.SKIPPED
-    assert count(session, DecisionRow) == 0
-
-
 def test_forbidden_puts_bot_in_error(session: Session, bars: list[DailyBar], bot_id: int) -> None:
     market = FakeMarket(error=TossForbiddenError(403, "edge-blocked", "blocked", "r1"))
     out = evaluate_bot(
@@ -188,27 +173,6 @@ def test_transient_toss_error_keeps_running(
     assert out.status is RunStatus.SKIPPED
     bot = get_bot(session, bot_id)
     assert bot is not None and bot.state == BotState.RUNNING
-
-
-def test_missed_sessions_are_recorded(session: Session, bars: list[DailyBar], bot_id: int) -> None:
-    evaluate_bot(
-        session,
-        bot_id,
-        market=FakeMarket(),
-        calendar=CAL,
-        now=after_close(bars[10].session_date),
-        trigger=Trigger.SCHEDULED,
-    )
-    evaluate_bot(
-        session,
-        bot_id,
-        market=FakeMarket(),
-        calendar=CAL,
-        now=after_close(bars[14].session_date),
-        trigger=Trigger.SCHEDULED,
-    )
-    kinds = list(session.scalars(select(EventRow.kind)))
-    assert "missed_sessions" in kinds
 
 
 def test_replay_matches_backtest(

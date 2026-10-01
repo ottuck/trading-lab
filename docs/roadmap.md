@@ -5,7 +5,7 @@
 
 ## 현재 위치
 
-**Phase 4 대기.** Phase 3(로컬 Worker DRY RUN)을 마쳤다. replay 결과가 백테스트와 체결까지 일치한다. 다음은 API·운영 화면과 Lightsail 배포다.
+**Phase 4 진행.** API·화면·운영 구성(Docker·Compose·스크립트)을 마치고 로컬에서 운영 구성으로 확인했다. 남은 것은 Lightsail·Tailscale 준비(사용자)와 첫 서버 배포다.
 
 ## 진행 순서
 
@@ -17,7 +17,7 @@
 | 1 | 프로젝트 기반 | 완료 | 새 PC에서 README대로 설치·테스트 통과, CI 녹색 |
 | 2 | 시세·전략·백테스트 (CLI) | 완료 | 같은 조건 재실행 결과 일치, 미래 데이터 참조 테스트 통과 |
 | 3 | Worker DRY RUN (로컬) | 완료 | 중복 주문 0건, 장애 주입 시 신규 주문 차단, 재시작 후 `PAUSED` |
-| 4 | 배포·운영 화면 | 대기 | Tailscale로 서버 대시보드 접속, 정기 DRY RUN이 서버에서 실행 |
+| 4 | 배포·운영 화면 | 진행 | Tailscale로 서버 대시보드 접속, 정기 DRY RUN이 서버에서 실행 |
 | 5 | MWP 마무리·운영 검증 | 대기 | 2주 무개입 운영, 백테스트·설정 화면, 한계 문서화 |
 
 ## Phase 0 — 토스 API 검증
@@ -98,13 +98,15 @@
 
 ## Phase 4 — 배포·운영 화면
 
-- [ ] FastAPI: 상태·포지션·실행 기록·이벤트 조회, 명령 기록 API
-- [ ] 화면: 대시보드, 로그, 종목 차트 (project.md 8절)
-- [ ] `deploy/compose.prod.yaml` (migrate → api·worker), 정적 파일 포함 이미지
-- [ ] Lightsail 서울 2GB 생성, Static IP, 방화벽 차단, Tailscale, `tailscale serve`
-- [ ] 서버 IP를 토스 허용 목록에 등록, Worker 시작
-- [ ] `deploy/README.md` 서버 준비·배포·백업·복원 절차
-- [ ] 매일 `pg_dump` 백업과 Lightsail 자동 스냅샷
+- [x] FastAPI: 봇 상태·모의 잔고(종가 평가)·마지막 판단·대기 주문·실행 기록, 판단·주문·이벤트·일봉·백테스트 조회, 명령 등록(202)
+- [x] 화면: 대시보드(실행 여부 → 판단 이유 → 잔고·주문), 차트(캔들·거래량·SMA·신호·체결 마커), 로그(수준 필터). 10초 polling, KST 표시
+- [x] 단일 Docker 이미지(프론트 빌드 포함, non-root), `deploy/compose.prod.yaml`(db → migrate → api·worker, api는 127.0.0.1만, 토스 키는 worker만)
+- [x] `deploy/bootstrap.sh`(Docker·Tailscale·스왑·비밀값·백업 cron), `deploy.sh`, `backup.sh`
+- [x] 로컬에서 운영 구성 실행 확인: 마이그레이션 후 api·worker 기동, 화면 200, api 컨테이너에 토스 변수 0개
+- [ ] **(사용자)** Lightsail 서울 2GB 생성·Static IP, Tailscale 계정, GitHub deploy key 등록
+- [ ] 서버 준비(project.md 6절 절차), 서버 IP를 토스 허용 목록에 등록, 첫 배포
+- [ ] 서버에서 봇 생성·시작, Tailscale로 대시보드 접속 확인
+- [ ] 첫 정기 평가(마감 + 2시간)와 백업 1회 확인
 
 ## Phase 5 — MWP 마무리·운영 검증
 

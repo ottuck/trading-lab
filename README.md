@@ -51,6 +51,15 @@ uv run python -m quant_lab.cli bot cmd <봇 ID> START                           
 uv run python -m quant_lab.cli replay QQQ --start 2024-01-02 --end 2026-09-30      # 정기 평가 재생 vs 백테스트
 ```
 
+## 운영 배포
+
+서울 리전 VM 1대에서 Docker Compose로 실행하고 화면은 Tailscale로만 엽니다. 절차는 [project.md 6절](docs/project.md).
+
+```bash
+sudo bash deploy/bootstrap.sh   # 새 서버에서 한 번
+bash deploy/deploy.sh           # 배포할 때마다 (main 기준)
+```
+
 ## 토스 API 탐색
 
 ```bash

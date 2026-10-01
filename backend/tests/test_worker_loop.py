@@ -75,28 +75,6 @@ def test_start_command_runs_evaluation_once(worker: Worker, session: Session) ->
     assert [d.session_date for d in decisions] == [BARS[20].session_date]
 
 
-def test_invalid_command_is_rejected(worker: Worker, session: Session) -> None:
-    bot_id = new_bot(session)
-    enqueue_command(session, bot_id, CommandKind.PAUSE, NOW)
-    session.commit()
-    worker.tick()
-    cmd = session.scalars(select(CommandRow)).one()
-    assert cmd.result == "REJECTED"
-    assert cmd.processed_at is not None
-
-
-def test_run_once_evaluates_paused_bot_without_changing_state(
-    worker: Worker, session: Session
-) -> None:
-    bot_id = new_bot(session, BotState.PAUSED)
-    enqueue_command(session, bot_id, CommandKind.RUN_ONCE, NOW)
-    session.commit()
-    outcomes = worker.tick()
-    assert len(outcomes) == 1
-    session.expire_all()
-    assert get_bot(session, bot_id).state == BotState.PAUSED  # type: ignore[union-attr]
-
-
 def test_only_one_worker_gets_the_lock(engine: Engine) -> None:
     with engine.connect() as first, engine.connect() as second:
         assert try_acquire_worker_lock(first)

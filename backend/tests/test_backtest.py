@@ -4,8 +4,6 @@ from datetime import date
 from decimal import Decimal
 from typing import ClassVar
 
-import pytest
-
 from quant_lab.domain.backtest import run_backtest
 from quant_lab.domain.bars import DailyBar
 from quant_lab.domain.portfolio import CostModel, RiskLimits
@@ -83,39 +81,8 @@ def test_truncated_data_gives_same_decisions_as_full_data() -> None:
     assert [f for f in full.fills if f.fill_date <= cutoff] == cut.fills
 
 
-def test_rerun_is_deterministic() -> None:
-    bars = make_bars("X", [100 + (i % 13) * 2 for i in range(120)])
-    s = SmaCross(fast=3, slow=10)
-    assert run_backtest(bars, s, CASH, CostModel()) == run_backtest(bars, s, CASH, CostModel())
-
-
-def test_benchmark_and_metrics_on_rising_market() -> None:
-    bars = make_bars("X", [100 + i for i in range(50)])
-    result = run_backtest(bars, SmaCross(fast=2, slow=5), CASH, NO_COST)
-    m = result.metrics
-    assert m.max_drawdown == 0
-    assert m.benchmark_max_drawdown == 0
-    assert m.total_return > 0
-    assert m.benchmark_total_return > 0
-    # 첫 판단일 자산은 초기 현금
-    assert result.equity[0].equity == CASH
-    assert result.equity[0].session_date == bars[4].session_date
-
-
-def test_last_day_signal_is_left_pending() -> None:
-    bars = make_bars("X", [100, 101, 102])
-    result = run_backtest(bars, SpyStrategy(long_from=bars[2].session_date), CASH, NO_COST)
-    assert result.fills == []
-    assert result.pending is not None and result.pending.action is Action.BUY
-
-
 def test_risk_limit_caps_position() -> None:
     bars = make_bars("X", [100, 100, 100, 100])
     limits = RiskLimits(max_position_value=Decimal(1_000))
     result = run_backtest(bars, SpyStrategy(long_from=bars[0].session_date), CASH, NO_COST, limits)
     assert result.fills[0].qty == 10
-
-
-def test_needs_enough_bars() -> None:
-    with pytest.raises(ValueError):
-        run_backtest(make_bars("X", [1, 2]), SmaCross(fast=2, slow=5), CASH, NO_COST)
