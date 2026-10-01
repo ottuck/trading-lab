@@ -5,6 +5,13 @@ from quant_lab.domain.portfolio import CostModel, Portfolio, RiskLimits, afforda
 COSTS = CostModel(commission_rate=Decimal("0.001"), slippage_bps=Decimal(10))
 
 
+def test_toss_fee_rules() -> None:
+    # 위탁수수료는 $0.01 미만 절사, 매도는 SEC Fee(최소 $0.01) 추가
+    assert COSTS.commission(Decimal("1234.567")) == Decimal("1.23")
+    assert COSTS.sell_fees(Decimal("1000")) == Decimal("1.00") + Decimal("0.02")
+    assert COSTS.sell_fees(Decimal("100")) == Decimal("0.10") + Decimal("0.01")
+
+
 def test_round_trip_pnl_includes_commissions() -> None:
     pf = Portfolio(cash=Decimal(10_000))
     pf.buy(10, Decimal(100), Decimal(1))
