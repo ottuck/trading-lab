@@ -5,7 +5,7 @@
 
 ## 현재 위치
 
-**Phase 0 거의 완료.** 토스 API 실측을 마치고 첫 종목(`QQQ`)·봉 주기(일봉)를 정했다. 남은 것: 일봉 확정 시점 측정(KST 05:00 이후), 허용 IP 개수·client 다중 발급 확인. 이 두 가지는 Phase 1과 병행한다.
+**Phase 2 대기.** Phase 0(토스 API 검증)과 Phase 1(프로젝트 기반)을 마쳤다. 다음은 토스 어댑터와 봉 저장, 전략·백테스트 CLI다.
 
 ## 진행 순서
 
@@ -13,8 +13,8 @@
 
 | Phase | 이름 | 상태 | 완료 기준 |
 | --- | --- | --- | --- |
-| 0 | 토스 API 검증 | 진행 | [tossApi.md](tossApi.md) 6절의 확인 항목 전부 기록, 첫 종목·봉 주기 결정 |
-| 1 | 프로젝트 기반 | 대기 | 새 PC에서 README대로 설치·테스트 통과, CI 녹색 |
+| 0 | 토스 API 검증 | 완료 | [tossApi.md](tossApi.md) 6절의 확인 항목 전부 기록, 첫 종목·봉 주기 결정 |
+| 1 | 프로젝트 기반 | 완료 | 새 PC에서 README대로 설치·테스트 통과, CI 녹색 |
 | 2 | 시세·전략·백테스트 (CLI) | 대기 | 같은 조건 재실행 결과 일치, 미래 데이터 참조 테스트 통과 |
 | 3 | Worker DRY RUN (로컬) | 대기 | 중복 주문 0건, 장애 주입 시 신규 주문 차단, 재시작 후 `PAUSED` |
 | 4 | 배포·운영 화면 | 대기 | Tailscale로 서버 대시보드 접속, 정기 DRY RUN이 서버에서 실행 |
@@ -24,16 +24,15 @@
 
 목표: 설계의 전제가 맞는지 코드를 쓰기 전에 확인한다.
 
-- [x] 로컬 도구 설치: uv 0.12 (winget), Python 3.13.15 (`uv python install`)
-- [ ] Docker Desktop (Phase 1 전까지)
+- [x] 로컬 도구 설치: uv 0.12 (winget), Python 3.14 (사용자 전역 설치), Docker Desktop (기존 설치)
 - [x] 토스 WTS에서 Open API client 발급
-- [ ] 허용 IP 개수 제한·client 다중 발급 가능 여부 확인 (WTS 화면, 사용자 확인)
+- [x] 허용 IP 여러 개 등록 가능, client는 계정당 1개(재발급만, 유효기간 1년) 확인
 - [x] 개발 PC 공인 IP 등록 후 탐색 스크립트(`scripts/toss_probe.py`, 키는 환경변수)로 호출
   - [x] 토큰 발급, `expires_in` 확인
   - [x] 관심 목록 후보의 `/stocks` 응답 (지원 여부, `leverageFactor`)
   - [x] `VOO`·`QQQ` 일봉 전체 페이지네이션 (첫 봉 날짜, 개수)
   - [x] 1분봉 보존 기간
-  - [ ] 미국 장 마감 후 일봉 확정 시점: KST 05:00 직후부터 `uv run scripts/toss_probe.py finality`를 몇 차례 실행해 OHLC가 멈추는 시각 기록
+  - [ ] 일봉 확정 시점 측정 → **Phase 2로 이동** (평가 시각을 정할 때 필요)
   - [x] rate limit 헤더 실제 값
 - [x] 결과를 `tossApi.md` 6·7절에 반영, 첫 종목 `QQQ`·봉 주기 일봉을 `project.md` 9절에 기록
 
@@ -41,16 +40,18 @@
 
 ## Phase 1 — 프로젝트 기반
 
-- [ ] `backend/` uv 프로젝트, `quant_lab` 패키지 골격 (project.md 4절 구조)
-- [ ] ruff, mypy, pytest 설정. `domain`의 외부 의존 금지 테스트
-- [ ] `compose.yaml` 로컬 PostgreSQL 17, Alembic 초기 마이그레이션
-- [ ] pydantic-settings 설정, `.env.example` (변수 이름만)
-- [ ] `frontend/` Vite + React + TS 골격
-- [ ] GitHub Actions CI: backend(ruff·mypy·pytest + PostgreSQL 서비스), frontend(tsc·build)
-- [ ] README에 설치·실행 방법
+- [x] `backend/` uv 프로젝트 (Python 3.14), `quant_lab` 패키지 골격 (project.md 4절 구조)
+- [x] ruff, mypy(strict), pytest 설정. `domain`의 외부 의존 금지 테스트
+- [x] `compose.yaml` 로컬 PostgreSQL 17, Alembic 초기 마이그레이션 (`worker_heartbeat`)
+- [x] pydantic-settings 설정, `.env.example` (변수 이름만)
+- [x] `frontend/` Vite + React + TS 골격, `/api/health` 상태 표시 화면
+- [x] GitHub Actions CI: backend(ruff·mypy·pytest + PostgreSQL 서비스), frontend(oxlint·tsc·build)
+- [x] README에 설치·실행 방법
+- [x] 최소 동작 확인: API `/api/health`가 DB 상태와 Worker heartbeat를 보고하고 화면에 표시
 
 ## Phase 2 — 시세·전략·백테스트 (CLI)
 
+- [ ] 일봉 확정 시점 측정 (KST 05:00 이후 `toss_probe.py finality` 반복) → 평가 시각 결정
 - [ ] 토스 어댑터: 토큰 관리자(단일 발급·만료 전 갱신·`token-revoked` 감지), 캔들·종목·캘린더 클라이언트, 429·오류 처리
 - [ ] 봉 저장·검증: 누락·중복·이상치 검사, `Decimal` 변환, UTC 저장
 - [ ] 장 운영 판정: `exchange_calendars` + 토스 캘린더 비교

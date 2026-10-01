@@ -119,18 +119,18 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 
 | 영역 | 선택 | 이유 |
 | --- | --- | --- |
-| 언어·패키지 | Python 3.13, **uv** | 빠른 설치와 잠금 파일 |
+| 언어·패키지 | Python 3.14, **uv** | 빠른 설치와 잠금 파일 (`backend/.python-version`) |
 | API | FastAPI, Pydantic v2, pydantic-settings | 타입 기반 검증, 설정 분리 |
 | DB 접근 | SQLAlchemy 2.0, Alembic, psycopg 3 | 마이그레이션 관리, `numeric` ↔ `Decimal` |
 | HTTP | httpx (동기 클라이언트로 시작) | Worker는 단일 루프. 비동기는 필요할 때 |
 | 데이터 처리 | pandas | 지표·백테스트 계산 |
 | 시장 달력 | `exchange_calendars` (XNYS) + 토스 캘린더 | 토스는 3영업일만 제공 |
-| 테스트·품질 | pytest, respx(HTTP 목), ruff, mypy | |
+| 테스트·품질 | pytest, respx(HTTP 목, Phase 2), ruff, mypy(strict) | Windows에서는 `python -m mypy`로 실행 |
 | DB | PostgreSQL 17 (로컬·운영 모두 컨테이너) | 같은 버전으로 개발·운영 |
-| 프론트엔드 | React, TypeScript, Vite, TanStack Query, Lightweight Charts | polling·캐시, 금융 차트 |
+| 프론트엔드 | React, TypeScript, Vite, oxlint, TanStack Query·Lightweight Charts(Phase 4) | polling·캐시, 금융 차트 |
 | 실행 | Docker Compose | 로컬 → Lightsail → OCI/홈서버로 그대로 이동 |
 | 접근 | Tailscale (`tailscale serve`로 HTTPS) | 공개 포트 0개, MWP에 로그인 구현 불필요 |
-| CI | GitHub Actions: ruff, mypy, pytest(+PostgreSQL 서비스), tsc, vite build | |
+| CI | GitHub Actions (`.github/workflows/ci.yml`): ruff, mypy, pytest(+PostgreSQL 17 서비스), oxlint, tsc·vite build | PR과 `dev`·`main` push |
 
 ## 6. 인프라와 운영
 
@@ -142,7 +142,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | 비용 | 약 $12/월 (공인 IPv4 포함 번들. 생성 시 서울 리전 가격 확인). Tailscale·GitHub 비공개 저장소는 무료 |
 | 고정 IP | Lightsail Static IP를 붙이고 그 IP를 토스 허용 IP에 등록 |
 | 방화벽 | Lightsail 방화벽 인바운드 전부 차단. Tailscale 설치 후 SSH도 Tailscale로만 접속 |
-| 비밀값 | 서버의 `/etc/quant-lab/env` (권한 600). 토스 키는 worker 컨테이너에만 주입 |
+| 비밀값 | 서버의 `/etc/quant-lab/env` (권한 600). 토스 키는 worker 컨테이너에만 주입. **토스 키 만료 2027-09-28** (발급 2026-09-28, 1년). 만료 전 WTS에서 재발급하고 env 교체 |
 | 배포 (MWP) | 서버에서 `git pull` → `docker compose -f deploy/compose.prod.yaml up -d --build`. 저장소는 읽기 전용 deploy key로 받음 |
 | 마이그레이션 | `migrate` 일회성 서비스가 성공해야 api·worker가 시작 (`depends_on: service_completed_successfully`) |
 | 백업 | 매일 `pg_dump`를 서버 디스크에 7일 보관 + Lightsail 자동 스냅샷. 파괴적 마이그레이션 전에는 수동 덤프 |
@@ -152,7 +152,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 
 ### 로컬 개발
 
-개발 PC에서는 `compose.yaml`로 PostgreSQL만 띄우고 API·Worker·프론트엔드는 각각 직접 실행한다. **토스 호출은 원칙적으로 서버 Worker만 한다.** 로컬에서 토스를 호출하려면 개발 PC 공인 IP를 허용 목록에 넣어야 하고, 같은 client로 토큰을 발급하면 서버 토큰이 무효화된다. 로컬 개발은 기본적으로 저장된 봉이나 합성 데이터로 한다. Phase 0 탐색처럼 로컬 호출이 꼭 필요하면 서버 Worker를 멈추거나 별도 client를 쓴다 (별도 client 발급 가능 여부는 [tossApi.md](tossApi.md) 확인 항목).
+개발 PC에서는 `compose.yaml`로 PostgreSQL만 띄우고 API·Worker·프론트엔드는 각각 직접 실행한다. **토스 client는 계정당 1개만 발급된다 (2026-10-01 확인).** 같은 client로 토큰을 발급하면 다른 쪽 토큰이 무효화되므로, 서버 Worker가 동작한 뒤로는 로컬에서 토스를 호출하지 않는다. 로컬 개발은 저장된 봉(서버 DB 덤프)이나 합성 데이터로 한다. 로컬 호출이 꼭 필요하면 서버 Worker를 멈추고 호출한 뒤 다시 시작한다. 허용 IP는 여러 개 등록할 수 있어 개발 PC IP와 서버 IP를 함께 둔다.
 
 ```bash
 docker compose up -d db
@@ -167,7 +167,7 @@ npm --prefix frontend run dev
 ### 이전 계획 (Lightsail → OCI / 홈서버)
 
 - 서버에 의존하는 것은 Compose 파일, env 파일, DB 덤프뿐이므로 새 서버에서 `pg_restore` 후 같은 Compose를 실행하면 된다.
-- **송신 IP가 바뀐다.** 새 IP를 토스 허용 목록에 먼저 등록하고, 구 서버 Worker를 멈춘 뒤 새 Worker를 시작한다. Worker를 두 곳에서 동시에 돌리지 않는다 (토큰 경합).
+- **송신 IP가 바뀐다.** 허용 IP는 여러 개 등록할 수 있으므로 새 IP를 먼저 추가하고, 구 서버 Worker를 멈춘 뒤 새 Worker를 시작하고, 마지막에 구 IP를 지운다. Worker를 두 곳에서 동시에 돌리지 않는다 (토큰 경합).
 - **홈서버는 가정용 회선 IP가 바뀔 수 있다.** 이때는 토스 호출만 고정 IP를 가진 소형 VPS를 거쳐 나가게 한다 (WireGuard 또는 Tailscale exit node). Lightsail을 가장 작은 플랜으로 줄여 송신 게이트웨이로 남기는 것이 가장 간단한 후보다.
 
 ## 7. 전략·백테스트 규칙
