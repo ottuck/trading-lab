@@ -6,6 +6,7 @@
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
+from itertools import pairwise
 from typing import ClassVar, Protocol
 
 from quant_lab.domain.bars import DailyBar
@@ -112,7 +113,114 @@ class DonchianBreakout:
         )
 
 
+@dataclass(frozen=True)
+class TrendFilter:
+    """Faber의 추세 필터: 종가가 장기 이동평균 위면 보유, 아래면 현금."""
+
+    sma: int = 200
+    name: ClassVar[str] = "trend_filter"
+
+    def __post_init__(self) -> None:
+        if self.sma <= 1:
+            raise ValueError("sma는 2 이상이어야 합니다")
+
+    @property
+    def params(self) -> dict[str, int]:
+        return {"sma": self.sma}
+
+    @property
+    def warmup(self) -> int:
+        return self.sma
+
+    def signal(self, history: Sequence[DailyBar], holding: bool) -> Signal | None:
+        if len(history) < self.warmup:
+            return None
+        close, avg = history[-1].close, _sma(history, self.sma)
+        indicators = {f"sma{self.sma}": avg}
+        if close > avg:
+            return Signal(True, f"종가 {close} > SMA{self.sma} {avg:.2f}", indicators)
+        return Signal(False, f"종가 {close} <= SMA{self.sma} {avg:.2f}", indicators)
+
+
+# RSI는 Wilder 평활을 쓴다.
+# 판단일까지의 고정 길이 구간으로 계산해 백테스트와 DRY RUN이 같은 값을 얻는다.
+RSI_LOOKBACK = 100
+
+
+def _rsi(bars: Sequence[DailyBar], n: int) -> Decimal:
+    closes = [b.close for b in bars[-(RSI_LOOKBACK + 1) :]]
+    changes = [b - a for a, b in pairwise(closes)]
+    gain = sum((max(c, Decimal(0)) for c in changes[:n]), Decimal(0)) / n
+    loss = sum((max(-c, Decimal(0)) for c in changes[:n]), Decimal(0)) / n
+    for c in changes[n:]:
+        gain = (gain * (n - 1) + max(c, Decimal(0))) / n
+        loss = (loss * (n - 1) + max(-c, Decimal(0))) / n
+    if loss == 0:
+        return Decimal(100)
+    return 100 - 100 / (1 + gain / loss)
+
+
+@dataclass(frozen=True)
+class ConnorsRsi2:
+    """Connors RSI(2) 눌림목: 장기 추세 위에서 RSI가 과매도면 매수, 단기 이동평균을 넘으면 매도."""
+
+    rsi: int = 2
+    entry: int = 10
+    exit_sma: int = 5
+    trend: int = 200
+    name: ClassVar[str] = "rsi2"
+
+    @property
+    def params(self) -> dict[str, int]:
+        return {
+            "rsi": self.rsi,
+            "entry": self.entry,
+            "exit_sma": self.exit_sma,
+            "trend": self.trend,
+        }
+
+    @property
+    def warmup(self) -> int:
+        return max(self.trend, RSI_LOOKBACK + 1)
+
+    def signal(self, history: Sequence[DailyBar], holding: bool) -> Signal | None:
+        if len(history) < self.warmup:
+            return None
+        close = history[-1].close
+        rsi, trend, exit_avg = (
+            _rsi(history, self.rsi),
+            _sma(history, self.trend),
+            _sma(history, self.exit_sma),
+        )
+        indicators = {
+            f"rsi{self.rsi}": rsi,
+            f"sma{self.trend}": trend,
+            f"sma{self.exit_sma}": exit_avg,
+        }
+        if holding:
+            if close > exit_avg:
+                return Signal(
+                    False,
+                    f"종가 {close} > SMA{self.exit_sma} {exit_avg:.2f}: 반등 청산",
+                    indicators,
+                )
+            return Signal(
+                True, f"보유 유지: 종가 {close} <= SMA{self.exit_sma} {exit_avg:.2f}", indicators
+            )
+        if close > trend and rsi < self.entry:
+            return Signal(
+                True,
+                f"RSI{self.rsi} {rsi:.1f} < {self.entry}, 종가 > SMA{self.trend}: 눌림 매수",
+                indicators,
+            )
+        return Signal(
+            False, f"관망: RSI{self.rsi} {rsi:.1f}, SMA{self.trend} {trend:.2f}", indicators
+        )
+
+
 STRATEGIES: dict[str, Callable[..., Strategy]] = {
     "sma_cross": SmaCross,
     "donchian": DonchianBreakout,
+    "trend_filter": TrendFilter,
+    "rsi2": ConnorsRsi2,
 }

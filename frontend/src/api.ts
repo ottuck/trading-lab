@@ -116,3 +116,96 @@ export const api = {
       body: JSON.stringify({ kind }),
     }),
 }
+
+export type StrategyInfo = { name: string; default_params: Record<string, number> }
+
+export type BacktestMetrics = {
+  start: string
+  end: string
+  initial_cash: Money
+  final_equity: Money
+  total_return: Money
+  cagr: Money
+  max_drawdown: Money
+  exposure: Money
+  round_trips: number
+  win_rate: Money | null
+  benchmark_final_equity: Money
+  benchmark_total_return: Money
+  benchmark_cagr: Money
+  benchmark_max_drawdown: Money
+}
+
+export type BacktestSummary = {
+  id: string
+  created_at: string
+  symbol: string
+  strategy: string
+  params: Record<string, number>
+  metrics: BacktestMetrics
+}
+
+export type BacktestFill = {
+  side: 'BUY' | 'SELL'
+  signal_date: string
+  fill_date: string
+  qty: number
+  price: Money
+  commission: Money
+  realized_pnl: Money | null
+}
+
+export type BacktestDetail = BacktestSummary & {
+  data_start: string
+  data_end: string
+  commission_rate: Money
+  slippage_bps: Money
+  fills: BacktestFill[]
+  equity: { session_date: string; equity: Money; benchmark: Money }[]
+}
+
+export type BacktestRequest = {
+  symbol: string
+  strategy: string
+  params: Record<string, number>
+  start?: string
+  initial_cash?: string
+}
+
+export const backtestApi = {
+  strategies: () => request<StrategyInfo[]>('/api/strategies'),
+  list: () => request<BacktestSummary[]>('/api/backtests?limit=30'),
+  get: (id: string) => request<BacktestDetail>(`/api/backtests/${id}`),
+  run: (body: BacktestRequest) =>
+    request<BacktestDetail>('/api/backtests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+}
+
+export type BotConfig = {
+  strategy: string
+  params: Record<string, number>
+  commission_rate: string
+  slippage_bps: string
+  max_position_value: string | null
+  max_order_value: string | null
+}
+
+export type BotCreate = BotConfig & { name: string; symbol: string; initial_cash: string }
+
+export type ConfigEvent = EventItem & { data: { before?: Record<string, unknown>; after?: Record<string, unknown> } | null }
+
+const json = (method: string, body: unknown): RequestInit => ({
+  method,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+})
+
+export const botApi = {
+  create: (body: BotCreate) => request<Bot>('/api/bots', json('POST', body)),
+  updateConfig: (botId: number, body: BotConfig) => request<Bot>(`/api/bots/${botId}/config`, json('PUT', body)),
+  history: (botId: number) =>
+    request<ConfigEvent[]>(`/api/events?bot_id=${botId}&kind=config_change&limit=20`),
+}

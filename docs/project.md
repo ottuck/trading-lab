@@ -78,6 +78,7 @@ backend/
   tests/
 frontend/            # React + Vite
 deploy/              # 운영용 compose, 서버 준비 스크립트, 백업 스크립트
+infra/lightsail/     # Terraform: Lightsail 인스턴스·Static IP·방화벽·자동 스냅샷
 compose.yaml         # 로컬 개발용 (PostgreSQL)
 ```
 
@@ -144,24 +145,30 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | 서버 | AWS Lightsail **서울(ap-northeast-2), 2GB RAM / 2 vCPU**, Ubuntu 24.04 LTS |
 | 비용 | 약 $12/월 (공인 IPv4 포함 번들. 생성 시 서울 리전 가격 확인). Tailscale·GitHub 비공개 저장소는 무료 |
 | 고정 IP | Lightsail Static IP를 붙이고 그 IP를 토스 허용 IP에 등록 |
-| 방화벽 | Lightsail 방화벽 인바운드 전부 차단. Tailscale 설치 후 SSH도 Tailscale로만 접속 |
-| 비밀값 | 서버의 `/etc/quant-lab/env`(DB 비밀번호·`DATABASE_URL`, 부트스트랩이 생성)와 `/etc/quant-lab/toss.env`(토스 키, **worker 컨테이너에만** 주입). 둘 다 권한 600. **토스 키 만료 2027-09-28** (발급 2026-09-28, 1년). 만료 전 WTS에서 재발급하고 `toss.env` 교체 |
+| 방화벽 | 처음엔 Lightsail 콘솔 브라우저 SSH(22번, 콘솔 대역만)만 허용. Tailscale SSH가 동작하면 인바운드 전부 차단 |
+| 비밀값 | 서버의 `/etc/quant-lab/env`(DB 비밀번호·`DATABASE_URL`, 부트스트랩이 생성)와 `/etc/quant-lab/worker.env`(토스 키·텔레그램 토큰, **worker 컨테이너에만** 주입). 둘 다 권한 600. **토스 키 만료 2027-09-28** (발급 2026-09-28, 1년). 만료 전 WTS에서 재발급하고 `worker.env` 교체 |
+| 서버 생성 | Terraform(`infra/lightsail`). 콘솔에서 손으로 만들지 않는다 |
 | 배포 (MWP) | 서버에서 `bash deploy/deploy.sh`: `main` pull → 이미지 빌드(프론트 포함 단일 이미지) → `compose up -d`. 저장소는 읽기 전용 deploy key로 받음. Compose 프로젝트 이름은 `quant-lab-prod` |
 | 마이그레이션 | `migrate` 일회성 서비스가 성공해야 api·worker가 시작 (`depends_on: service_completed_successfully`) |
 | 백업 | `deploy/backup.sh`를 cron이 매일 03:00 UTC(12:00 KST, 평가 시각과 겹치지 않음)에 실행, `pg_dump` 7일 보관 + Lightsail 자동 스냅샷. 파괴적 마이그레이션 전에는 수동 덤프 |
-| 모니터링 | 화면의 heartbeat·마지막 실행 표시와 `docker compose logs`. 외부 알림은 MWP 이후 |
+| 모니터링 | 화면의 heartbeat·마지막 실행 표시, `docker compose logs`, **텔레그램 알림**: Worker가 `events` 테이블을 따라가며 경고·오류, 매매 신호(BUY/SELL), 모의 체결, 설정 변경, Worker 시작·재시작 일시정지를 보낸다. HOLD는 보내지 않는다. 알림 실패는 판단에 영향이 없다. Worker 자체가 죽은 것은 알릴 수 없어 화면 heartbeat로 확인한다 |
 
-배포 자동화(GitHub Actions에서 Tailscale로 SSH 배포)와 IaC는 수동 배포가 번거로워지면 도입한다.
+배포 자동화(GitHub Actions에서 Tailscale로 SSH 배포)는 수동 배포가 번거로워지면 도입한다. 서버 리소스는 처음부터 Terraform으로 관리한다.
 
-**서버 준비 절차** (재현 가능하게 스크립트로 둔다):
+**서버 준비 절차** (Terraform과 스크립트로 재현한다):
 
-1. Lightsail 서울 2GB Ubuntu 24.04 생성, Static IP 연결
-2. `git clone` 후 `sudo bash deploy/bootstrap.sh`: Docker·Compose·Tailscale 설치, 스왑 2GB, `/etc/quant-lab` 비밀값 파일, 백업 cron
-3. `sudo tailscale up --ssh`, `sudo tailscale serve --bg 8000` (tailnet 안에서만 HTTPS)
-4. `toss.env`에 키 입력, 서버 송신 IP를 토스 허용 IP에 추가
-5. 로컬에서 토스를 호출하는 프로세스를 모두 멈춘 뒤 `bash deploy/deploy.sh`
-6. CLI로 봇 생성(`docker compose -f deploy/compose.prod.yaml exec api python -m quant_lab.cli bot create ...`) 후 화면에서 시작
-7. Lightsail 방화벽 인바운드 전부 닫기 (SSH도 Tailscale로)
+| 단계 | 누가 | 작업 |
+| --- | --- | --- |
+| 1. AWS 자격 증명 | 사용자 | IAM 사용자(Lightsail 권한만)의 액세스 키를 만들고 개발 PC에서 `aws configure`로 입력 (키는 Claude·저장소에 넘기지 않음) |
+| 2. 서버 생성 | 사용자 실행 | `cd infra/lightsail && terraform init && terraform plan && terraform apply` → 인스턴스(서울 2GB, Ubuntu 24.04), Static IP, 자동 스냅샷, 방화벽(브라우저 SSH만). 출력된 `static_ip`를 메모 |
+| 3. 토스 허용 IP | 사용자 | WTS > 설정 > Open API > 허용 IP에 `static_ip` 추가 |
+| 4. Tailscale 먼저 | 사용자 | Lightsail 콘솔의 브라우저 SSH에서 `curl -fsSL https://tailscale.com/install.sh \| sh && sudo tailscale up --ssh --hostname quant-lab` → 링크로 로그인. 개발 PC에도 Tailscale 설치·로그인 |
+| 5. 원격 작업 | Claude (개발 PC → `tailscale ssh ubuntu@quant-lab`) | deploy key 생성 → `gh repo deploy-key add`(읽기 전용) → `git clone` → `sudo bash deploy/bootstrap.sh` → `sudo tailscale serve --bg 8000` |
+| 6. 토스 키·알림 | 사용자 | `/etc/quant-lab/worker.env`에 토스 키와 텔레그램 토큰·채팅 ID 입력 (`tailscale ssh` 또는 브라우저 SSH, 키는 대화에 붙이지 않음) |
+| 7. Tailscale 접근 제한 | 사용자 | 필요하면 Tailscale ACL에서 서버 접근을 본인 기기로만 제한 (개인 tailnet이면 기본값으로 충분) |
+| 8. 배포·봇 시작 | 서버 | 로컬에서 토스를 호출하는 프로세스를 모두 멈춘 뒤 `bash deploy/deploy.sh` → `docker compose -f deploy/compose.prod.yaml exec api python -m quant_lab.cli bot create qqq-sma QQQ --params fast=50,slow=200` → 화면에서 시작 |
+
+브라우저 SSH용 22번 포트(Lightsail 콘솔 대역만)는 Tailscale SSH가 동작하면 `aws_lightsail_instance_public_ports`에서 지워 인바운드를 모두 닫는다. Terraform 상태 파일(`*.tfstate`)은 개발 PC에만 두고 Git에 넣지 않는다.
 
 ### 로컬 개발
 
@@ -191,7 +198,7 @@ npm --prefix frontend run dev
 | 평가 시각 | 정규장 마감(서머타임 KST 05:00, 표준시 06:00, 조기 폐장 반영) **+ 2시간** 이후. 저장 뒤 값이 바뀌면 동기화가 `resync`로 감지한다 |
 | 체결 규칙 | T일 종가로 판단 → **T+1일 시가로 전량 체결.** DRY RUN도 T+1 시가가 확정된 뒤 같은 가격으로 체결을 기록 |
 | 비용 | 수수료 0.1%(가정, 계좌 API `/commissions`로 확인 전) + 슬리피지 5bp, 매수는 불리하게 올리고 매도는 내림. 실행 기록에 함께 저장 |
-| 전략 | `sma_cross`(이동평균 교차), `donchian`(채널 돌파) 구현. 수량은 체결 시점 현금으로 정수 계산, 위험 한도(종목 최대 보유 금액, 1회 최대 주문 금액) 적용 |
+| 전략 | 잘 알려진 단일 종목 전략 4개: `sma_cross`(골든크로스 50/200, 기본값), `trend_filter`(Faber 200일선), `rsi2`(Connors RSI(2) 눌림목), `donchian`(터틀 채널 돌파). 수량은 체결 시점 현금으로 정수 계산, 위험 한도(종목 최대 보유 금액, 1회 최대 주문 금액) 적용 |
 | 백테스트 데이터 | 토스 일봉 `adjusted=true`, 상장일부터 (QQQ 1999-03-10~, 닷컴·2008·2020·2022 하락장 포함) |
 | 비교 기준 | 같은 기간 매수 후 보유 |
 | 위험 한도 | 종목별 최대 보유 금액·1회 주문 금액 구현. 일봉 1종목은 거래일당 판단 1회라 하루 주문 수는 구조적으로 1건 이하. 하루 손실 한도·주문 간 최소 간격은 다종목·장중 전략 도입 때 추가 |
@@ -205,8 +212,8 @@ npm --prefix frontend run dev
 | 대시보드 | 봇 상태, Worker heartbeat, 마지막/다음 실행, 데이터 갱신 시각, 모의 잔고·손익·포지션, 마지막 판단 이유, 제어 버튼 | Phase 4 완료 |
 | 로그 | 시각·심각도별 판단·체결·오류, 실행 ID | Phase 4 완료 |
 | 종목·차트 | 캔들·거래량, SMA 선, 신호·모의 체결 마커, 데이터 출처·마지막 봉 | Phase 4 완료 |
-| 백테스트 | 조건 선택, 자산 곡선, 수익률·최대 낙폭, 거래 목록, 매수 후 보유 비교 | Phase 5 |
-| 전략·설정 | 파라미터, 위험 한도, 초안과 실행 중 버전 구분 | Phase 5 |
+| 백테스트 | 종목·전략·파라미터·첫 판단일로 실행, 저장 목록, 전략 vs 매수 후 보유 지표, 자산 곡선(로그 스케일), 체결 목록. 일봉 1종목은 수 초라 API 요청 안에서 실행 | Phase 5 완료 |
+| 봇 설정 | 봇 생성, 전략·파라미터·수수료·슬리피지·위험 한도 변경(실행 중에는 막고 일시정지 후 변경), 바뀐 항목만 기록한 변경 이력. 판단마다 당시 설정 스냅샷이 남는다 | Phase 5 완료 |
 
 `docs/references/`의 UI 참고 이미지는 Git에 넣지 않으며(`.gitignore`), 배치만 참고하고 원본 화면은 복제하지 않는다.
 
@@ -215,7 +222,7 @@ npm --prefix frontend run dev
 | 항목 | 상태 | 메모 |
 | --- | --- | --- |
 | 첫 종목 | **결정: `QQQ`** (2026-10-01) | 이력이 가장 길고(1999~) 하락장 표본이 많다. VOO는 두 번째 후보 |
-| 첫 전략과 파라미터 | **기본값: `sma_cross` 50/200** (2026-10-01, 사용자 확인 대기) | 백테스트 비교는 [roadmap.md](roadmap.md) Phase 2 결과 참고 |
+| 첫 전략과 파라미터 | **결정: `sma_cross` 50/200** (2026-10-01, 사용자 확인) | 백테스트 비교는 [roadmap.md](roadmap.md) Phase 2 결과 참고 |
 | 봉 주기 | **결정: 일봉** (2026-10-01) | 정규장 마감 + 2시간 뒤 평가 |
 | 초기 모의 현금 | **결정: $10,000** | |
 | 수수료·슬리피지 | **결정: 0.1% · 5bp** | 수수료는 실제 요율 확인 시 갱신 |

@@ -1,12 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { api } from './api'
+import { BacktestView } from './components/BacktestView'
 import { BotPanel } from './components/BotPanel'
 import { EventLog } from './components/EventLog'
 import { PriceChart } from './components/PriceChart'
+import { SettingsView } from './components/SettingsView'
 import { ago } from './format'
 
-const TABS = { dashboard: '대시보드', chart: '차트', logs: '로그' } as const
+const TABS = { dashboard: '대시보드', chart: '차트', backtest: '백테스트', settings: '봇 설정', logs: '로그' } as const
 type Tab = keyof typeof TABS
 
 function useHashTab(): [Tab, (t: Tab) => void] {
@@ -58,11 +60,13 @@ export default function App() {
       </header>
       <main>
         {bots.error && <p className="alert">봇 정보를 불러오지 못했습니다: {bots.error.message}</p>}
-        {bots.data && !bots.data.length && tab !== 'logs' && (
-          <p className="muted">봇이 없습니다. CLI로 만드세요: `python -m quant_lab.cli bot create ...`</p>
+        {bots.data && !bots.data.length && (tab === 'dashboard' || tab === 'chart') && (
+          <p className="muted">봇이 없습니다. 봇 설정 탭에서 만드세요.</p>
         )}
         {tab === 'dashboard' && bots.data?.map((b) => <BotPanel key={b.id} bot={b} />)}
         {tab === 'chart' && bots.data?.map((b) => <PriceChart key={b.id} bot={b} />)}
+        {tab === 'backtest' && <BacktestView />}
+        {tab === 'settings' && bots.data && <SettingsView bots={bots.data} />}
         {tab === 'logs' && <EventLog />}
       </main>
     </>

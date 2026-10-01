@@ -328,8 +328,16 @@ def _commit_ok(
             run_id=outcome.run_id,
             data=to_jsonable(f),
         )
+    action = outcome.decision.action if outcome.decision else None
     add_event(
-        session, now, "INFO", "decision", outcome.detail, bot_id=bot.id, run_id=outcome.run_id
+        session,
+        now,
+        "INFO",
+        "decision",
+        outcome.detail,
+        bot_id=bot.id,
+        run_id=outcome.run_id,
+        data={"action": action} if action else None,
     )
     session.commit()
     return outcome
