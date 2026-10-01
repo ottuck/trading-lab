@@ -1,97 +1,70 @@
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
+import { api } from './api'
+import { BotPanel } from './components/BotPanel'
+import { EventLog } from './components/EventLog'
+import { PriceChart } from './components/PriceChart'
+import { ago } from './format'
 
-type Health = {
-  version: string
-  db: 'ok' | 'down'
-  worker: { alive: boolean; worker_id: string | null; last_seen_at: string | null } | null
-}
+const TABS = { dashboard: '대시보드', chart: '차트', logs: '로그' } as const
+type Tab = keyof typeof TABS
 
-const POLL_MS = 10_000
-
-function useHealth() {
-  const [health, setHealth] = useState<Health | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
+function useHashTab(): [Tab, (t: Tab) => void] {
+  const read = () => (location.hash.slice(1) in TABS ? (location.hash.slice(1) as Tab) : 'dashboard')
+  const [tab, setTab] = useState<Tab>(read)
   useEffect(() => {
-    let cancelled = false
-    const load = async () => {
-      try {
-        const res = await fetch('/api/health')
-        const body = (await res.json()) as Health
-        if (!cancelled) {
-          setHealth(body)
-          setError(null)
-        }
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e))
-      }
-    }
-    void load()
-    const id = setInterval(load, POLL_MS)
-    return () => {
-      cancelled = true
-      clearInterval(id)
-    }
+    const onHash = () => setTab(read())
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
   }, [])
-
-  return { health, error }
+  return [tab, (t) => (location.hash = t)]
 }
 
-function Status({ ok, label }: { ok: boolean; label: string }) {
-  return <span style={{ color: ok ? 'var(--ok)' : 'var(--bad)' }}>● {label}</span>
+function SystemStatus() {
+  const { data, error } = useQuery({ queryKey: ['health'], queryFn: api.health })
+  if (error) return <span className="dot down">API 연결 실패</span>
+  if (!data) return null
+  const w = data.worker
+  return (
+    <span className="status">
+      <span className={`dot ${data.db === 'ok' ? 'up' : 'down'}`}>DB</span>
+      <span className={`dot ${w?.alive ? 'up' : 'down'}`} title={w?.last_seen_at ?? ''}>
+        Worker {w?.alive ? '' : `정지${w?.last_seen_at ? ` (${ago(w.last_seen_at)})` : ''}`}
+      </span>
+      <span className="muted small">v{data.version}</span>
+    </span>
+  )
 }
 
 export default function App() {
-  const { health, error } = useHealth()
-  const worker = health?.worker
+  const [tab, setTab] = useHashTab()
+  const bots = useQuery({ queryKey: ['bots'], queryFn: api.bots })
 
   return (
-    <main>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <h1 style={{ margin: 0, fontSize: 22 }}>Quant Lab</h1>
-        <span
-          style={{
-            color: 'var(--dry)',
-            border: '1px solid var(--dry)',
-            borderRadius: 4,
-            padding: '0 6px',
-            fontSize: 12,
-            fontWeight: 600,
-          }}
-        >
-          DRY RUN
-        </span>
+    <>
+      <header>
+        <div className="brand">
+          <strong>Quant Lab</strong>
+          <span className="badge dry">DRY RUN</span>
+        </div>
+        <nav>
+          {(Object.keys(TABS) as Tab[]).map((t) => (
+            <button key={t} className={t === tab ? 'active' : ''} onClick={() => setTab(t)}>
+              {TABS[t]}
+            </button>
+          ))}
+        </nav>
+        <SystemStatus />
       </header>
-
-      <section
-        style={{
-          marginTop: 24,
-          padding: 16,
-          background: 'var(--panel)',
-          border: '1px solid var(--border)',
-          borderRadius: 8,
-        }}
-      >
-        <h2 style={{ margin: '0 0 12px', fontSize: 16 }}>시스템 상태</h2>
-        {error && <Status ok={false} label={`API 연결 실패: ${error}`} />}
-        {!error && !health && <span style={{ color: 'var(--muted)' }}>불러오는 중…</span>}
-        {health && (
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 6 }}>
-            <li>
-              <Status ok={health.db === 'ok'} label={`DB ${health.db === 'ok' ? '정상' : '연결 안 됨'}`} />
-            </li>
-            <li>
-              <Status ok={!!worker?.alive} label={`Worker ${worker?.alive ? '동작 중' : '정지'}`} />
-              {worker?.last_seen_at && (
-                <span style={{ color: 'var(--muted)', marginLeft: 8 }}>
-                  마지막 신호 {new Date(worker.last_seen_at).toLocaleString('ko-KR')}
-                </span>
-              )}
-            </li>
-            <li style={{ color: 'var(--muted)' }}>버전 {health.version}</li>
-          </ul>
+      <main>
+        {bots.error && <p className="alert">봇 정보를 불러오지 못했습니다: {bots.error.message}</p>}
+        {bots.data && !bots.data.length && tab !== 'logs' && (
+          <p className="muted">봇이 없습니다. CLI로 만드세요: `python -m quant_lab.cli bot create ...`</p>
         )}
-      </section>
-    </main>
+        {tab === 'dashboard' && bots.data?.map((b) => <BotPanel key={b.id} bot={b} />)}
+        {tab === 'chart' && bots.data?.map((b) => <PriceChart key={b.id} bot={b} />)}
+        {tab === 'logs' && <EventLog />}
+      </main>
+    </>
   )
 }

@@ -145,13 +145,23 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | 비용 | 약 $12/월 (공인 IPv4 포함 번들. 생성 시 서울 리전 가격 확인). Tailscale·GitHub 비공개 저장소는 무료 |
 | 고정 IP | Lightsail Static IP를 붙이고 그 IP를 토스 허용 IP에 등록 |
 | 방화벽 | Lightsail 방화벽 인바운드 전부 차단. Tailscale 설치 후 SSH도 Tailscale로만 접속 |
-| 비밀값 | 서버의 `/etc/quant-lab/env` (권한 600). 토스 키는 worker 컨테이너에만 주입. **토스 키 만료 2027-09-28** (발급 2026-09-28, 1년). 만료 전 WTS에서 재발급하고 env 교체 |
-| 배포 (MWP) | 서버에서 `git pull` → `docker compose -f deploy/compose.prod.yaml up -d --build`. 저장소는 읽기 전용 deploy key로 받음 |
+| 비밀값 | 서버의 `/etc/quant-lab/env`(DB 비밀번호·`DATABASE_URL`, 부트스트랩이 생성)와 `/etc/quant-lab/toss.env`(토스 키, **worker 컨테이너에만** 주입). 둘 다 권한 600. **토스 키 만료 2027-09-28** (발급 2026-09-28, 1년). 만료 전 WTS에서 재발급하고 `toss.env` 교체 |
+| 배포 (MWP) | 서버에서 `bash deploy/deploy.sh`: `main` pull → 이미지 빌드(프론트 포함 단일 이미지) → `compose up -d`. 저장소는 읽기 전용 deploy key로 받음. Compose 프로젝트 이름은 `quant-lab-prod` |
 | 마이그레이션 | `migrate` 일회성 서비스가 성공해야 api·worker가 시작 (`depends_on: service_completed_successfully`) |
-| 백업 | 매일 `pg_dump`를 서버 디스크에 7일 보관 + Lightsail 자동 스냅샷. 파괴적 마이그레이션 전에는 수동 덤프 |
+| 백업 | `deploy/backup.sh`를 cron이 매일 03:00 UTC(12:00 KST, 평가 시각과 겹치지 않음)에 실행, `pg_dump` 7일 보관 + Lightsail 자동 스냅샷. 파괴적 마이그레이션 전에는 수동 덤프 |
 | 모니터링 | 화면의 heartbeat·마지막 실행 표시와 `docker compose logs`. 외부 알림은 MWP 이후 |
 
-배포 자동화(GitHub Actions에서 Tailscale로 SSH 배포)와 IaC는 수동 배포가 번거로워지면 도입한다. 서버 준비 절차는 `deploy/README.md`에 명령어 단위로 남겨 재현할 수 있게 한다.
+배포 자동화(GitHub Actions에서 Tailscale로 SSH 배포)와 IaC는 수동 배포가 번거로워지면 도입한다.
+
+**서버 준비 절차** (재현 가능하게 스크립트로 둔다):
+
+1. Lightsail 서울 2GB Ubuntu 24.04 생성, Static IP 연결
+2. `git clone` 후 `sudo bash deploy/bootstrap.sh`: Docker·Compose·Tailscale 설치, 스왑 2GB, `/etc/quant-lab` 비밀값 파일, 백업 cron
+3. `sudo tailscale up --ssh`, `sudo tailscale serve --bg 8000` (tailnet 안에서만 HTTPS)
+4. `toss.env`에 키 입력, 서버 송신 IP를 토스 허용 IP에 추가
+5. 로컬에서 토스를 호출하는 프로세스를 모두 멈춘 뒤 `bash deploy/deploy.sh`
+6. CLI로 봇 생성(`docker compose -f deploy/compose.prod.yaml exec api python -m quant_lab.cli bot create ...`) 후 화면에서 시작
+7. Lightsail 방화벽 인바운드 전부 닫기 (SSH도 Tailscale로)
 
 ### 로컬 개발
 
@@ -192,9 +202,9 @@ npm --prefix frontend run dev
 
 | 화면 | MWP에서 할 일 | 단계 |
 | --- | --- | --- |
-| 대시보드 | 봇 상태, Worker heartbeat, 마지막/다음 실행, 데이터 갱신 시각, 모의 잔고·손익·포지션, 마지막 판단 이유, 제어 버튼 | Phase 4 |
-| 로그 | `run_id`·시각·심각도별 판단·위험 검사·주문·오류 | Phase 4 |
-| 종목·차트 | 캔들, 신호·체결 마커, 데이터 출처·봉 시각·지연 여부 | Phase 4 |
+| 대시보드 | 봇 상태, Worker heartbeat, 마지막/다음 실행, 데이터 갱신 시각, 모의 잔고·손익·포지션, 마지막 판단 이유, 제어 버튼 | Phase 4 완료 |
+| 로그 | 시각·심각도별 판단·체결·오류, 실행 ID | Phase 4 완료 |
+| 종목·차트 | 캔들·거래량, SMA 선, 신호·모의 체결 마커, 데이터 출처·마지막 봉 | Phase 4 완료 |
 | 백테스트 | 조건 선택, 자산 곡선, 수익률·최대 낙폭, 거래 목록, 매수 후 보유 비교 | Phase 5 |
 | 전략·설정 | 파라미터, 위험 한도, 초안과 실행 중 버전 구분 | Phase 5 |
 
@@ -209,6 +219,7 @@ npm --prefix frontend run dev
 | 봉 주기 | **결정: 일봉** (2026-10-01) | 정규장 마감 + 2시간 뒤 평가 |
 | 초기 모의 현금 | **결정: $10,000** | |
 | 수수료·슬리피지 | **결정: 0.1% · 5bp** | 수수료는 실제 요율 확인 시 갱신 |
+| 백테스트 엔진 | **제안: 자체 엔진 유지** (2026-10-01, 사용자 확인 대기) | QuantConnect LEAN(Docker)은 검토 후 보류. 판단·체결 함수를 백테스트와 DRY RUN이 공유하는 구조(replay 일치 검증)를 지키기 위해서다. 장중·다종목·복잡한 주문으로 넓힐 때 연구용 교차 검증 도구로 다시 검토 |
 
 ## 10. 작업 방식
 

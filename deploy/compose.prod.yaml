@@ -1,0 +1,69 @@
+# 운영 구성 (project.md 6절). 서버에서: docker compose -f deploy/compose.prod.yaml up -d --build
+# 비밀값은 저장소 밖 ${QL_ENV_DIR:-/etc/quant-lab}에 둔다.
+#   env      : POSTGRES_PASSWORD, DATABASE_URL (api·worker·migrate·db)
+#   toss.env : TOSS_CLIENT_ID, TOSS_CLIENT_SECRET (worker만)
+name: quant-lab-prod
+
+x-app: &app
+  image: quant-lab:latest
+  env_file: ${QL_ENV_DIR:-/etc/quant-lab}/env
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    env_file: ${QL_ENV_DIR:-/etc/quant-lab}/env
+    environment:
+      POSTGRES_USER: quant
+      POSTGRES_DB: quant_lab
+      TZ: UTC
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quant -d quant_lab"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    <<: *app
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    # 호스트의 localhost에만 연다. 외부 접근은 tailscale serve가 담당한다.
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  worker:
+    <<: *app
+    command: ["python", "-m", "quant_lab.worker"]
+    env_file:
+      - ${QL_ENV_DIR:-/etc/quant-lab}/env
+      - ${QL_ENV_DIR:-/etc/quant-lab}/toss.env
+    environment:
+      WORKER_MARKET_SOURCE: ${WORKER_MARKET_SOURCE:-toss}
+    # SIGTERM 뒤 현재 평가를 마칠 시간을 준다.
+    stop_grace_period: 30s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  db-data:
