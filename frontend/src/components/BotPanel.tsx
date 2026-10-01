@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, type Bot, type BotState, type CommandKind } from '../api'
 import { ago, kstTime, money, percent, signedMoney, tone } from '../format'
+import { sourceLabel } from '../source'
 
 const STATE_LABEL: Record<BotState, string> = {
   RUNNING: '실행 중',
@@ -131,7 +132,7 @@ export function BotPanel({ bot }: { bot: Bot }) {
         <Stat
           label="데이터 최신 거래일"
           value={bot.data_latest_date ?? '—'}
-          sub={bot.data_fetched_at ? `토스 일봉 · 수신 ${ago(bot.data_fetched_at)}` : undefined}
+          sub={bot.data_fetched_at ? `${bot.data_source === 'toss' ? '토스 일봉' : sourceLabel(bot.data_source)} · 수신 ${ago(bot.data_fetched_at)}` : undefined}
         />
       </div>
       {run?.detail && run.status !== 'OK' && <p className="notice">{run.detail}</p>}

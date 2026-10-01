@@ -131,6 +131,12 @@ def _bot_view(session: Session, bot: BotRow) -> BotView:
         last_run=RunView.model_validate(last_run, from_attributes=True) if last_run else None,
         data_latest_date=data_latest,
         data_fetched_at=data_fetched,
+        data_source=session.scalar(
+            select(DailyBarRow.source)
+            .where(DailyBarRow.symbol == bot.symbol)
+            .order_by(DailyBarRow.session_date.desc())
+            .limit(1)
+        ),
     )
 
 
