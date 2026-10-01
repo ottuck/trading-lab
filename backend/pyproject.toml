@@ -5,12 +5,14 @@ description = "토스증권 시세 기반 퀀트 전략 DRY RUN 도구"
 requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.16",
+    "exchange-calendars>=4.13.2",
     "fastapi>=0.118",
     "httpx>=0.28",
     "psycopg[binary]>=3.2",
     "pydantic>=2.11",
     "pydantic-settings>=2.10",
     "sqlalchemy>=2.0.40",
+    "tzdata>=2026.4",
     "uvicorn[standard]>=0.37",
 ]
 
@@ -18,7 +20,9 @@ dependencies = [
 dev = [
     "httpx2>=2.13.1",
     "mypy>=1.18",
+    "pandas-stubs>=3.0.5.260914",
     "pytest>=8.4",
+    "respx>=0.23.1",
     "ruff>=0.13",
 ]
 
@@ -41,7 +45,7 @@ plugins = ["pydantic.mypy"]
 files = ["src", "tests", "migrations"]
 
 [[tool.mypy.overrides]]
-module = ["alembic.*"]
+module = ["alembic.*", "exchange_calendars.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

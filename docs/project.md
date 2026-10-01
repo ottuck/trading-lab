@@ -103,7 +103,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | 테이블 | 내용 |
 | --- | --- |
 | `instruments` | 종목, 시장, 레버리지 배수, 활성 여부 |
-| `bars` | `(symbol, interval, bar_key)` PK. 일봉은 미국 거래일(date), 1분봉은 종료 시각(UTC). OHLCV(`numeric`), `adjusted`, `fetched_at` |
+| `daily_bars` | `(symbol, session_date)` PK, 미국 거래일 기준. OHLCV(`numeric`, 정밀도 제한 없음, 수정주가), `source`, `fetched_at`. 1분봉은 필요해질 때 별도 테이블 |
 | `strategy_versions` | 전략 이름, 파라미터 JSON, 생성 시각 (변경 불가, 새 버전으로만 추가) |
 | `bots` | 종목, 실행 중 전략 버전, 상태, 위험 한도, `next_evaluation_at` |
 | `commands` | 화면 명령 큐 (`START`, `PAUSE`, `STOP`, `RUN_ONCE`, `BACKTEST`), 처리 상태 |
