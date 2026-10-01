@@ -38,3 +38,6 @@ Thumbs.db
 *.tfstate.*
 *.tfvars
 crash.log
+
+# 운영 비밀값 (deploy/compose.prod.yaml이 읽음)
+.secrets/
