@@ -5,7 +5,7 @@
 
 ## 현재 위치
 
-**Phase 0 대기.** 저장소와 설계 문서만 있다. 다음 작업은 토스 API 실제 호출 검증이다.
+**Phase 0 진행.** 탐색 스크립트(`scripts/toss_probe.py`) 준비 완료. 개발 PC 허용 IP 등록과 `.env` 작성 후 실제 호출 검증.
 
 ## 진행 순서
 
@@ -13,7 +13,7 @@
 
 | Phase | 이름 | 상태 | 완료 기준 |
 | --- | --- | --- | --- |
-| 0 | 토스 API 검증 | 대기 | [tossApi.md](tossApi.md) 6절의 확인 항목 전부 기록, 첫 종목·봉 주기 결정 |
+| 0 | 토스 API 검증 | 진행 | [tossApi.md](tossApi.md) 6절의 확인 항목 전부 기록, 첫 종목·봉 주기 결정 |
 | 1 | 프로젝트 기반 | 대기 | 새 PC에서 README대로 설치·테스트 통과, CI 녹색 |
 | 2 | 시세·전략·백테스트 (CLI) | 대기 | 같은 조건 재실행 결과 일치, 미래 데이터 참조 테스트 통과 |
 | 3 | Worker DRY RUN (로컬) | 대기 | 중복 주문 0건, 장애 주입 시 신규 주문 차단, 재시작 후 `PAUSED` |
@@ -24,8 +24,10 @@
 
 목표: 설계의 전제가 맞는지 코드를 쓰기 전에 확인한다.
 
-- [ ] 로컬 도구 설치: Python 3.13 + uv (현재 개발 PC에 Python 없음), Docker Desktop
-- [ ] 토스 WTS에서 Open API client 발급, 허용 IP 개수 제한·client 다중 발급 가능 여부 확인
+- [x] 로컬 도구 설치: uv 0.12 (winget), Python 3.13.15 (`uv python install`)
+- [ ] Docker Desktop (Phase 1 전까지)
+- [x] 토스 WTS에서 Open API client 발급
+- [ ] 허용 IP 개수 제한·client 다중 발급 가능 여부 확인 (WTS 화면)
 - [ ] 개발 PC 공인 IP 등록 후 탐색 스크립트(`scripts/toss_probe.py`, 키는 환경변수)로 호출
   - [ ] 토큰 발급, `expires_in` 확인
   - [ ] 관심 목록 후보의 `/stocks` 응답 (지원 여부, `leverageFactor`)
