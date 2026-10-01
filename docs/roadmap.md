@@ -5,7 +5,7 @@
 
 ## 현재 위치
 
-**Phase 0 진행.** 탐색 스크립트(`scripts/toss_probe.py`) 준비 완료. 개발 PC 허용 IP 등록과 `.env` 작성 후 실제 호출 검증.
+**Phase 0 거의 완료.** 토스 API 실측을 마치고 첫 종목(`QQQ`)·봉 주기(일봉)를 정했다. 남은 것: 일봉 확정 시점 측정(KST 05:00 이후), 허용 IP 개수·client 다중 발급 확인. 이 두 가지는 Phase 1과 병행한다.
 
 ## 진행 순서
 
@@ -27,15 +27,15 @@
 - [x] 로컬 도구 설치: uv 0.12 (winget), Python 3.13.15 (`uv python install`)
 - [ ] Docker Desktop (Phase 1 전까지)
 - [x] 토스 WTS에서 Open API client 발급
-- [ ] 허용 IP 개수 제한·client 다중 발급 가능 여부 확인 (WTS 화면)
-- [ ] 개발 PC 공인 IP 등록 후 탐색 스크립트(`scripts/toss_probe.py`, 키는 환경변수)로 호출
-  - [ ] 토큰 발급, `expires_in` 확인
-  - [ ] 관심 목록 후보의 `/stocks` 응답 (지원 여부, `leverageFactor`)
-  - [ ] `VOO`·`QQQ` 일봉 전체 페이지네이션 (첫 봉 날짜, 개수)
-  - [ ] 1분봉 보존 기간
-  - [ ] 미국 장 마감 후 일봉 확정 시점 (마감 직후부터 반복 조회)
-  - [ ] rate limit 헤더 실제 값
-- [ ] 결과를 `tossApi.md`에 반영하고 첫 종목·봉 주기를 `project.md` 9절에서 확정
+- [ ] 허용 IP 개수 제한·client 다중 발급 가능 여부 확인 (WTS 화면, 사용자 확인)
+- [x] 개발 PC 공인 IP 등록 후 탐색 스크립트(`scripts/toss_probe.py`, 키는 환경변수)로 호출
+  - [x] 토큰 발급, `expires_in` 확인
+  - [x] 관심 목록 후보의 `/stocks` 응답 (지원 여부, `leverageFactor`)
+  - [x] `VOO`·`QQQ` 일봉 전체 페이지네이션 (첫 봉 날짜, 개수)
+  - [x] 1분봉 보존 기간
+  - [ ] 미국 장 마감 후 일봉 확정 시점: KST 05:00 직후부터 `uv run scripts/toss_probe.py finality`를 몇 차례 실행해 OHLC가 멈추는 시각 기록
+  - [x] rate limit 헤더 실제 값
+- [x] 결과를 `tossApi.md` 6·7절에 반영, 첫 종목 `QQQ`·봉 주기 일봉을 `project.md` 9절에 기록
 
 산출물: 문서 갱신 PR 1개, 탐색 스크립트(실제 응답 데이터는 커밋하지 않음).
 
@@ -90,7 +90,6 @@
 | --- | --- |
 | 알림 | 텔레그램 봇. 오류·주문·heartbeat 끊김 |
 | 다종목 자동 실행 | 2–3종목. 포트폴리오 단위 위험 한도 |
-| 장기 백테스트 데이터 | 2021-11 이전 데이터를 위한 별도 소스 검토 (데이터 이용 약관 확인) |
 | 레버리지 ETF | 별도 위험 한도 검증 후 |
 | 실시간 시세 | WebSocket 담당자 1개, 재연결·재구독 (tossApi.md 5절) |
 | 전략 편집기 | 제한된 노드(시세·지표·조건·위험·주문·알림)부터 |

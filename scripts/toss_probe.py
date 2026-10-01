@@ -129,7 +129,7 @@ def fetch_all_candles(t: Toss, symbol: str, interval: str, max_pages: int) -> tu
 def check_daily(t: Toss) -> None:
     section("일봉 전체 이력 /candles 1d")
     for sym in FIRST_SYMBOLS:
-        candles, pages, complete = fetch_all_candles(t, sym, "1d", max_pages=30)
+        candles, pages, complete = fetch_all_candles(t, sym, "1d", max_pages=80)
         if not candles:
             continue
         ts = sorted(c["timestamp"] for c in candles)
@@ -138,6 +138,9 @@ def check_daily(t: Toss) -> None:
             f"{sym}: {len(candles)}개, {pages}페이지, 끝까지={complete}, "
             f"가장 오래된={ts[0]}, 최신={ts[-1]}, 중복 timestamp={dupes}"
         )
+        days = [datetime.fromisoformat(x).date() for x in ts]
+        gaps = [(a, b) for a, b in zip(days, days[1:]) if (b - a).days > 4]
+        print(f"  4일 넘게 빈 구간 {len(gaps)}개: {gaps[:8]}")
         latest = max(candles, key=lambda c: c["timestamp"])
         print(f"  최신 봉 필드 예: { {k: latest[k] for k in ('timestamp', 'openPrice', 'closePrice', 'volume', 'currency')} }")
         raw = t.get("/api/v1/candles", "MARKET_DATA_CHART", symbol=sym, interval="1d", count=1, adjusted="false")
@@ -205,6 +208,30 @@ def check_latest_daily_finality(t: Toss) -> None:
             print(f"{now} {sym} {c['timestamp']} O={c['openPrice']} H={c['highPrice']} L={c['lowPrice']} C={c['closePrice']} V={c['volume']}")
 
 
+def check_adjustment(t: Toss) -> None:
+    section("수정주가 (NVDA 2024-06-10 10:1 분할 전후)")
+    for adjusted in ("true", "false"):
+        resp = t.get(
+            "/api/v1/candles", "MARKET_DATA_CHART", symbol="NVDA", interval="1d",
+            count=6, before="2024-06-12T00:00:00Z", adjusted=adjusted,
+        )
+        if resp.status_code != 200:
+            print(f"adjusted={adjusted} 실패:", error_summary(resp))
+            continue
+        rows = [(c["timestamp"][:10], c["closePrice"], c["volume"]) for c in resp.json()["result"]["candles"]]
+        print(f"adjusted={adjusted}: {sorted(rows)}")
+
+
+def check_today_bar(t: Toss) -> None:
+    section("진행 중인 일봉 / 1분봉 공백")
+    resp = t.get("/api/v1/candles", "MARKET_DATA_CHART", symbol="VOO", interval="1m", count=30)
+    if resp.status_code == 200:
+        ts = sorted(datetime.fromisoformat(c["timestamp"]) for c in resp.json()["result"]["candles"])
+        missing = sum(int((b - a).total_seconds() // 60) - 1 for a, b in zip(ts, ts[1:]))
+        zero_vol = sum(1 for c in resp.json()["result"]["candles"] if c["volume"] in ("0", "0.0"))
+        print(f"최근 1분봉 30개 구간 {ts[0]} ~ {ts[-1]}: 빠진 분 {missing}개, 거래량 0 봉 {zero_vol}개")
+
+
 def check_rate_headers(t: Toss) -> None:
     section("Rate limit 헤더 (그룹별 마지막 응답)")
     for group, headers in t.rate_headers.items():
@@ -218,6 +245,8 @@ CHECKS = {
     "minute": check_minute_retention,
     "calendar": check_calendar,
     "finality": check_latest_daily_finality,
+    "adjust": check_adjustment,
+    "today": check_today_bar,
     "rate": check_rate_headers,
 }
 
