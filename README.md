@@ -6,6 +6,42 @@
 | --- | --- |
 | [docs/project.md](docs/project.md) | 설계의 단일 출처: 범위, 원칙, 아키텍처, 기술 스택, 인프라, 작업 방식 |
 | [docs/roadmap.md](docs/roadmap.md) | 단계별 계획과 현재 진행 상태 |
-| [docs/tossApi.md](docs/tossApi.md) | 토스증권 Open API 조사 결과와 확인할 항목 |
+| [docs/tossApi.md](docs/tossApi.md) | 토스증권 Open API 조사·실측 결과 |
 
-현재 상태: 설계 완료, **Phase 0 (토스 API 검증) 대기**. 애플리케이션 코드는 아직 없습니다.
+## 로컬 실행
+
+필요한 도구: [uv](https://docs.astral.sh/uv/), Python 3.14, Node.js LTS, Docker Desktop.
+
+```bash
+cp .env.example .env                      # 필요하면 값 채우기
+docker compose up -d --wait db            # PostgreSQL 17
+cd backend
+uv sync
+uv run alembic upgrade head
+uv run uvicorn quant_lab.api.main:app --reload   # http://localhost:8000/api/health
+uv run python -m quant_lab.worker                # 다른 터미널
+cd ../frontend
+npm install
+npm run dev                                       # http://localhost:5173
+```
+
+## 검사
+
+```bash
+cd backend
+uv run ruff check . && uv run ruff format --check .
+uv run python -m mypy
+uv run pytest            # DB 테스트는 compose DB의 quant_lab_test를 사용, DB가 없으면 건너뜀
+cd ../frontend
+npm run lint && npm run build
+```
+
+Windows에서 `mypy.exe`가 애플리케이션 제어 정책으로 막히면 위처럼 `python -m mypy`로 실행합니다.
+
+## 토스 API 탐색
+
+```bash
+uv run scripts/toss_probe.py            # 읽기 전용 시세·종목·장 운영 API만 호출
+```
+
+실행할 때마다 토큰을 새로 발급하므로, 같은 client로 돌고 있는 서버 Worker의 토큰이 무효화됩니다.
