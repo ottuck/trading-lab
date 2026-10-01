@@ -59,7 +59,7 @@ function RunForm({ onDone }: { onDone: (id: string) => void }) {
         첫 판단일
         <input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
       </label>
-      <button type="submit" disabled={run.isPending}>
+      <button type="submit" className="primary" disabled={run.isPending}>
         {run.isPending ? '실행 중…' : '백테스트 실행'}
       </button>
       {run.error && <span className="down small">{run.error.message}</span>}
@@ -74,7 +74,7 @@ function EquityChart({ detail }: { detail: BacktestDetail }) {
     const chart = createChart(el.current, {
       autoSize: true,
       layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: cssVar('--muted') },
-      grid: { vertLines: { color: cssVar('--border') }, horzLines: { color: cssVar('--border') } },
+      grid: { vertLines: { color: 'rgba(255,255,255,0.05)' }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
       rightPriceScale: { mode: 1 }, // 로그 스케일: 긴 기간의 낙폭을 비교하기 쉽다
     })
     const strat = chart.addSeries(LineSeries, { color: cssVar('--accent'), lineWidth: 2, title: '전략' })

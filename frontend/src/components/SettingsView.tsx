@@ -126,7 +126,7 @@ function BotSettings({ bot }: { bot: Bot }) {
         }}
       >
         <ConfigFields draft={draft} onChange={setDraft} />
-        <button type="submit" disabled={running || save.isPending}>
+        <button type="submit" className="primary" disabled={running || save.isPending}>
           저장
         </button>
         {save.isSuccess && <span className="up small">저장했습니다. 다음 판단부터 적용됩니다.</span>}
@@ -174,7 +174,7 @@ function NewBot() {
           <input value={cash} onChange={(e) => setCash(e.target.value)} size={8} />
         </label>
         <ConfigFields draft={draft} onChange={setDraft} />
-        <button type="submit" disabled={create.isPending}>
+        <button type="submit" className="primary" disabled={create.isPending}>
           만들기
         </button>
         {create.error && <span className="down small">{create.error.message}</span>}
