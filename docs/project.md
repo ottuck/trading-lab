@@ -1,114 +1,224 @@
-# Trading Lab 프로젝트
+# Quant Lab 설계
 
-> 2026-10-01 기준 설계. 개인용 미국 주식 전략 실험·모의 자동매매 도구다. 웹·API는 Railway, 운영 DB는 Supabase Free로 정하고 [토스 호출 Worker의 배치](infrastructure.md)는 연동 단계에서 확정한다. **구현과 배포는 사용자의 재개 요청 전까지 보류**한다. 아직 애플리케이션 코드와 운영 리소스는 없다.
+> **이 문서가 설계의 단일 출처다.** 일정과 진행 상태는 [roadmap.md](roadmap.md), 토스 API 조사 결과는 [tossApi.md](tossApi.md)에 둔다.
+> 결정이 바뀌면 그 변경을 담은 PR에서 이 문서도 함께 고친다. 최종 갱신: 2026-10-01.
 
-## 1. 목표와 첫 완성 범위
+## 1. 한 줄 정의
 
-토스증권 **공식 Open API의 미국 주식 시세**를 받아 전략을 평가하고, 신호·모의 주문·체결·포지션·손익과 판단 이유를 한 화면에서 추적한다. 첫 완성 목표(MWP)는 실제 계좌에 주문하지 않는 **내부 DRY RUN**이다. 토스 API의 종목·봉·거래일 지원 여부는 구현 중 공식 문서와 실제 조회로 검증한다.
+토스증권 공식 Open API의 미국 주식 시세로 규칙 기반 전략을 돌리고, **실제 주문 없이 내부 모의 체결(DRY RUN)**로 신호·주문·포지션·손익과 판단 이유를 추적하는 개인용 도구. 최종 목표는 퀀트 자동매매이며, 실거래는 DRY RUN이 검증된 뒤 별도 단계로 연다.
 
-```text
-시장 데이터 → 완료 봉·지표 → 전략 판단 → 위험 검사
-            → 내부 모의 주문·체결 → 현금·포지션 → 화면·실행 기록
-```
+## 2. 첫 완성 범위 (MWP)
 
-- 사용자 1명, 미국 상장 종목, USD, 정수 수량, 매수·매도만 다룬다. 회원가입·소셜 기능·뉴스·종목 랭킹·선물·옵션·암호화폐는 범위 밖이다.
-- 관심 목록 **후보**는 `VOO`, `QQQ`, `QLD`, `TQQQ`, `SOXL`, `NVDA`, `GLD`, `MAGS`, `EWY`, `EWJ`다. 첫 자동 실행은 `VOO` 또는 `QQQ` 중 **1종목**이며, 데이터 지원 여부가 확인되면 목록을 확정한다. 레버리지 ETF는 별도 위험 한도 검증 전까지 조회·백테스트만 한다.
-- 하나의 봉 주기와 규칙 전략 1개를 백테스트와 정기 DRY RUN에 공통으로 사용한다. 첫 전략은 이동평균 교차 또는 Donchian 돌파 등을 후보로 두고 아직 고르지 않았다.
-- 첫 주문 모델은 내부 모의 시장가·전량 체결이다. 체결 시점·가격, 수수료·슬리피지·기업행동 가정을 실행 기록에 남기며 실거래 성과로 표시하지 않는다.
-- MWP 완료 조건: 관심 목록 데이터 조회, 1종목 전략·백테스트·정기 실행, 중복 모의 주문 방지, 재시작 시 상태 복구, 모의 현금·포지션·손익, 화면의 상태 제어·판단 근거·오류 표시다. 데이터가 지연되거나 API가 실패하면 신규 모의 주문을 멈춘다.
-
-## 2. 사용자 화면과 기능
-
-첫 화면은 **A형 운영 대시보드**다. `정상 실행 여부 → 마지막 판단 이유 → 모의 포지션과 최근 기록` 순서로 읽히게 한다. 데스크톱을 기준으로 만들고, 모바일에서는 상태 확인과 중지 조작을 우선한다.
-
-| 화면 | MWP에서 할 일 |
+| 포함 | 제외 (MWP 이후) |
 | --- | --- |
-| 대시보드 | `DRY RUN`·봇 상태, 마지막/다음 실행, 데이터 갱신 시각, 모의 잔고·손익·포지션, 마지막 판단 이유, 시작·일시정지·중지·수동 1회 실행 |
-| 종목·차트 | 관심 종목, 캔들·거래량, 신호·모의 체결 마커, 데이터 출처·봉 시각·지연 여부 |
-| 전략·설정 | 첫 전략의 종목·파라미터·주문 크기·위험 한도, 저장된 초안과 실행 중 버전 구분 |
-| 백테스트 | 종목·기간·전략 버전·초기 자금·비용 가정 선택, 자산 곡선·수익률·최대 낙폭·거래 목록·매수 보유 비교 |
-| 주문·포지션 | 모의 주문·체결 상태, 현금·평균 단가·실현/미실현 손익, 거절 이유 |
-| 로그 | 실행 ID·시각·종목·심각도별 판단·위험 검사·주문·오류 추적 |
+| 사용자 1명, 미국 상장 종목, USD, 정수 수량, 매수·매도 | 실제 계좌 주문, 공식 모의투자(토스에 없음) |
+| 자동 실행 **1종목** (`VOO` 또는 `QQQ`) | 2종목 이상 자동 실행 |
+| 규칙 전략 **1개**, 봉 주기 **1개** | 노드형 전략 편집기, AI 전략 |
+| 백테스트와 정기 DRY RUN이 같은 전략 함수 사용 | 실시간 WebSocket 시세 |
+| 대시보드·로그 화면, 시작·일시정지·중지·수동 1회 실행 | 알림(텔레그램 등) |
+| 재시작 복구, 중복 모의 주문 방지, 데이터 이상 시 주문 차단 | 레버리지 ETF 자동 실행 (조회·백테스트만) |
 
-화면은 모의 잔고를 실제 토스 계좌와 명확히 구분한다. 시장 데이터에는 공급자, 시장 시각, 수신 시각, 시간대와 지연 여부를 붙인다. 누락·지연·장 마감·주문 한도 초과 시 신규 모의 주문을 막고 이유를 보여준다. 백테스트와 정기 실행은 **완료된 봉**만 사용하며, 백테스트의 체결은 미리 정한 다음 봉 규칙을 따른다. 동일 조건을 다시 실행할 수 있도록 데이터 범위·전략 버전·비용 가정을 저장한다.
+관심 목록 후보: `VOO`, `QQQ`, `QLD`, `TQQQ`, `SOXL`, `NVDA`, `GLD`, `MAGS`, `EWY`, `EWJ`. 토스 지원 여부를 확인한 뒤 확정한다.
 
-실행·판단 기록은 `run_id`, 전략 버전, 사용한 봉 시각, 신호와 사유, 위험 검사, 주문·체결 결과를 연결한다. 위험 설정은 종목별 보유 금액, 1회 주문 금액, 하루 주문 수·손실 한도, 주문 간 대기 시간을 포함한다. 인증 정보는 브라우저·응답·일반 로그에 노출하지 않는다.
+**MWP 완료 조건:** 서버에서 정기 DRY RUN이 **2주 동안 사람 개입 없이** 돌고, 그동안 중복 주문 0건, 데이터 이상·API 실패 때 신규 주문 차단이 기록되며, 화면에서 현재 상태와 마지막 판단 이유를 바로 이해할 수 있다.
 
-알림 채널, 2~3종목 자동 실행, 레버리지 상품의 추가 위험 한도, 노드형 전략 워크플로 편집기, 실제 계좌 주문은 **MWP 이후**다. 워크플로는 시세·지표·조건·위험 검사·주문·알림의 제한된 노드부터 검토한다. 실거래는 공식 주문 조건, 계좌·주문 상태 대조, 중복 방지와 비상 중지를 검증한 별도 단계로 둔다. 공식 모의투자 환경도 제공 여부가 확인될 때만 계획에 넣는다.
+## 3. 반드시 지킬 원칙
 
-## 3. 애플리케이션 구조
+이 프로젝트에서 틀리면 비용이 큰 것들이다. 코드 리뷰 기준으로도 쓴다.
+
+1. **실거래 코드 경로가 없다.** MWP에는 토스 주문 어댑터를 만들지 않는다. 모의 체결은 `adapters/sim`만 담당한다.
+2. **완료된 봉만 쓴다.** 진행 중인 봉으로 판단하지 않는다. 백테스트도 같은 규칙을 따르며, 판단 시점 이후의 데이터를 참조하면 테스트가 실패해야 한다.
+3. **판단과 체결을 분리한다.** T 봉으로 판단하고 T+1 봉 규칙으로 체결한다. 백테스트와 DRY RUN이 같은 규칙을 쓴다.
+4. **판단 하나에 주문은 최대 하나다.** `bot_id + symbol + bar_ts + mode`에 DB 유일 제약을 건다. Worker가 실수로 두 개 떠도 중복 주문이 생기지 않는다.
+5. **모르면 멈춘다.** 데이터 누락·지연, API 오류, 장 운영 판정 불일치, DB 오류가 있으면 신규 주문 없이 이유를 기록한다. 재시작 후 봇은 항상 `PAUSED`로 돌아오고 사람이 재개한다.
+6. **토스 토큰은 Worker 한 곳에서만 발급한다.** 토큰은 클라이언트당 1개만 유효해서, 두 곳에서 발급하면 서로를 무효화한다. API 서버는 토스를 호출하지 않는다.
+7. **돈과 시간은 정확한 타입으로 다룬다.** 가격·금액은 `Decimal`(DB `numeric`)로 저장하고 float를 쓰지 않는다. DB 시각은 UTC로 저장하고, 장 판정은 `America/New_York`, 화면 표시는 KST로 한다.
+8. **비밀값과 시세 데이터는 저장소에 넣지 않는다.** 토스 데이터는 제3자 배포가 금지돼 있다. 테스트 fixture는 합성 데이터로 만들고, 실제 응답은 로컬에서만 쓴다.
+9. **재현할 수 있어야 한다.** 모든 실행·백테스트는 전략 버전, 파라미터, 데이터 범위, 비용 가정을 함께 저장한다.
+
+## 4. 아키텍처
+
+서울 리전 VM 한 대에서 Docker Compose로 DB·API·Worker를 실행한다. 공개 인바운드 포트는 없고, 화면과 SSH 접근은 모두 Tailscale로만 한다.
 
 ```mermaid
 flowchart LR
-    UI[React 운영 화면] -->|REST·주기 조회| API[FastAPI]
-    API <--> DB[(Supabase PostgreSQL)]
-    WORKER[Python Worker 1개] <--> DB
-    WORKER -->|읽기 전용 시세·거래일| TOSS[토스증권 공식 API]
-    API -. 같은 Python 패키지 .- CORE[전략·위험 검사·모의체결]
-    WORKER -. 같은 Python 패키지 .- CORE
-    BACKTEST[Worker의 백테스트 작업] -. 같은 전략 함수 .- CORE
+    ME[본인 브라우저·폰] -->|Tailscale · HTTPS| TS[tailscale serve]
+    subgraph VM[Lightsail 서울 · 고정 IP]
+        TS --> API[api: FastAPI + React 정적 파일]
+        API <--> DB[(db: PostgreSQL)]
+        WORKER[worker: 수집·평가·모의체결] <--> DB
+    end
+    WORKER -->|고정 송신 IP · 읽기 전용| TOSS[토스증권 Open API]
 ```
 
-- **프론트엔드:** React·TypeScript·Vite와 Lightweight Charts. 빌드한 정적 파일을 Railway의 FastAPI 서비스에서 제공하고, 처음에는 REST 주기 조회로 상태를 갱신한다.
-- **API:** Railway의 FastAPI 서비스가 조회·설정·시작/중지 명령을 처리한다. 개인 화면의 인증을 포함하며 긴 전략 작업은 요청 처리 프로세스에서 실행하지 않는다.
-- **Worker:** API와 분리된 Python 실행 단위 하나가 데이터 수집·예약 평가·백테스트·위험 검사·모의체결·복구를 맡는다. 토스 호출 경로는 고정 송신 IP를 사용하며, Railway Pro 직접 연결과 Railway Hobby + 소형 서버를 연동 단계에서 비교한다. 백테스트가 예약 평가를 지연시키면 전용 프로세스로 분리한다.
-- **DB:** 운영 환경은 서울 리전 Supabase Free PostgreSQL이다. 봉 캐시, 설정 버전, 명령, 실행·신호·모의 주문·체결·포지션·이벤트와 Worker heartbeat를 저장한다. 500 MB 무료 한도에 맞춰 봉 보존 범위를 제한한다. 초기에는 Redis·Celery·Kafka를 두지 않는다.
-- **토스 어댑터:** 공식 API의 인증·시세·거래일 응답을 내부 데이터 형식으로 바꾼다. 첫 실행은 REST의 완료된 1분봉 또는 일봉을 검증해 사용하며, WebSocket 실시간 체결·호가·주문 이벤트는 MWP의 필수 경로로 두지 않는다. 실제 주문 어댑터는 구현하지 않는다. 키·토큰은 토스 호출 프로세스의 비밀 설정에만 둔다.
+### 구성 요소
 
-목표 코드 구조는 `backend/src/trading_lab/`의 `api`, `worker`, `domain`, `application`, `adapters/toss`, `adapters/sim`, `persistence`, 그리고 `backend/migrations`, `backend/tests`, `frontend`, 로컬 DB용 `compose.yaml`이다. `domain`은 FastAPI·HTTP 클라이언트·DB 모델을 직접 가져오지 않는다. API와 Worker는 같은 패키지를 다른 진입점으로 실행한다.
-
-### Worker의 한 번의 평가
-
-1. 시작 시 DB의 설정·미처리 명령·마지막 실행·모의 포지션을 읽고 heartbeat를 갱신한다. 재시작 후 자동 실행은 `PAUSED`로 두고 사용자가 확인한 뒤 재개한다.
-2. 단일 루프가 명령과 `next_evaluation_at`을 확인한다. 미국 장·휴장은 거래일 데이터로 계산하고 DB 시각은 UTC로 저장한다.
-3. 토스 데이터를 받아 완료 봉의 누락·중복·지연을 검사한다. 부적합하면 주문 없이 이유를 기록한다.
-4. 공통 전략 함수로 신호·근거를 만들고 위험 한도를 통과할 때만 내부 모의 주문을 만든다. 평가와 다음 봉 체결은 분리한다.
-5. `bot_id + symbol + bar_timestamp + mode`를 판단 고유 키로, `strategy_version`을 실행 근거로 기록한다. DB 유일 제약과 트랜잭션으로 모의 주문 중복을 막는다.
-6. 결과·현금·포지션·다음 평가 시각을 저장한다. 오류 시 신규 주문을 멈추고 `ERROR`를 기록한다. Worker가 죽으면 heartbeat 단절을 화면에 표시한다.
-
-Worker 프로세스의 생존과 봇의 `STOPPED`/`RUNNING`/`PAUSED`/`ERROR` 상태는 다르다. UI의 제어는 API가 DB에 명령을 기록하고 Worker가 반영한다. 운영 규모는 Worker 1개이며, 실수로 둘이 떠도 DB 제약으로 내부 모의 주문 중복을 막는다. 실제 외부 주문의 중복 방지는 이후 별도 설계가 필요하다.
-
-### 개발 실행 방식
-
-웹·API의 운영 장소는 [Railway 싱가포르 리전](infrastructure.md), PostgreSQL은 Supabase Free 서울 리전이다. 토스 호출 Worker는 Railway Pro 또는 소형 고정 IP 서버 중 연동 단계에서 선택한다. 개발 PC에서는 PostgreSQL을 Compose로 띄우고 API·Worker·프론트엔드를 각 터미널에서 실행하는 방식을 후보로 둔다. 아래는 **구현 후 로컬 개발 목표 명령**이며 지금 실행 가능한 명령이 아니다.
-
-```powershell
-docker compose up -d db
-uv run uvicorn trading_lab.api.main:app --reload
-uv run python -m trading_lab.worker
-npm run dev
-```
-
-로컬 Compose 실행 시 `db` healthcheck와 일회성 Alembic 마이그레이션이 성공한 뒤 API·Worker를 시작한다. 운영에서는 Supabase 연결과 마이그레이션 성공을 확인한 뒤 API·Worker를 시작한다. Worker 복제 수는 1개다. 평소 봇 중지는 UI 명령을 사용하고, 실행 플랫폼의 Worker 중지는 프로세스 긴급 중단에 사용한다. PC가 꺼지면 그곳의 로컬 Worker도 멈춘다.
-
-## 4. 구현 순서와 현재 상태
-
-**현재는 문서 정리만 진행하며 구현은 보류**한다. 사용자가 재개를 요청하면 [인프라](infrastructure.md)의 두 Worker 배치 후보와 토스 허용 IP·Supabase 연결 조건을 확인하고 단계 0부터 진행한다. 봉 주기와 토스 연동 검증 결과로 배치를 확정한다.
-
-| 단계 | 작업 | 완료 기준 |
+| 구성 요소 | 책임 | 하지 않는 일 |
 | --- | --- | --- |
-| 0. 기반 | 프로젝트 구조·로컬 DB·CI·비밀값 규칙, 첫 종목·전략·봉·체결 가정 | 새 환경의 설치·기본 검사 재현, 결정값 문서화 |
-| 1. 시세 | 토스 공식 인증·읽기 전용 클라이언트, 관심 목록·캔들·거래일, 오류·호출 제한 | 후보 종목 지원 여부와 봉 출처·시각·갱신 시각 확인 |
-| 2. 전략·백테스트 | 공통 전략, 모의체결·현금·포지션, 결과 저장 | 동일 조건 재실행 결과 일치, 미래 데이터 참조 없음, 거래별 근거 확인 |
-| 3. Worker | 수동·정기 DRY RUN, 위험 검사, 중복 방지·재시작 복구 | 1종목에서 중복 주문 없음, 데이터·API·한도 오류 시 신규 주문 차단 |
-| 4. API·화면 | 상태·차트·판단 이유·모의 포지션·로그·제어 | 화면에서 현재 상태와 마지막 판단을 이해하고 중지 가능 |
-| 5. 운영 검증 | 실패 경로·시장 시간·재시작, 선택한 인프라의 배포·복구 | 정기 실행과 중단·데이터 보존 절차 재현, 한계 문서화 |
+| **worker** | 토스 토큰 보유, 시세 수집, 장 운영 판정, 정기 평가, 위험 검사, 모의 체결, 백테스트 실행, heartbeat | HTTP 요청 처리 |
+| **api** | 화면 제공, 조회 API, 명령 기록(시작·중지·수동 실행·백테스트 요청), 설정 저장 | 토스 호출, 긴 계산 |
+| **db** | 모든 상태의 원본. 봉 캐시, 설정 버전, 명령 큐, 실행·판단·주문·체결·포지션·이벤트 | — |
+| **frontend** | 상태 확인과 제어. API를 주기적으로 조회 (MWP는 polling) | 비즈니스 로직 |
 
-아직 정할 값은 첫 종목(`VOO`/`QQQ`), 전략 파라미터, 봉 주기·평가 시각, 초기 모의 현금, 체결 시점·가격·비용 가정이다. 실거래 기능은 모든 MWP 단계에서 꺼둔다.
+API와 Worker는 같은 Python 패키지를 다른 진입점으로 실행한다. 둘은 **DB를 통해서만 대화한다.** API가 `commands` 테이블에 명령을 쓰면 Worker가 읽어 처리하고 결과를 기록한다. 큐 시스템(Redis·Celery 등)은 필요해질 때까지 두지 않는다.
 
-## 5. 작업·브랜치 원칙
+### 코드 구조
 
-- 매 작업 전에 이 문서와 [인프라](infrastructure.md)를 읽고 현재 단계·완료 기준을 확인한다. 기능·운영 결정이 바뀌면 같은 변경에서 문서를 갱신한다.
-- `dev`에서 작업 브랜치를 만들고 한국어 PR·적절한 라벨·검증 결과·제한 사항을 기록해 `dev`에 병합한다. 설계 논의 중에는 문서 변경을 하나의 PR에 모으고 설계가 정리되면 병합한다. 검증된 단계만 별도 `dev → main` PR로 올린다.
-- API 키·토큰·계좌 정보·원본 `docs/references/` 이미지는 Git에 넣지 않는다. 인증 정보가 없어도 가짜 키를 저장소에 넣지 않는다.
-- 각 단계의 결과는 API 또는 간단한 화면으로 확인한다. 공급자 기능은 공식 근거와 실제 조회 없이 확정 사실로 적지 않는다.
+```text
+backend/
+  src/quant_lab/
+    domain/          # 순수 로직: 봉, 지표, 전략, 위험 규칙, 모의 체결 규칙 (외부 의존 없음)
+    application/     # 유스케이스: 평가 1회, 백테스트, 명령 처리
+    adapters/toss/   # 토스 HTTP 클라이언트, 토큰 관리, 응답 → 도메인 변환
+    adapters/sim/    # 모의 브로커
+    persistence/     # SQLAlchemy 모델, 리포지토리
+    api/             # FastAPI 진입점
+    worker/          # Worker 진입점과 루프
+  migrations/        # Alembic
+  tests/
+frontend/            # React + Vite
+deploy/              # 운영용 compose, 서버 준비 스크립트, 백업 스크립트
+compose.yaml         # 로컬 개발용 (PostgreSQL)
+```
+
+`domain`은 FastAPI, httpx, SQLAlchemy를 import하지 않는다. 이 규칙은 테스트(import 검사)로 강제한다.
+
+### Worker 평가 1회의 흐름
+
+```text
+명령 확인 → 장 운영 판정 → 완료 봉 수집·검증 → 이전 대기 주문 체결(T+1 규칙)
+→ 전략 판단 → 위험 검사 → 모의 주문 생성 → 상태·다음 평가 시각 저장 → heartbeat
+```
+
+1. 시작하면 DB에서 설정, 미처리 명령, 마지막 실행, 포지션을 읽는다. 봇 상태는 `PAUSED`로 둔다.
+2. 단일 루프가 `commands`와 `next_evaluation_at`을 확인한다 (예: 30초마다).
+3. 봉은 누락·중복·지연·이상치를 검사한다. 부적합하면 판단 없이 `SKIPPED`와 사유를 기록한다.
+4. 판단 키에 유일 제약이 있으므로 같은 봉을 두 번 평가해도 두 번째는 충돌로 끝난다.
+5. 실패하면 봇을 `ERROR`로 바꾸고 신규 주문을 멈춘다. heartbeat가 끊기면 화면에 Worker 정지를 표시한다.
+
+봇 상태(`STOPPED`, `RUNNING`, `PAUSED`, `ERROR`)는 Worker 프로세스의 생존과 별개다.
+
+### 핵심 데이터 (초안)
+
+| 테이블 | 내용 |
+| --- | --- |
+| `instruments` | 종목, 시장, 레버리지 배수, 활성 여부 |
+| `bars` | `(symbol, interval, ts)` PK, OHLCV(`numeric`), `adjusted`, `fetched_at` |
+| `strategy_versions` | 전략 이름, 파라미터 JSON, 생성 시각 (변경 불가, 새 버전으로만 추가) |
+| `bots` | 종목, 실행 중 전략 버전, 상태, 위험 한도, `next_evaluation_at` |
+| `commands` | 화면 명령 큐 (`START`, `PAUSE`, `STOP`, `RUN_ONCE`, `BACKTEST`), 처리 상태 |
+| `runs` | 평가 1회 기록: `run_id`, 사용한 봉 시각, 결과, 오류 |
+| `decisions` | 신호, 사유, 위험 검사 결과. **유일 키** `bot_id + symbol + bar_ts + mode` |
+| `sim_orders` / `sim_fills` | 모의 주문·체결, 가격·수수료·슬리피지 가정 |
+| `positions` / `cash_ledger` | 모의 포지션, 현금 변동 원장 (잔고는 원장으로 계산) |
+| `backtests` | 조건(데이터 범위, 전략 버전, 비용)과 결과 요약·거래 목록 |
+| `events` | 심각도별 로그 (화면 로그 탭) |
+| `worker_heartbeat` | 마지막 생존 시각, 버전, 송신 IP |
+
+## 5. 기술 스택
+
+| 영역 | 선택 | 이유 |
+| --- | --- | --- |
+| 언어·패키지 | Python 3.13, **uv** | 빠른 설치와 잠금 파일 |
+| API | FastAPI, Pydantic v2, pydantic-settings | 타입 기반 검증, 설정 분리 |
+| DB 접근 | SQLAlchemy 2.0, Alembic, psycopg 3 | 마이그레이션 관리, `numeric` ↔ `Decimal` |
+| HTTP | httpx (동기 클라이언트로 시작) | Worker는 단일 루프. 비동기는 필요할 때 |
+| 데이터 처리 | pandas | 지표·백테스트 계산 |
+| 시장 달력 | `exchange_calendars` (XNYS) + 토스 캘린더 | 토스는 3영업일만 제공 |
+| 테스트·품질 | pytest, respx(HTTP 목), ruff, mypy | |
+| DB | PostgreSQL 17 (로컬·운영 모두 컨테이너) | 같은 버전으로 개발·운영 |
+| 프론트엔드 | React, TypeScript, Vite, TanStack Query, Lightweight Charts | polling·캐시, 금융 차트 |
+| 실행 | Docker Compose | 로컬 → Lightsail → OCI/홈서버로 그대로 이동 |
+| 접근 | Tailscale (`tailscale serve`로 HTTPS) | 공개 포트 0개, MWP에 로그인 구현 불필요 |
+| CI | GitHub Actions: ruff, mypy, pytest(+PostgreSQL 서비스), tsc, vite build | |
+
+## 6. 인프라와 운영
+
+### 운영 환경
+
+| 항목 | 선택 |
+| --- | --- |
+| 서버 | AWS Lightsail **서울(ap-northeast-2), 2GB RAM / 2 vCPU**, Ubuntu 24.04 LTS |
+| 비용 | 약 $12/월 (공인 IPv4 포함 번들. 생성 시 서울 리전 가격 확인). Tailscale·GitHub 비공개 저장소는 무료 |
+| 고정 IP | Lightsail Static IP를 붙이고 그 IP를 토스 허용 IP에 등록 |
+| 방화벽 | Lightsail 방화벽 인바운드 전부 차단. Tailscale 설치 후 SSH도 Tailscale로만 접속 |
+| 비밀값 | 서버의 `/etc/quant-lab/env` (권한 600). 토스 키는 worker 컨테이너에만 주입 |
+| 배포 (MWP) | 서버에서 `git pull` → `docker compose -f deploy/compose.prod.yaml up -d --build`. 저장소는 읽기 전용 deploy key로 받음 |
+| 마이그레이션 | `migrate` 일회성 서비스가 성공해야 api·worker가 시작 (`depends_on: service_completed_successfully`) |
+| 백업 | 매일 `pg_dump`를 서버 디스크에 7일 보관 + Lightsail 자동 스냅샷. 파괴적 마이그레이션 전에는 수동 덤프 |
+| 모니터링 | 화면의 heartbeat·마지막 실행 표시와 `docker compose logs`. 외부 알림은 MWP 이후 |
+
+배포 자동화(GitHub Actions에서 Tailscale로 SSH 배포)와 IaC는 수동 배포가 번거로워지면 도입한다. 서버 준비 절차는 `deploy/README.md`에 명령어 단위로 남겨 재현할 수 있게 한다.
+
+### 로컬 개발
+
+개발 PC에서는 `compose.yaml`로 PostgreSQL만 띄우고 API·Worker·프론트엔드는 각각 직접 실행한다. **토스 호출은 원칙적으로 서버 Worker만 한다.** 로컬에서 토스를 호출하려면 개발 PC 공인 IP를 허용 목록에 넣어야 하고, 같은 client로 토큰을 발급하면 서버 토큰이 무효화된다. 로컬 개발은 기본적으로 저장된 봉이나 합성 데이터로 한다. Phase 0 탐색처럼 로컬 호출이 꼭 필요하면 서버 Worker를 멈추거나 별도 client를 쓴다 (별도 client 발급 가능 여부는 [tossApi.md](tossApi.md) 확인 항목).
+
+```bash
+docker compose up -d db
+uv run alembic upgrade head
+uv run uvicorn quant_lab.api.main:app --reload
+uv run python -m quant_lab.worker
+npm --prefix frontend run dev
+```
+
+(구현 후 사용할 명령이다. 현재 코드는 없다.)
+
+### 이전 계획 (Lightsail → OCI / 홈서버)
+
+- 서버에 의존하는 것은 Compose 파일, env 파일, DB 덤프뿐이므로 새 서버에서 `pg_restore` 후 같은 Compose를 실행하면 된다.
+- **송신 IP가 바뀐다.** 새 IP를 토스 허용 목록에 먼저 등록하고, 구 서버 Worker를 멈춘 뒤 새 Worker를 시작한다. Worker를 두 곳에서 동시에 돌리지 않는다 (토큰 경합).
+- **홈서버는 가정용 회선 IP가 바뀔 수 있다.** 이때는 토스 호출만 고정 IP를 가진 소형 VPS를 거쳐 나가게 한다 (WireGuard 또는 Tailscale exit node). Lightsail을 가장 작은 플랜으로 줄여 송신 게이트웨이로 남기는 것이 가장 간단한 후보다.
+
+## 7. 전략·백테스트 규칙
+
+| 항목 | 기본값 (Phase 0–2에서 확정) |
+| --- | --- |
+| 봉 주기 | **일봉 권장.** 미국장은 한국 밤 시간이라 사람이 지켜보기 어렵다. 일봉은 하루 한 번 평가라 실패 지점이 적고 데이터 이력도 길다 |
+| 평가 시각 | 정규장 마감 후 일봉이 확정된 다음 (확정까지 걸리는 시간은 Phase 0에서 측정) |
+| 체결 규칙 | T일 종가로 판단 → **T+1일 시가로 전량 체결.** DRY RUN도 T+1 시가가 확정된 뒤 같은 가격으로 체결을 기록 |
+| 비용 | 토스 수수료율(`/commissions` 조회값) + 슬리피지 가정(기본 5bp), 기록에 함께 저장 |
+| 첫 전략 후보 | 이동평균 교차 또는 Donchian 돌파 (미정) |
+| 백테스트 데이터 | 토스 일봉 (2021-11-30 이후). 기간이 짧다는 한계를 결과 화면에 표시. 장기 데이터 소스 추가는 MWP 이후 검토 |
+| 비교 기준 | 같은 기간 매수 후 보유 |
+| 위험 한도 | 종목별 최대 보유 금액, 1회 주문 금액, 하루 주문 수, 하루 손실 한도, 주문 간 최소 간격 |
+
+## 8. 화면
+
+첫 화면은 운영 대시보드다. `정상 실행 여부 → 마지막 판단 이유 → 포지션과 최근 기록` 순서로 읽히게 한다. 데스크톱을 기준으로 하고, 모바일에서는 상태 확인과 중지를 우선한다. 모든 화면에 `DRY RUN` 표시를 고정하고, 모의 잔고를 실제 계좌처럼 보이게 하지 않는다.
+
+| 화면 | MWP에서 할 일 | 단계 |
+| --- | --- | --- |
+| 대시보드 | 봇 상태, Worker heartbeat, 마지막/다음 실행, 데이터 갱신 시각, 모의 잔고·손익·포지션, 마지막 판단 이유, 제어 버튼 | Phase 4 |
+| 로그 | `run_id`·시각·심각도별 판단·위험 검사·주문·오류 | Phase 4 |
+| 종목·차트 | 캔들, 신호·체결 마커, 데이터 출처·봉 시각·지연 여부 | Phase 4 |
+| 백테스트 | 조건 선택, 자산 곡선, 수익률·최대 낙폭, 거래 목록, 매수 후 보유 비교 | Phase 5 |
+| 전략·설정 | 파라미터, 위험 한도, 초안과 실행 중 버전 구분 | Phase 5 |
+
+`docs/references/`의 UI 참고 이미지는 Git에 넣지 않으며(`.gitignore`), 배치만 참고하고 원본 화면은 복제하지 않는다.
+
+## 9. 아직 정할 것
+
+| 항목 | 정하는 시점 | 현재 기울기 |
+| --- | --- | --- |
+| 첫 종목 `VOO` / `QQQ` | Phase 0 결과 확인 후 | — |
+| 첫 전략과 파라미터 | Phase 2 | 이동평균 교차 (가장 단순, 검증 쉬움) |
+| 봉 주기 | Phase 0 결과 확인 후 | 일봉 |
+| 초기 모의 현금 | Phase 2 | $10,000 |
+| 슬리피지 가정 | Phase 2 | 5bp |
+
+## 10. 작업 방식
+
+- **브랜치:** `dev`에서 `feat/`, `fix/`, `docs/`, `chore/` 접두어 작업 브랜치를 만들고 PR로 `dev`에 합친다 (squash). 검증된 묶음은 `dev → main` PR로 올린다 (merge commit). `main`은 항상 배포 가능한 상태다.
+- **PR:** 한국어로 쓰고 변경 내용, 검증 방법과 결과, 제한 사항을 적는다. CI가 있으면 통과해야 한다.
+- **Merge 권한 (2026-10-01):** Claude가 작업 브랜치 → `dev`, `dev → main` 모두 merge할 수 있다. 단 **큰 문제가 있으면 merge하지 않고 사용자에게 묻는다.** 큰 문제의 예: CI 실패, 설계 원칙(3절) 위반이나 변경, 실거래 경로 추가, 비밀값·시세 데이터 노출 위험, 비용이 드는 리소스 생성, 되돌리기 어려운 DB 변경.
+- **문서:** 매 작업 전에 이 문서와 [roadmap.md](roadmap.md)의 현재 단계를 확인한다. 설계가 바뀌면 같은 PR에서 문서를 고친다. 단계가 끝나면 roadmap의 상태를 갱신한다.
+- **커밋에 넣지 않는 것:** API 키, 토큰, 계좌 정보, 실제 토스 응답 데이터, `docs/references/` 이미지. 가짜 키도 넣지 않고 `.env.example`에는 변수 이름만 둔다.
+- **공급자 기능:** 공식 문서와 실제 호출로 확인하기 전에는 사실로 적지 않는다.
 
 ## 참고 자료
 
-- [토스증권 Open API](https://developers.tossinvest.com/): 채택한 공급자의 공식 문서.
-- [한국투자증권 Open API 예제](https://github.com/koreainvestment/open-trading-api): 미국 주식 거래 흐름의 참고 자료. 토스 요청 형식에 그대로 대입하지 않는다.
-- [tossinvest-cli](https://github.com/JungHoonGhae/tossinvest-cli): API 탐색과 수동 검증 참고. Python 봇의 실행 의존성으로 사용하지 않는다.
-- [FastAPI Background Tasks](https://fastapi.tiangolo.com/tutorial/background-tasks/), [Docker Compose 시작 순서](https://docs.docker.com/compose/how-tos/startup-order/), [PostgreSQL 유일 제약](https://www.postgresql.org/docs/current/indexes-unique/): 프로세스·시작 순서·중복 방지 참고.
-- [Lightweight Charts](https://tradingview.github.io/lightweight-charts/), [React Flow](https://reactflow.dev/index): 차트와 MWP 이후 워크플로 편집기 참고.
-
-`docs/references/`의 다섯 원본 이미지는 로컬 UI 참고용이며 Git과 발표 자료에 넣지 않는다. 상태·차트·포지션·파라미터·알림·로그 배치만 참고하고 원본 화면은 복제하지 않는다.
+- [토스증권 Open API](https://developers.tossinvest.com/) — 조사 요약은 [tossApi.md](tossApi.md)
+- [한국투자증권 Open API 예제](https://github.com/koreainvestment/open-trading-api) — 미국 주식 거래 흐름 참고용. 토스 형식에 그대로 대입하지 않는다
+- [tossinvest-cli](https://github.com/JungHoonGhae/tossinvest-cli) — API 탐색 참고. 실행 의존성으로 쓰지 않는다
+- [Lightweight Charts](https://tradingview.github.io/lightweight-charts/), [exchange_calendars](https://github.com/gerrymanoim/exchange_calendars), [Tailscale serve](https://tailscale.com/kb/1312/serve)
