@@ -93,7 +93,7 @@ def execute(
         qty = pf.qty
         if qty == 0:
             return None
-        commission = costs.commission(qty * price)
+        commission = costs.sell_fees(qty * price)  # 위탁수수료 + SEC Fee
         pnl = pf.sell(qty, price, commission)
     else:
         return None

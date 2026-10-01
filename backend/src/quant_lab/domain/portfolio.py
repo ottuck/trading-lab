@@ -11,9 +11,19 @@ def money(value: Decimal) -> Decimal:
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
+# 미국 증권거래위원회 수수료(SEC Fee): 매도에만 부과. 토스증권 고지 기준 (2026-04-02 체결분부터)
+# max(매도대금 × 0.00206%, $0.01), 소수점 셋째 자리에서 반올림
+SEC_FEE_RATE = Decimal("0.0000206")
+SEC_FEE_MIN = Decimal("0.01")
+
+
 @dataclass(frozen=True, slots=True)
 class CostModel:
-    """수수료율(소수, 0.001 = 0.1%)과 슬리피지(bp). 실행 기록에 함께 저장한다."""
+    """수수료율(소수, 0.001 = 0.1%)과 슬리피지(bp). 실행 기록에 함께 저장한다.
+
+    토스증권 미국주식 위탁수수료는 매매대금의 0.1%이며 $0.01 미만은 절사한다
+    (2025-12-01부터 표준 요율, 2026-10-02 계좌 조회로 확인).
+    """
 
     commission_rate: Decimal = Decimal("0.001")
     slippage_bps: Decimal = Decimal(5)
@@ -25,7 +35,13 @@ class CostModel:
         return reference * (1 - self.slippage_bps / BPS)
 
     def commission(self, notional: Decimal) -> Decimal:
-        return money(notional * self.commission_rate)
+        """매수 비용: 위탁수수료 ($0.01 미만 절사)."""
+        return (notional * self.commission_rate).quantize(CENT, rounding=ROUND_DOWN)
+
+    def sell_fees(self, notional: Decimal) -> Decimal:
+        """매도 비용: 위탁수수료 + SEC Fee."""
+        sec = max(money(notional * SEC_FEE_RATE), SEC_FEE_MIN)
+        return self.commission(notional) + sec
 
 
 @dataclass(frozen=True, slots=True)
