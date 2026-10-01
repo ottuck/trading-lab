@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from quant_lab.api.schemas import (
     AccountView,
+    ActivityItem,
     BacktestDetail,
     BacktestRequest,
     BacktestSummary,
@@ -23,10 +24,12 @@ from quant_lab.api.schemas import (
     DecisionView,
     EventView,
     OrderView,
+    PresetView,
     RunView,
     StrategyInfo,
 )
 from quant_lab.application.backtesting import backtest_symbol
+from quant_lab.application.messages import CATALOG, action_phrase, decision_reason, event_message
 from quant_lab.domain.bot import BotState
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.domain.strategy import STRATEGIES, Strategy
@@ -87,8 +90,19 @@ def _account(session: Session, bot: BotRow) -> AccountView:
     )
 
 
-def _decision(row: DecisionRow) -> DecisionView:
-    return DecisionView.model_validate(row, from_attributes=True)
+def _decision(row: DecisionRow, bot: BotRow | None = None) -> DecisionView:
+    view = DecisionView.model_validate(row, from_attributes=True)
+    if bot is not None:
+        strategy = row.strategy or {}
+        view.plain_reason = decision_reason(
+            strategy.get("name", bot.strategy),
+            strategy.get("params", bot.params),
+            row.indicators,
+            row.target_long,
+            row.holding,
+        )
+        view.plain_action = action_phrase(row.action, row.holding, row.symbol)
+    return view
 
 
 def _order(row: SimOrderRow) -> OrderView:
@@ -126,7 +140,7 @@ def _bot_view(session: Session, bot: BotRow) -> BotView:
         risk=bot.risk,
         next_evaluation_at=bot.next_evaluation_at,
         account=_account(session, bot),
-        last_decision=_decision(last_decision) if last_decision else None,
+        last_decision=_decision(last_decision, bot) if last_decision else None,
         pending_order=_order(pending) if pending else None,
         last_run=RunView.model_validate(last_run, from_attributes=True) if last_run else None,
         data_latest_date=data_latest,
@@ -336,7 +350,60 @@ def bars(
 
 @router.get("/strategies")
 def strategies() -> list[StrategyInfo]:
-    return [StrategyInfo(name=n, default_params=f().params) for n, f in STRATEGIES.items()]
+    out = []
+    for name, factory in STRATEGIES.items():
+        info = CATALOG[name]
+        out.append(
+            StrategyInfo(
+                name=name,
+                nickname=info.nickname,
+                emoji=info.emoji,
+                summary=info.summary,
+                risk=info.risk,
+                trades=info.trades,
+                presets=[
+                    PresetView(key=p.key, label=p.label, params=p.params) for p in info.presets
+                ],
+                default_params=factory().params,
+            )
+        )
+    return out
+
+
+@router.get("/activity")
+def activity(
+    session: SessionDep,
+    bot_id: int | None = None,
+    kind: str | None = None,
+    limit: Annotated[int, Query(le=100)] = 20,
+) -> list[ActivityItem]:
+    """최근 활동을 쉬운 말로. 내부 기록(재시작, 중복 평가 등)은 빼고 보여준다."""
+    bots = {b.id: b for b in list_bots(session)}
+    stmt = select(EventRow).order_by(EventRow.id.desc()).limit(limit * 5)
+    if bot_id is not None:
+        stmt = stmt.where(EventRow.bot_id == bot_id)
+    if kind:
+        stmt = stmt.where(EventRow.kind == kind)
+    items: list[ActivityItem] = []
+    for e in session.scalars(stmt):
+        bot = bots.get(e.bot_id) if e.bot_id else None
+        msg = event_message(
+            e.kind,
+            e.level,
+            e.message,
+            e.data,
+            bot.name if bot else None,
+            bot.symbol if bot else None,
+        )
+        if msg is not None:
+            items.append(
+                ActivityItem(
+                    id=e.id, at=e.at, icon=msg.icon, title=msg.title, body=msg.body, level=msg.level
+                )
+            )
+        if len(items) >= limit:
+            break
+    return items
 
 
 @router.post("/backtests", status_code=status.HTTP_201_CREATED)

@@ -67,6 +67,9 @@ def test_bot_view_shows_position_and_reason(client: TestClient, bot_id: int) -> 
     assert body["account"]["last_close_date"] == BARS[-1].session_date.isoformat()
     assert body["last_decision"]["session_date"] == BARS[12].session_date.isoformat()
     assert "SMA3" in body["last_decision"]["reason"]
+    assert "흐름이에요" in body["last_decision"]["plain_reason"]
+    titles = [a["title"] for a in client.get("/api/activity", params={"bot_id": bot_id}).json()]
+    assert any("샀어요" in t for t in titles)
     assert body["last_run"]["status"] == "OK"
     assert [b["id"] for b in client.get("/api/bots").json()] == [bot_id]
 

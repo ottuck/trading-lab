@@ -34,6 +34,8 @@ class DecisionView(BaseModel):
     indicators: dict[str, Any]
     blocked: str | None
     created_at: datetime
+    plain_reason: str = ""  # 일상어 설명
+    plain_action: str = ""  # 예: "내일 장이 열리면 QQQ를 사요."
 
 
 class OrderView(BaseModel):
@@ -144,9 +146,34 @@ class HealthResponse(BaseModel):
     worker: WorkerStatus | None
 
 
+class PresetView(BaseModel):
+    key: str
+    label: str
+    params: dict[str, int]
+
+
 class StrategyInfo(BaseModel):
+    """화면용 전략 소개 (별명·쉬운 설명·성격·프리셋)."""
+
     name: str
+    nickname: str
+    emoji: str
+    summary: str
+    risk: str
+    trades: str
+    presets: list[PresetView]
     default_params: dict[str, int]
+
+
+class ActivityItem(BaseModel):
+    """사람이 읽는 활동 기록 (텔레그램과 같은 문장)."""
+
+    id: int
+    at: datetime
+    icon: str
+    title: str
+    body: str
+    level: str
 
 
 class BacktestRequest(BaseModel):

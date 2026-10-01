@@ -1,0 +1,318 @@
+"""사람이 읽는 말. 전략 소개, 판단 이유, 알림·활동 문장을 한곳에서 만든다.
+
+주식을 잘 모르는 사람도 이해할 수 있게 전문 용어를 피한다 (텔레그램·화면 공용).
+"""
+
+from dataclasses import dataclass
+from decimal import Decimal
+from typing import Any
+from zoneinfo import ZoneInfo
+
+KST = ZoneInfo("Asia/Seoul")
+
+
+@dataclass(frozen=True)
+class Preset:
+    key: str
+    label: str
+    params: dict[str, int]
+
+
+@dataclass(frozen=True)
+class StrategyInfo:
+    name: str
+    nickname: str
+    emoji: str
+    summary: str
+    risk: str  # 낮음·보통·높음
+    trades: str  # 거래 빈도를 쉬운 말로
+    presets: list[Preset]
+
+
+CATALOG: dict[str, StrategyInfo] = {
+    "sma_cross": StrategyInfo(
+        name="sma_cross",
+        nickname="느긋한 추세 타기",
+        emoji="🐢",
+        summary="큰 상승 흐름이 이어지는 동안만 들고 있어요. 자주 사고팔지 않고, 큰 하락장을 피하는 데 강해요.",
+        risk="낮음",
+        trades="1년에 1번 안팎",
+        presets=[
+            Preset("steady", "느긋하게 (기본)", {"fast": 50, "slow": 200}),
+            Preset("quick", "조금 빠르게", {"fast": 20, "slow": 100}),
+        ],
+    ),
+    "trend_filter": StrategyInfo(
+        name="trend_filter",
+        nickname="200일선 지킴이",
+        emoji="🛡️",
+        summary="주가가 지난 200일 평균보다 위에 있을 때만 들고 있어요. 단순하지만, 오르내림이 잦으면 자주 사고팔아요.",
+        risk="보통",
+        trades="1년에 몇 번",
+        presets=[
+            Preset("steady", "200일 기준 (기본)", {"sma": 200}),
+            Preset("quick", "100일 기준 (빠르게)", {"sma": 100}),
+        ],
+    ),
+    "rsi2": StrategyInfo(
+        name="rsi2",
+        nickname="급락 줍줍",
+        emoji="🎯",
+        summary="오르는 흐름 속에서 짧게 크게 떨어지면 사고, 반등하면 바로 팔아요. 들고 있는 기간이 짧아요.",
+        risk="낮음",
+        trades="한 달에 몇 번",
+        presets=[Preset("steady", "기본", {"rsi": 2, "entry": 10, "exit_sma": 5, "trend": 200})],
+    ),
+    "donchian": StrategyInfo(
+        name="donchian",
+        nickname="신고가 올라타기",
+        emoji="🚀",
+        summary="최근 최고가를 넘어서면 사고, 최근 최저가 아래로 내려가면 팔아요. 강한 상승을 잘 타지만 헛신호도 있어요.",
+        risk="보통",
+        trades="1년에 여러 번",
+        presets=[
+            Preset("steady", "55일 기준 (기본)", {"entry": 55, "exit": 20}),
+            Preset("quick", "20일 기준 (빠르게)", {"entry": 20, "exit": 10}),
+        ],
+    ),
+}
+
+
+# 영문·숫자를 한국어로 읽었을 때 받침이 있는 끝 글자 (L=엘, M=엠, N=엔, R=알, 0=영, 1=일, 3=삼, 6=육, 7=칠, 8=팔)
+_FINAL_CONSONANT = set("LMNR013678")
+
+
+def _has_batchim(word: str) -> bool:
+    ch = word.strip()[-1:] or "a"
+    if "가" <= ch <= "힣":
+        return (ord(ch) - ord("가")) % 28 != 0
+    return ch.upper() in _FINAL_CONSONANT
+
+
+def obj(word: str) -> str:
+    """목적격 조사: QQQ를, VOO를, 봇을."""
+    return f"{word}{'을' if _has_batchim(word) else '를'}"
+
+
+def subj(word: str) -> str:
+    """주격 조사: 봇이, qqq-sma가."""
+    return f"{word}{'이' if _has_batchim(word) else '가'}"
+
+
+def nickname(strategy: str) -> str:
+    info = CATALOG.get(strategy)
+    return f"{info.emoji} {info.nickname}" if info else strategy
+
+
+def _usd(value: Any) -> str:
+    return f"${Decimal(str(value)):,.2f}"
+
+
+def _ind(indicators: dict[str, Any], key: str) -> str:
+    return _usd(indicators[key]) if key in indicators else "?"
+
+
+def decision_reason(
+    strategy: str,
+    params: dict[str, Any],
+    indicators: dict[str, Any],
+    target_long: bool,
+    holding: bool,
+) -> str:
+    """전략 지표를 일상어 한두 문장으로 바꾼다."""
+    p = params
+    if strategy == "sma_cross":
+        fast, slow = (
+            _ind(indicators, f"sma{p.get('fast')}"),
+            _ind(indicators, f"sma{p.get('slow')}"),
+        )
+        if target_long:
+            return f"상승 흐름이에요. 최근 {p.get('fast')}일 평균 가격({fast})이 {p.get('slow')}일 평균({slow})보다 높아요."
+        return f"하락 흐름이에요. 최근 {p.get('fast')}일 평균 가격({fast})이 {p.get('slow')}일 평균({slow})보다 낮아요."
+    if strategy == "trend_filter":
+        avg = _ind(indicators, f"sma{p.get('sma')}")
+        side = "위에" if target_long else "아래에"
+        return f"주가가 지난 {p.get('sma')}일 평균({avg}) {side} 있어요."
+    if strategy == "rsi2":
+        if holding and not target_long:
+            return f"반등했어요. 주가가 최근 {p.get('exit_sma')}일 평균을 넘었어요."
+        if holding:
+            return "아직 반등을 기다리는 중이에요."
+        if target_long:
+            return "오르는 흐름 속에서 단기간에 크게 떨어졌어요. 싸게 살 기회예요."
+        return "아직 살 만큼 떨어지지 않았어요."
+    if strategy == "donchian":
+        high, low = (
+            _ind(indicators, f"high{p.get('entry')}"),
+            _ind(indicators, f"low{p.get('exit')}"),
+        )
+        if target_long and not holding:
+            return f"최근 {p.get('entry')}일 최고가({high})를 넘어섰어요."
+        if not target_long and holding:
+            return f"최근 {p.get('exit')}일 최저가({low}) 아래로 내려갔어요."
+        if holding:
+            return f"최근 {p.get('exit')}일 최저가({low}) 위에서 버티고 있어요."
+        return f"최근 {p.get('entry')}일 최고가({high})를 넘기를 기다리는 중이에요."
+    return ""
+
+
+def action_phrase(action: str, holding: bool, symbol: str) -> str:
+    if action == "BUY":
+        return f"내일 장이 열리면 {obj(symbol)} 사요."
+    if action == "SELL":
+        return f"내일 장이 열리면 {obj(symbol)} 팔아요."
+    return f"{obj(symbol)} 계속 들고 있어요." if holding else "지금은 사지 않고 기다려요."
+
+
+@dataclass(frozen=True)
+class Message:
+    icon: str
+    title: str
+    body: str
+    level: str  # INFO·WARN·ERROR
+    notify: bool  # 텔레그램으로 보낼지
+
+
+def _plain_skip(detail: str) -> str:
+    if "일봉이 아직 없습니다" in detail:
+        return "아직 최신 시세가 도착하지 않았어요."
+    if "토스 캘린더" in detail:
+        return "오늘 미국 시장이 열렸는지 토스와 확인이 맞지 않아요."
+    if "토스 호출 실패" in detail:
+        return "토스 서버 연결이 잠시 불안정해요."
+    if "일봉 문제" in detail or "품질" in detail:
+        return "시세 데이터에 비어 있는 날이 있어요."
+    if "중복" in detail:
+        return "같은 날 판단이 이미 진행 중이에요."
+    return "잠시 확인이 필요한 상황이에요."
+
+
+def _plain_error(detail: str) -> str:
+    if "403" in detail or "forbidden" in detail or "edge-blocked" in detail:
+        return "토스가 접속을 막았어요. 이 컴퓨터의 인터넷 주소(IP)가 바뀌었을 수 있어요. 토스 앱의 허용 IP를 확인해 주세요."
+    if "인증" in detail or "token" in detail:
+        return "토스 로그인 정보에 문제가 있어요. 키가 바뀌었거나 만료됐을 수 있어요."
+    return "예상하지 못한 문제가 생겼어요. 확인이 필요해요."
+
+
+def event_message(
+    kind: str,
+    level: str,
+    raw: str,
+    data: dict[str, Any] | None,
+    bot_name: str | None,
+    symbol: str | None,
+) -> Message | None:
+    """이벤트 한 건을 사람이 읽는 메시지로. None이면 보여주지 않는다."""
+    d = data or {}
+    sym = d.get("symbol") or symbol or ""
+    who = bot_name or "봇"
+    equity_line = ""
+    if "equity" in d:
+        ret = float(d.get("total_return", 0)) * 100
+        equity_line = f"내 모의 자산 {_usd(d['equity'])} ({ret:+.2f}%)"
+
+    if kind == "decision":
+        if "action" not in d:
+            return None  # 예전 형식의 "이미 판단함" 기록
+        action = d["action"]
+        reason = decision_reason(
+            d.get("strategy", ""),
+            d.get("params", {}),
+            d.get("indicators", {}),
+            bool(d.get("target_long")),
+            bool(d.get("holding")),
+        )
+        phrase = action_phrase(action, bool(d.get("holding")), sym)
+        if action == "BUY":
+            return Message(
+                "🟢", f"매수 신호 · {sym}", f"{reason}\n{phrase} (모의 투자)", "INFO", True
+            )
+        if action == "SELL":
+            return Message(
+                "🔴", f"매도 신호 · {sym}", f"{reason}\n{phrase} (모의 투자)", "INFO", True
+            )
+        body = "\n".join(x for x in (f"{phrase} {reason}", equity_line) if x)
+        return Message("📋", f"오늘의 점검 · {sym}", body, "INFO", True)
+
+    if kind == "sim_fill":
+        qty, price = d.get("qty"), d.get("price")
+        fee = _usd(d.get("commission", 0))
+        if d.get("side") == "BUY":
+            return Message(
+                "✅",
+                f"{sym} {qty}주를 샀어요",
+                f"한 주에 {_usd(price)} · 수수료 {fee} (모의 투자)",
+                "INFO",
+                True,
+            )
+        pnl = d.get("realized_pnl")
+        pnl_text = (
+            f"이번 거래 손익 {'+' if pnl and Decimal(str(pnl)) >= 0 else ''}{_usd(pnl)}"
+            if pnl is not None
+            else ""
+        )
+        return Message(
+            "💰",
+            f"{sym} {qty}주를 팔았어요",
+            f"한 주에 {_usd(price)} · {pnl_text} (모의 투자)",
+            "INFO",
+            True,
+        )
+
+    if kind == "restart_pause":
+        return Message(
+            "⏸️",
+            f"{obj(who)} 잠시 멈췄어요",
+            "프로그램이 다시 켜졌어요. 앱에서 [매매 시작]을 눌러 주세요.",
+            "WARN",
+            True,
+        )
+    if kind == "run_skipped":
+        notify = level == "WARN"  # 같은 이유가 이어지면 두 번째부터 INFO로 기록된다
+        return Message(
+            "⏳",
+            "오늘 판단을 잠시 미뤘어요",
+            f"{_plain_skip(raw)}\n15분 뒤 다시 확인해요.",
+            level,
+            notify,
+        )
+    if kind == "run_error":
+        return Message("🚨", f"{subj(who)} 멈췄어요", _plain_error(raw), "ERROR", True)
+    if kind == "missed_sessions":
+        return Message(
+            "📅",
+            "판단하지 못한 날이 있어요",
+            f"프로그램이 꺼져 있던 동안의 판단을 건너뛰었어요. ({raw.split(': ')[-1]})",
+            "WARN",
+            True,
+        )
+    if kind == "config_change":
+        title = "봇을 만들었어요" if raw.startswith("봇 생성") else "설정을 바꿨어요"
+        return Message(
+            "⚙️",
+            title,
+            nickname(d.get("after", {}).get("strategy", "")) if d.get("after") else "",
+            "INFO",
+            False,
+        )
+    if kind == "command":
+        labels = {
+            "RUNNING": ("▶️", "매매를 시작했어요"),
+            "PAUSED": ("⏸️", "매매를 일시정지했어요"),
+            "STOPPED": ("⏹️", "매매를 중단했어요"),
+        }
+        state = raw.split(": ")[-1]
+        icon, title = labels.get(state, ("ℹ️", raw))
+        return Message(icon, title, "", "INFO", False)
+    # worker_start, decision_repeat, watchlist_sync 등은 내부 기록이라 보여주지 않는다.
+    return None
+
+
+def telegram_text(msg: Message, bot_name: str | None, at_kst: str) -> str:
+    lines = [f"{msg.icon} {msg.title}"]
+    if msg.body:
+        lines.append(msg.body)
+    footer = " · ".join(x for x in (bot_name, at_kst) if x)
+    lines.append(f"— {footer}")
+    return "\n".join(lines)

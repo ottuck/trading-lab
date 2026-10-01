@@ -1,69 +1,104 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ColorType, createChart, LineSeries, type Time } from 'lightweight-charts'
 import { useEffect, useRef, useState } from 'react'
-import { backtestApi, type BacktestDetail } from '../api'
+import { backtestApi, type BacktestDetail, type StrategyInfo } from '../api'
 import { kstTime, money, percent, signedMoney, tone } from '../format'
-import { paramsText, parseParams, STRATEGY_LABEL } from '../strategies'
+import { strategyTitle, useStrategies } from '../strategies'
+import { Term } from './Help'
+
+// 관심 종목 (Worker가 매일 가격을 갱신하는 목록과 같다)
+const SYMBOLS = ['QQQ', 'VOO', 'QLD', 'TQQQ', 'SOXL', 'NVDA', 'GLD', 'MAGS', 'EWY', 'EWJ']
+const PERIODS = [
+  { label: '최근 3년', years: 3 },
+  { label: '최근 5년', years: 5 },
+  { label: '최근 10년', years: 10 },
+  { label: '가능한 처음부터', years: 0 },
+]
+
+function startDate(years: number): string | undefined {
+  if (!years) return undefined
+  const d = new Date()
+  d.setFullYear(d.getFullYear() - years)
+  return d.toISOString().slice(0, 10)
+}
 
 function cssVar(name: string) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
+export function StrategyPicker({
+  list,
+  value,
+  onChange,
+}: {
+  list: StrategyInfo[]
+  value: string
+  onChange: (name: string) => void
+}) {
+  return (
+    <div className="pick-grid">
+      {list.map((s) => (
+        <button key={s.name} className={`pick ${s.name === value ? 'active' : ''}`} onClick={() => onChange(s.name)}>
+          <div className="pick-title">
+            {s.emoji} {s.nickname}
+          </div>
+          <div className="pick-desc">{s.summary}</div>
+          <div className="pick-meta">
+            위험 {s.risk} · 거래 {s.trades}
+          </div>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function RunForm({ onDone }: { onDone: (id: string) => void }) {
   const qc = useQueryClient()
-  const { data: strategies } = useQuery({ queryKey: ['strategies'], queryFn: backtestApi.strategies, refetchInterval: false })
+  const { list } = useStrategies()
   const [symbol, setSymbol] = useState('QQQ')
   const [strategy, setStrategy] = useState('sma_cross')
-  const [params, setParams] = useState('fast=50,slow=200')
-  const [start, setStart] = useState('2010-01-04')
+  const [years, setYears] = useState(10)
   const run = useMutation({
-    mutationFn: () =>
-      backtestApi.run({ symbol, strategy, params: parseParams(params), start: start || undefined }),
+    mutationFn: () => {
+      const info = list.find((s) => s.name === strategy)
+      return backtestApi.run({ symbol, strategy, params: info?.default_params ?? {}, start: startDate(years) })
+    },
     onSuccess: (d) => {
       void qc.invalidateQueries({ queryKey: ['backtests'] })
       onDone(d.id)
     },
   })
-  const pick = (name: string) => {
-    setStrategy(name)
-    const s = strategies?.find((x) => x.name === name)
-    if (s) setParams(paramsText(s.default_params))
-  }
   return (
-    <form
-      className="form"
-      onSubmit={(e) => {
-        e.preventDefault()
-        run.mutate()
-      }}
-    >
-      <label>
-        종목
-        <input value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} size={6} />
-      </label>
-      <label>
-        전략
-        <select value={strategy} onChange={(e) => pick(e.target.value)}>
-          {(strategies ?? []).map((s) => (
-            <option key={s.name} value={s.name}>
-              {STRATEGY_LABEL[s.name] ?? s.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        파라미터
-        <input value={params} onChange={(e) => setParams(e.target.value)} size={24} />
-      </label>
-      <label>
-        첫 판단일
-        <input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
-      </label>
-      <button type="submit" className="primary" disabled={run.isPending}>
-        {run.isPending ? '실행 중…' : '백테스트 실행'}
-      </button>
-      {run.error && <span className="down small">{run.error.message}</span>}
-    </form>
+    <div className="stack">
+      <div>
+        <div className="label" style={{ marginBottom: 6 }}>
+          어떤 전략으로?
+        </div>
+        <StrategyPicker list={list} value={strategy} onChange={setStrategy} />
+      </div>
+      <div className="controls">
+        <span className="label">어떤 종목을?</span>
+        {SYMBOLS.map((s) => (
+          <button key={s} className={`seg ${s === symbol ? 'active' : ''}`} onClick={() => setSymbol(s)}>
+            {s}
+          </button>
+        ))}
+      </div>
+      <div className="controls">
+        <span className="label">언제부터?</span>
+        {PERIODS.map((p) => (
+          <button key={p.years} className={`seg ${p.years === years ? 'active' : ''}`} onClick={() => setYears(p.years)}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <div className="controls">
+        <button className="primary" disabled={run.isPending || !list.length} onClick={() => run.mutate()}>
+          {run.isPending ? '계산 중…' : '$10,000로 시험해 보기'}
+        </button>
+        {run.error && <span className="down small">{run.error.message}</span>}
+      </div>
+    </div>
   )
 }
 
@@ -75,10 +110,10 @@ function EquityChart({ detail }: { detail: BacktestDetail }) {
       autoSize: true,
       layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: cssVar('--muted') },
       grid: { vertLines: { color: 'rgba(255,255,255,0.05)' }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
-      rightPriceScale: { mode: 1 }, // 로그 스케일: 긴 기간의 낙폭을 비교하기 쉽다
+      rightPriceScale: { mode: 1 }, // 로그 눈금: 긴 기간의 오르내림을 비교하기 쉽다
     })
     const strat = chart.addSeries(LineSeries, { color: cssVar('--accent'), lineWidth: 2, title: '전략' })
-    const bench = chart.addSeries(LineSeries, { color: cssVar('--muted'), lineWidth: 1, title: '매수 후 보유' })
+    const bench = chart.addSeries(LineSeries, { color: cssVar('--muted'), lineWidth: 1, title: '그냥 보유' })
     strat.setData(detail.equity.map((p) => ({ time: p.session_date as Time, value: Number(p.equity) })))
     bench.setData(detail.equity.map((p) => ({ time: p.session_date as Time, value: Number(p.benchmark) })))
     chart.timeScale().fitContent()
@@ -87,166 +122,166 @@ function EquityChart({ detail }: { detail: BacktestDetail }) {
   return <div ref={el} className="chart" />
 }
 
-function Detail({ id }: { id: string }) {
-  const { data } = useQuery({ queryKey: ['backtest', id], queryFn: () => backtestApi.get(id), refetchInterval: false })
-  if (!data) return <p className="muted">불러오는 중…</p>
-  const m = data.metrics
-  const rows: [string, string, string, string?][] = [
-    ['최종 자산', money(m.final_equity), money(m.benchmark_final_equity)],
-    ['총 수익률', percent(m.total_return), percent(m.benchmark_total_return), m.total_return],
-    ['연평균 (CAGR)', percent(m.cagr), percent(m.benchmark_cagr), m.cagr],
-    ['최대 낙폭', percent(m.max_drawdown), percent(m.benchmark_max_drawdown), m.max_drawdown],
-  ]
-  if (m.volatility !== undefined) {
-    const sh = (v: string | null | undefined) => (v == null ? '—' : Number(v).toFixed(2))
-    rows.push(['연 변동성', percent(m.volatility).replace('+', ''), percent(m.benchmark_volatility).replace('+', '')])
-    rows.push(['샤프 지수', sh(m.sharpe), sh(m.benchmark_sharpe)])
-  }
+function Metric({ term, a, b, t }: { term: string; a: string; b: string; t?: string | null }) {
   return (
-    <section className="panel">
-      <div className="panel-head">
-        <h2>
-          {data.symbol} · {STRATEGY_LABEL[data.strategy] ?? data.strategy}{' '}
-          <span className="muted small">{paramsText(data.params)}</span>
-        </h2>
-        <span className="muted small">
-          {m.start} ~ {m.end} · 수수료 {Number(data.commission_rate) * 100}% · 슬리피지 {data.slippage_bps}bp · T 종가 판단
-          → T+1 시가 체결
-        </span>
+    <div className="metric">
+      <div className="label">
+        <Term k={term} />
       </div>
-      <div className="bt-summary">
-        <table className="compact">
-          <thead>
-            <tr>
-              <th />
-              <th className="num">전략</th>
-              <th className="num">매수 후 보유</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(([label, a, b, t]) => (
-              <tr key={label}>
-                <td>{label}</td>
-                <td className={`num ${tone(t)}`}>{a}</td>
-                <td className="num">{b}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div>
-          <div className="muted small">보유 비중 {percent(m.exposure).replace('+', '')}</div>
-          <div className="muted small">
-            왕복 거래 {m.round_trips}회 · 승률 {m.win_rate == null ? '—' : percent(m.win_rate).replace('+', '')}
+      <div className={`value md ${tone(t)}`}>{a}</div>
+      <div className="faint small">그냥 보유 {b}</div>
+    </div>
+  )
+}
+
+function Detail({ id, info }: { id: string; info?: StrategyInfo }) {
+  const { data } = useQuery({ queryKey: ['backtest', id], queryFn: () => backtestApi.get(id), refetchInterval: false })
+  const [showTrades, setShowTrades] = useState(false)
+  if (!data) return <section className="card muted">불러오는 중…</section>
+  const m = data.metrics
+  const won = Number(m.final_equity) >= Number(m.benchmark_final_equity)
+  const abs = (v: string | null | undefined) => percent(v).replace('+', '')
+  return (
+    <section className="card stack">
+      <div className="card-title" style={{ marginBottom: 0 }}>
+        {strategyTitle(info, data.strategy)} <span className="sub">{data.symbol}</span>
+      </div>
+      <div className="verdict">
+        <div className="muted small">
+          {m.start.slice(0, 4)}년 {Number(m.start.slice(5, 7))}월에 {money(m.initial_cash)}로 시작했다면
+        </div>
+        <div className="value big">{money(m.final_equity)}</div>
+        <div className={`small ${tone(m.total_return)}`} style={{ fontWeight: 700 }}>
+          {percent(m.total_return)} · 해마다 평균 {percent(m.cagr)}
+        </div>
+        <div className="muted" style={{ marginTop: 8 }}>
+          <Term k="그냥 들고 있었다면" /> {money(m.benchmark_final_equity)} ({percent(m.benchmark_total_return)})
+        </div>
+        <div className={won ? 'up' : 'warn'} style={{ marginTop: 6, fontWeight: 600 }}>
+          {won ? '👍 그냥 들고 있는 것보다 결과가 좋았어요.' : '그냥 들고 있는 게 더 많이 벌었어요.'}{' '}
+          {Number(m.max_drawdown) > Number(m.benchmark_max_drawdown)
+            ? `${won ? '게다가' : '대신'} 가장 크게 떨어진 폭은 ${abs(m.max_drawdown)}로, 그냥 보유(${abs(m.benchmark_max_drawdown)})보다 작았어요.`
+            : ''}
+        </div>
+      </div>
+      <div className="metric-grid">
+        <Metric term="연평균 수익률" a={percent(m.cagr)} b={percent(m.benchmark_cagr)} t={m.cagr} />
+        <Metric term="가장 크게 떨어진 폭" a={abs(m.max_drawdown)} b={abs(m.benchmark_max_drawdown)} />
+        {m.volatility !== undefined && <Metric term="가격 출렁임" a={abs(m.volatility)} b={abs(m.benchmark_volatility)} />}
+        {m.sharpe !== undefined && (
+          <Metric
+            term="위험 대비 수익 점수"
+            a={m.sharpe == null ? '—' : Number(m.sharpe).toFixed(2)}
+            b={m.benchmark_sharpe == null ? '—' : Number(m.benchmark_sharpe).toFixed(2)}
+          />
+        )}
+        <div className="metric">
+          <div className="label">
+            <Term k="투자 중이던 기간" />
           </div>
-          <div className="muted small">데이터 {data.data_start} ~ {data.data_end} (warmup 포함)</div>
+          <div className="value md">{abs(m.exposure)}</div>
+          <div className="faint small">
+            거래 {m.round_trips}번 · <Term k="이긴 거래 비율">이긴 비율</Term> {m.win_rate == null ? '—' : abs(m.win_rate)}
+          </div>
         </div>
       </div>
       <EquityChart detail={data} />
+      <div className="faint small">파란 선: 이 전략 · 회색 선: 그냥 들고 있었을 때 (눈금은 비율 기준)</div>
       {m.annual_returns && m.annual_returns.length > 0 && (
         <>
-          <h3>연도별 수익률</h3>
+          <h3 style={{ margin: '8px 0 0' }}>해마다 어땠나요?</h3>
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
                   <th>연도</th>
-                  <th className="num">전략</th>
-                  <th className="num">매수 후 보유</th>
-                  <th className="num">차이</th>
+                  <th className="num">이 전략</th>
+                  <th className="num">그냥 보유</th>
                 </tr>
               </thead>
               <tbody>
-                {[...m.annual_returns].reverse().map((y) => {
-                  const diff = String(Number(y.strategy) - Number(y.benchmark))
-                  return (
-                    <tr key={y.year}>
-                      <td>{y.year}</td>
-                      <td className={`num ${tone(y.strategy)}`}>{percent(y.strategy)}</td>
-                      <td className={`num ${tone(y.benchmark)}`}>{percent(y.benchmark)}</td>
-                      <td className={`num ${tone(diff)}`}>{percent(diff)}</td>
-                    </tr>
-                  )
-                })}
+                {[...m.annual_returns].reverse().map((y) => (
+                  <tr key={y.year}>
+                    <td>{y.year}</td>
+                    <td className={`num ${tone(y.strategy)}`}>{percent(y.strategy)}</td>
+                    <td className={`num ${tone(y.benchmark)}`}>{percent(y.benchmark)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         </>
       )}
-      <h3>체결 ({data.fills.length}건, 최근 순)</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>판단일</th>
-            <th>체결일</th>
-            <th>구분</th>
-            <th className="num">수량</th>
-            <th className="num">가격</th>
-            <th className="num">실현 손익</th>
-          </tr>
-        </thead>
-        <tbody>
-          {[...data.fills].reverse().slice(0, 50).map((f) => (
-            <tr key={`${f.fill_date}-${f.side}`}>
-              <td>{f.signal_date}</td>
-              <td>{f.fill_date}</td>
-              <td className={f.side === 'BUY' ? 'up' : 'down'}>{f.side === 'BUY' ? '매수' : '매도'}</td>
-              <td className="num">{f.qty}</td>
-              <td className="num">{money(f.price)}</td>
-              <td className={`num ${tone(f.realized_pnl)}`}>{signedMoney(f.realized_pnl)}</td>
-            </tr>
+      <button className="link" onClick={() => setShowTrades(!showTrades)}>
+        {showTrades ? '거래 내역 숨기기' : `거래 내역 보기 (${data.fills.length}건)`}
+      </button>
+      {showTrades && (
+        <ul className="trades">
+          {[...data.fills].reverse().map((f) => (
+            <li key={`${f.fill_date}-${f.side}`}>
+              <span className={`side ${f.side === 'BUY' ? 'up' : 'down'}`}>{f.side === 'BUY' ? '샀어요' : '팔았어요'}</span>
+              <div>
+                <div>
+                  {f.qty}주 · 한 주 {money(f.price)}
+                </div>
+                <div className="faint small">{f.fill_date}</div>
+              </div>
+              {f.realized_pnl != null && <span className={`pnl ${tone(f.realized_pnl)}`}>{signedMoney(f.realized_pnl)}</span>}
+            </li>
           ))}
-        </tbody>
-      </table>
+        </ul>
+      )}
+      <div className="faint small">
+        가정: 장 마감 가격으로 판단하고 다음 날 장이 열릴 때 사고팔아요. 토스증권 수수료 0.1%와 조금 불리한 체결 가격을
+        반영했어요. 과거 결과가 미래를 보장하지는 않아요.
+      </div>
     </section>
   )
 }
 
 export function BacktestView() {
+  const { byName } = useStrategies()
   const { data: list } = useQuery({ queryKey: ['backtests'], queryFn: backtestApi.list, refetchInterval: false })
   const [selected, setSelected] = useState<string | null>(null)
   const current = selected ?? list?.[0]?.id ?? null
+  const currentInfo = list?.find((b) => b.id === current)
   return (
     <>
-      <section className="panel">
-        <h2>백테스트</h2>
-        <p className="muted small">
-          DB에 저장된 일봉(수정주가)으로 실행합니다. 같은 판단·체결 함수를 정기 DRY RUN도 그대로 씁니다.
-        </p>
+      <section className="card stack">
+        <div>
+          <div className="card-title" style={{ marginBottom: 4 }}>
+            과거로 시험해 보기
+          </div>
+          <div className="muted small">전략을 고르면, 그 전략을 예전부터 따라 했다면 어땠을지 실제 가격으로 계산해요.</div>
+        </div>
         <RunForm onDone={setSelected} />
-        {list && list.length > 0 && (
-          <table>
-            <thead>
-              <tr>
-                <th>실행 시각</th>
-                <th>종목</th>
-                <th>전략</th>
-                <th>기간</th>
-                <th className="num">CAGR</th>
-                <th className="num">최대 낙폭</th>
-                <th className="num">보유 시 CAGR</th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((b) => (
-                <tr key={b.id} className={b.id === current ? 'selected' : 'clickable'} onClick={() => setSelected(b.id)}>
-                  <td className="nowrap">{kstTime(b.created_at)}</td>
-                  <td>{b.symbol}</td>
-                  <td>
-                    {b.strategy} <span className="muted small">{paramsText(b.params)}</span>
-                  </td>
-                  <td className="nowrap">
-                    {b.metrics.start.slice(0, 4)}~{b.metrics.end.slice(0, 4)}
-                  </td>
-                  <td className={`num ${tone(b.metrics.cagr)}`}>{percent(b.metrics.cagr)}</td>
-                  <td className="num">{percent(b.metrics.max_drawdown)}</td>
-                  <td className="num">{percent(b.metrics.benchmark_cagr)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
       </section>
-      {current && <Detail id={current} />}
+      {current && <Detail id={current} info={currentInfo ? byName[currentInfo.strategy] : undefined} />}
+      {list && list.length > 0 && (
+        <section className="card">
+          <div className="card-title">지난 시험</div>
+          <ul className="history">
+            {list.map((b) => (
+              <li key={b.id} className={b.id === current ? 'selected' : ''} onClick={() => setSelected(b.id)}>
+                <div>
+                  <div>
+                    {strategyTitle(byName[b.strategy], b.strategy)} · {b.symbol}
+                  </div>
+                  <div className="faint small">
+                    {b.metrics.start.slice(0, 4)}년부터 · {kstTime(b.created_at)}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div className={tone(b.metrics.cagr)} style={{ fontWeight: 700 }}>
+                    연 {percent(b.metrics.cagr)}
+                  </div>
+                  <div className="faint small">보유 연 {percent(b.metrics.benchmark_cagr)}</div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </>
   )
 }

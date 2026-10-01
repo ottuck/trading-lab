@@ -29,15 +29,15 @@ function cssVar(name: string) {
 }
 
 const RANGES = [
-  { label: '60일', days: 60 },
-  { label: '120일', days: 120 },
-  { label: '250일', days: 250 },
+  { label: '3개월', days: 63 },
+  { label: '6개월', days: 126 },
+  { label: '1년', days: 252 },
   { label: '3년', days: 750 },
 ]
 
 export function PriceChart({ bot }: { bot: Bot }) {
   const el = useRef<HTMLDivElement>(null)
-  const [days, setDays] = useState(250)
+  const [days, setDays] = useState(252)
   const bars = useQuery({ queryKey: ['bars', bot.symbol], queryFn: () => api.bars(bot.symbol) })
   const decisions = useQuery({ queryKey: ['decisions', bot.id], queryFn: () => api.decisions(bot.id) })
   const orders = useQuery({ queryKey: ['orders', bot.id], queryFn: () => api.orders(bot.id) })
@@ -115,7 +115,7 @@ export function PriceChart({ bot }: { bot: Bot }) {
         position: o.side === 'BUY' ? 'belowBar' : 'aboveBar',
         shape: o.side === 'BUY' ? 'arrowUp' : 'arrowDown',
         color: o.side === 'BUY' ? up : down,
-        text: `${o.side} ${o.qty}주`,
+        text: `${o.side === 'BUY' ? '삼' : '팜'} ${o.qty}주`,
       })
     }
     markers.sort((a, b) => String(a.time).localeCompare(String(b.time)))
@@ -129,7 +129,7 @@ export function PriceChart({ bot }: { bot: Bot }) {
     <section className="card">
       <div className="panel-head">
         <div className="card-title">
-          일봉 차트 <span className="sub">{bot.symbol}</span>
+          가격 차트 <span className="sub">{bot.symbol}</span>
         </div>
         <div className="controls">
           {RANGES.map((r) => (
@@ -141,14 +141,14 @@ export function PriceChart({ bot }: { bot: Bot }) {
       </div>
       {bot.strategy === 'sma_cross' && (
         <div className="small muted" style={{ marginTop: 8 }}>
-          <span style={{ color: 'var(--accent)' }}>━ SMA{bot.params.fast}</span>{'  '}
-          <span style={{ color: 'var(--dry)' }}>━ SMA{bot.params.slow}</span> · ● 신호 · ▲▼ 모의 체결
+          <span style={{ color: 'var(--accent)' }}>━ 최근 {bot.params.fast}일 평균</span>{'  '}
+          <span style={{ color: 'var(--dry)' }}>━ {bot.params.slow}일 평균</span> · ▲ 산 날 · ▼ 판 날
         </div>
       )}
       <div ref={el} className="chart" />
       <div className="chart-foot">
-        {bot.symbol} — {Math.min(days, bars.data?.length ?? 0)}봉, 최근 {last?.date ?? '—'} 종가{' '}
-        {last ? `${Number(last.close).toFixed(2)}` : '—'} · 출처 {sourceLabel(bot.data_source)} · 정규장 마감 2시간 뒤 완료 봉
+        마지막 장 마감 {last?.date ?? '—'} · {last ? `$${Number(last.close).toFixed(2)}` : '—'} · 가격 출처{' '}
+        {sourceLabel(bot.data_source)}
       </div>
     </section>
   )

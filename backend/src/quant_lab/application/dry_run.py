@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
+from typing import Any
 
 import httpx
 from sqlalchemy import func, select
@@ -359,18 +360,29 @@ def _commit_ok(
             f"{f.side} {f.qty}주 @ {f.price:.2f} ({f.fill_date} 시가, {f.signal_date} 판단)",
             bot_id=bot.id,
             run_id=outcome.run_id,
-            data=to_jsonable(f),
+            data={**to_jsonable(f), "symbol": bot.symbol},
         )
-    action = outcome.decision.action if outcome.decision else None
+    d = outcome.decision
+    # 같은 봉을 다시 평가한 경우(재시작·수동 실행)는 내부 기록만 남긴다 (알림·활동 표시 안 함).
+    data: dict[str, Any] = {**summary, "symbol": bot.symbol}
+    if d is not None:
+        data |= {
+            "action": d.action,
+            "target_long": d.target_long,
+            "holding": d.holding,
+            "indicators": to_jsonable(d.indicators),
+            "strategy": bot.strategy,
+            "params": bot.params,
+        }
     add_event(
         session,
         now,
         "INFO",
-        "decision",
+        "decision" if d is not None else "decision_repeat",
         outcome.detail,
         bot_id=bot.id,
         run_id=outcome.run_id,
-        data={"action": action, **summary} if action else summary,
+        data=data,
     )
     session.commit()
     return outcome
