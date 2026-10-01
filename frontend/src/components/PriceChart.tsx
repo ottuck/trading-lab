@@ -11,6 +11,7 @@ import {
 } from 'lightweight-charts'
 import { useEffect, useRef } from 'react'
 import { api, type Bar, type Bot } from '../api'
+import { sourceLabel } from '../source'
 
 function sma(bars: Bar[], n: number) {
   const out: { time: Time; value: number }[] = []
@@ -88,7 +89,7 @@ export function PriceChart({ bot }: { bot: Bot }) {
         position: d.action === 'BUY' ? 'belowBar' : 'aboveBar',
         shape: 'circle',
         color: cssVar('--muted'),
-        text: `${d.action} 신호`,
+        size: 0.6,
       })
     }
     for (const o of orders.data ?? []) {
@@ -123,7 +124,7 @@ export function PriceChart({ bot }: { bot: Bot }) {
       </div>
       <div ref={el} className="chart" />
       <p className="muted small">
-        출처: 토스증권 Open API 일봉(수정주가, 정규장 기준) · 미국 거래일 · 마지막 봉 {last?.date ?? '—'} · 정규장 마감 2시간
+        출처: {sourceLabel(bot.data_source)} · 미국 거래일 · 마지막 봉 {last?.date ?? '—'} · 정규장 마감 2시간
         뒤부터 완료 봉으로 사용
       </p>
     </section>

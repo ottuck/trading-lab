@@ -77,6 +77,7 @@ class BotView(BaseModel):
     last_run: RunView | None
     data_latest_date: date | None
     data_fetched_at: datetime | None
+    data_source: str | None
 
 
 class EventView(BaseModel):

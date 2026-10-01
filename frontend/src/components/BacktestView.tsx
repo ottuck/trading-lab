@@ -175,7 +175,7 @@ export function BacktestView() {
       <section className="panel">
         <h2>백테스트</h2>
         <p className="muted small">
-          저장된 토스 일봉(수정주가)으로 실행합니다. 같은 판단·체결 함수를 정기 DRY RUN도 그대로 씁니다.
+          DB에 저장된 일봉(수정주가)으로 실행합니다. 같은 판단·체결 함수를 정기 DRY RUN도 그대로 씁니다.
         </p>
         <RunForm onDone={setSelected} />
         {list && list.length > 0 && (
