@@ -146,7 +146,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | 비용 | 약 $12/월 (공인 IPv4 포함 번들. 생성 시 서울 리전 가격 확인). Tailscale·GitHub 비공개 저장소는 무료 |
 | 고정 IP | Lightsail Static IP를 붙이고 그 IP를 토스 허용 IP에 등록 |
 | 방화벽 | 처음엔 Lightsail 콘솔 브라우저 SSH(22번, 콘솔 대역만)만 허용. Tailscale SSH가 동작하면 인바운드 전부 차단 |
-| 비밀값 | 서버의 `/etc/quant-lab/env`(DB 비밀번호·`DATABASE_URL`, 부트스트랩이 생성)와 `/etc/quant-lab/worker.env`(토스 키·텔레그램 토큰, **worker 컨테이너에만** 주입). 둘 다 권한 600. **토스 키 만료 2027-09-28** (발급 2026-09-28, 1년). 만료 전 WTS에서 재발급하고 `worker.env` 교체 |
+| 비밀값 | **저장소 안 `.secrets/`** (`.gitignore`·`.dockerignore`로 제외, 로컬·서버 같은 위치): `env`(DB 비밀번호·`DATABASE_URL`, 부트스트랩이 생성)와 `worker.env`(토스 키·텔레그램·`HEARTBEAT_PING_URL`, **worker 컨테이너에만** 주입). 둘 다 권한 600. 개발용 실행은 루트 `.env`를 쓴다. **토스 키 만료 2027-09-28** (발급 2026-09-28, 1년). 만료 전 WTS에서 재발급하고 `worker.env` 교체 |
 | 서버 생성 | Terraform(`infra/lightsail`). 콘솔에서 손으로 만들지 않는다 |
 | 배포 (MWP) | 서버에서 `bash deploy/deploy.sh`: `main` pull → 이미지 빌드(프론트 포함 단일 이미지) → `compose up -d`. 저장소는 읽기 전용 deploy key로 받음. Compose 프로젝트 이름은 `quant-lab-prod` |
 | 마이그레이션 | `migrate` 일회성 서비스가 성공해야 api·worker가 시작 (`depends_on: service_completed_successfully`) |
@@ -164,7 +164,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | 3. 토스 허용 IP | 사용자 | WTS > 설정 > Open API > 허용 IP에 `static_ip` 추가 |
 | 4. Tailscale 먼저 | 사용자 | Lightsail 콘솔의 브라우저 SSH에서 `curl -fsSL https://tailscale.com/install.sh \| sh && sudo tailscale up --ssh --hostname quant-lab` → 링크로 로그인. 개발 PC에도 Tailscale 설치·로그인 |
 | 5. 원격 작업 | Claude (개발 PC → `tailscale ssh ubuntu@quant-lab`) | deploy key 생성 → `gh repo deploy-key add`(읽기 전용) → `git clone` → `sudo bash deploy/bootstrap.sh` → `sudo tailscale serve --bg 8000` |
-| 6. 토스 키·알림 | 사용자 | `/etc/quant-lab/worker.env`에 토스 키와 텔레그램 토큰·채팅 ID 입력 (`tailscale ssh` 또는 브라우저 SSH, 키는 대화에 붙이지 않음) |
+| 6. 토스 키·알림 | 사용자 | `.secrets/worker.env`에 토스 키, 텔레그램 토큰·채팅 ID, `HEARTBEAT_PING_URL` 입력 (`tailscale ssh` 또는 브라우저 SSH, 키는 대화에 붙이지 않음) |
 | 7. Tailscale 접근 제한 | 사용자 | 필요하면 Tailscale ACL에서 서버 접근을 본인 기기로만 제한 (개인 tailnet이면 기본값으로 충분) |
 | 8. 배포·봇 시작 | 서버 | 로컬에서 토스를 호출하는 프로세스를 모두 멈춘 뒤 `bash deploy/deploy.sh` → `docker compose -f deploy/compose.prod.yaml exec api python -m quant_lab.cli bot create qqq-sma QQQ --params fast=50,slow=200` → 화면에서 시작 |
 
@@ -176,8 +176,8 @@ Lightsail도 VM 한 대에 같은 Compose를 올리는 구조라, 서버가 준�
 
 | 항목 | 내용 |
 | --- | --- |
-| 비밀값 | `C:Users<사용자>.quant-labenv`, `worker.env` (서버의 `/etc/quant-lab`과 같은 형식, 저장소 밖) |
-| 실행 | `QL_ENV_DIR=<위 경로> docker compose -f deploy/compose.prod.yaml up -d --build` (Compose 이름 `quant-lab-prod`, 개발용 DB와 분리) |
+| 비밀값 | 저장소 안 `.secrets/env`, `.secrets/worker.env` (서버와 같은 위치·형식, Git 제외) |
+| 실행 | `docker compose -f deploy/compose.prod.yaml up -d --build` (Compose 이름 `quant-lab-prod`, 개발용 DB와 분리) |
 | 접속 | `tailscale serve --bg 8000` → `https://<PC 이름>.<tailnet>.ts.net` (tailnet 안에서만) |
 | 토스 | 개발 PC 공인 IP가 허용 목록에 있어야 한다. 이 Worker가 토큰을 가지므로, 동작 중에는 개발용 CLI(`sync-bars`, `toss_probe`)로 토스를 호출하지 않는다 |
 | 한계 | PC가 꺼지거나 절전에 들어가면 평가가 빠진다 (`missed_sessions` 경고). 가정용 IP가 바뀌면 토스 403 → 봇 `ERROR` |

@@ -1,19 +1,19 @@
 # 운영 구성 (project.md 6절). 서버에서: docker compose -f deploy/compose.prod.yaml up -d --build
-# 비밀값은 저장소 밖 ${QL_ENV_DIR:-/etc/quant-lab}에 둔다.
+# 비밀값은 저장소 안 .secrets/에 둔다 (.gitignore·.dockerignore로 제외, 경로는 이 파일 기준).
 #   env      : POSTGRES_PASSWORD, DATABASE_URL (api·worker·migrate·db)
 #   worker.env : TOSS_CLIENT_ID, TOSS_CLIENT_SECRET, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, HEARTBEAT_PING_URL (worker만)
 name: quant-lab-prod
 
 x-app: &app
   image: quant-lab:latest
-  env_file: ${QL_ENV_DIR:-/etc/quant-lab}/env
+  env_file: ../.secrets/env
   restart: unless-stopped
 
 services:
   db:
     image: postgres:17
     restart: unless-stopped
-    env_file: ${QL_ENV_DIR:-/etc/quant-lab}/env
+    env_file: ../.secrets/env
     environment:
       POSTGRES_USER: quant
       POSTGRES_DB: quant_lab
@@ -55,8 +55,8 @@ services:
     <<: *app
     command: ["python", "-m", "quant_lab.worker"]
     env_file:
-      - ${QL_ENV_DIR:-/etc/quant-lab}/env
-      - ${QL_ENV_DIR:-/etc/quant-lab}/worker.env
+      - ../.secrets/env
+      - ../.secrets/worker.env
     environment:
       WORKER_MARKET_SOURCE: ${WORKER_MARKET_SOURCE:-toss}
     # SIGTERM 뒤 현재 평가를 마칠 시간을 준다.
