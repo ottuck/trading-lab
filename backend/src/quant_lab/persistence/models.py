@@ -1,7 +1,10 @@
+import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 
-from sqlalchemy import Date, DateTime, Numeric, String
+from sqlalchemy import Date, DateTime, Numeric, String, Uuid
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # 가격·수량은 float를 쓰지 않는다 (project.md 3절 원칙 7).
@@ -22,6 +25,29 @@ class WorkerHeartbeat(Base):
     version: Mapped[str] = mapped_column(String(50))
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class BacktestRow(Base):
+    """백테스트 1회. 같은 조건으로 다시 실행할 수 있게 입력 조건을 모두 저장한다 (원칙 9)."""
+
+    __tablename__ = "backtests"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    code_version: Mapped[str] = mapped_column(String(50))
+    symbol: Mapped[str] = mapped_column(String(20))
+    strategy: Mapped[str] = mapped_column(String(50))
+    params: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    data_start: Mapped[date] = mapped_column(Date)
+    data_end: Mapped[date] = mapped_column(Date)
+    initial_cash: Mapped[Decimal] = mapped_column(PRICE)
+    commission_rate: Mapped[Decimal] = mapped_column(PRICE)
+    slippage_bps: Mapped[Decimal] = mapped_column(PRICE)
+    risk: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    fills: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    actions: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    equity: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
 
 
 class DailyBarRow(Base):
