@@ -38,6 +38,13 @@ npm run lint && npm run build
 
 Windows에서 `mypy.exe`가 애플리케이션 제어 정책으로 막히면 위처럼 `python -m mypy`로 실행합니다.
 
+## CLI
+
+```bash
+cd backend
+uv run python -m quant_lab.cli sync-bars QQQ VOO   # 토스 일봉을 DB에 동기화 (처음엔 전체, 이후 증분)
+```
+
 ## 토스 API 탐색
 
 ```bash
