@@ -12,3 +12,4 @@ frontend/dist
 docs
 scripts
 deploy
+.secrets
