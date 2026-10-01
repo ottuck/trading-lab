@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # 외부 감시(Healthchecks.io 등) ping URL. Worker·PC가 멈추면 외부 서비스가 알린다.
     heartbeat_ping_url: str | None = None
 
+    # 매일 일봉을 갱신할 관심 종목 (백테스트용, 쉼표 구분). 봇 종목은 평가 때 따로 갱신된다.
+    watchlist_symbols: str = "QQQ,VOO,QLD,TQQQ,SOXL,NVDA,GLD,MAGS,EWY,EWJ"
+
     worker_heartbeat_interval_s: float = 15.0
     # stored: DB에 저장된 봉만 사용 (토스 호출 없음, 로컬 기본값). toss: 운영 서버.
     worker_market_source: Literal["stored", "toss"] = "stored"

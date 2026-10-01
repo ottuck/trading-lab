@@ -1,13 +1,18 @@
 """Worker 루프: heartbeat → 명령 처리 → 예정된 평가."""
 
 import logging
-from collections.abc import Callable
-from datetime import UTC, datetime
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import Connection, func, select
 from sqlalchemy.orm import Session
 
-from quant_lab.application.dry_run import EvaluationOutcome, Trigger, evaluate_bot
+from quant_lab.application.dry_run import (
+    EvaluationOutcome,
+    Trigger,
+    evaluate_bot,
+    latest_completed_session,
+)
 from quant_lab.application.market import MarketData
 from quant_lab.domain.bars import TradingCalendar
 from quant_lab.domain.bot import (
@@ -17,11 +22,13 @@ from quant_lab.domain.bot import (
     apply_command,
     state_after_restart,
 )
+from quant_lab.persistence.bars import latest_session_date
 from quant_lab.persistence.bots import add_event, get_bot, set_bot_state
 from quant_lab.persistence.models import BotRow, CommandRow
 
 # 같은 DB에 Worker가 둘 뜨지 않게 하는 PostgreSQL advisory lock 키 ("QLAB")
 WORKER_LOCK_KEY = 0x514C4142
+WATCHLIST_CHECK_INTERVAL = timedelta(minutes=30)
 
 log = logging.getLogger(__name__)
 
@@ -47,11 +54,15 @@ class Worker:
         market: MarketData,
         calendar: TradingCalendar,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        watchlist: Sequence[str] = (),
     ) -> None:
         self.make_session = make_session
         self.market = market
         self.calendar = calendar
         self.now = now
+        self.watchlist = list(watchlist)
+        self._watchlist_checked_at: datetime | None = None
+        self._watchlist_failing: set[str] = set()
 
     def recover_after_restart(self) -> None:
         now = self.now()
@@ -73,7 +84,57 @@ class Worker:
     def tick(self) -> list[EvaluationOutcome]:
         outcomes = self.process_commands()
         outcomes += self.run_due_bots()
+        self.sync_watchlist()
         return outcomes
+
+    def sync_watchlist(self) -> list[str]:
+        """관심 종목 일봉을 최신 완료 거래일까지 맞춘다 (백테스트용). 30분에 한 번만 확인한다.
+
+        봇 평가와 독립적이며, 실패해도 경고만 남기고 판단·모의 체결에는 영향이 없다.
+        """
+        now = self.now()
+        if not self.watchlist or (
+            self._watchlist_checked_at is not None
+            and now - self._watchlist_checked_at < WATCHLIST_CHECK_INTERVAL
+        ):
+            return []
+        self._watchlist_checked_at = now
+        try:
+            target = latest_completed_session(self.calendar, now)
+        except Exception:
+            return []
+        synced: list[str] = []
+        with self.make_session() as session:
+            for symbol in self.watchlist:
+                latest = latest_session_date(session, symbol)
+                if latest is not None and latest >= target:
+                    continue
+                try:
+                    result = self.market.refresh(session, symbol, now)
+                except Exception as exc:
+                    session.rollback()
+                    # 같은 종목이 계속 실패하면 경고(알림)는 처음 한 번만 남긴다.
+                    level = "INFO" if symbol in self._watchlist_failing else "WARN"
+                    self._watchlist_failing.add(symbol)
+                    add_event(
+                        session, now, level, "watchlist_sync", f"{symbol} 일봉 갱신 실패: {exc}"
+                    )
+                    session.commit()
+                    continue
+                self._watchlist_failing.discard(symbol)
+                if result is not None:
+                    synced.append(f"{symbol}+{result.saved}")
+        if synced:
+            with self.make_session() as session:
+                add_event(
+                    session,
+                    now,
+                    "INFO",
+                    "watchlist_sync",
+                    f"관심 종목 일봉 갱신 ({target}): {', '.join(synced)}",
+                )
+                session.commit()
+        return synced
 
     def process_commands(self) -> list[EvaluationOutcome]:
         outcomes: list[EvaluationOutcome] = []

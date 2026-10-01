@@ -3,10 +3,13 @@
 판단·체결 규칙은 domain/trading.py를 그대로 쓴다.
 """
 
+import math
+import statistics
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from itertools import pairwise
 
 from quant_lab.domain.bars import DailyBar
 from quant_lab.domain.portfolio import CostModel, Portfolio, RiskLimits, affordable_qty
@@ -21,6 +24,13 @@ class EquityPoint:
     cash: Decimal
     qty: int
     close: Decimal
+    benchmark: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class YearReturn:
+    year: int
+    strategy: Decimal
     benchmark: Decimal
 
 
@@ -40,6 +50,11 @@ class Metrics:
     benchmark_total_return: Decimal
     benchmark_cagr: Decimal
     benchmark_max_drawdown: Decimal
+    volatility: Decimal
+    sharpe: Decimal | None
+    benchmark_volatility: Decimal
+    benchmark_sharpe: Decimal | None
+    annual_returns: list[YearReturn]
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,8 +147,44 @@ def _cagr(initial: Decimal, final: Decimal, start: date, end: date) -> Decimal:
     return _ratio(float(final / initial) ** (1 / years) - 1)
 
 
+TRADING_DAYS = 252
+
+
+def _vol_sharpe(values: Sequence[Decimal]) -> tuple[Decimal, Decimal | None]:
+    """일간 수익률 기준 연환산 변동성과 샤프 지수(무위험 수익률 0 가정)."""
+    rets = [float(b / a - 1) for a, b in pairwise(values) if a > 0]
+    if len(rets) < 2:
+        return Decimal(0), None
+    sd = statistics.stdev(rets)
+    vol = sd * math.sqrt(TRADING_DAYS)
+    sharpe = statistics.fmean(rets) * TRADING_DAYS / vol if vol > 0 else None
+    return _ratio(vol), (_ratio(sharpe) if sharpe is not None else None)
+
+
+def _annual_returns(equity: list[EquityPoint]) -> list[YearReturn]:
+    """연도별 수익률. 각 해의 기준은 전년도 마지막 자산(첫해는 시작 자산)."""
+    out: list[YearReturn] = []
+    base_s, base_b = equity[0].equity, equity[0].benchmark
+    for i, p in enumerate(equity):
+        last_of_year = (
+            i == len(equity) - 1 or equity[i + 1].session_date.year != p.session_date.year
+        )
+        if last_of_year:
+            out.append(
+                YearReturn(
+                    year=p.session_date.year,
+                    strategy=_ratio(float(p.equity / base_s - 1)) if base_s else Decimal(0),
+                    benchmark=_ratio(float(p.benchmark / base_b - 1)) if base_b else Decimal(0),
+                )
+            )
+            base_s, base_b = p.equity, p.benchmark
+    return out
+
+
 def _metrics(equity: list[EquityPoint], fills: list[Fill], initial_cash: Decimal) -> Metrics:
     first, last = equity[0], equity[-1]
+    vol, sharpe = _vol_sharpe([p.equity for p in equity])
+    b_vol, b_sharpe = _vol_sharpe([p.benchmark for p in equity])
     sells = [f for f in fills if f.realized_pnl is not None]
     wins = sum(1 for f in sells if f.realized_pnl is not None and f.realized_pnl > 0)
     return Metrics(
@@ -151,4 +202,9 @@ def _metrics(equity: list[EquityPoint], fills: list[Fill], initial_cash: Decimal
         benchmark_total_return=_ratio(float(last.benchmark / initial_cash - 1)),
         benchmark_cagr=_cagr(initial_cash, last.benchmark, first.session_date, last.session_date),
         benchmark_max_drawdown=_max_drawdown([p.benchmark for p in equity]),
+        volatility=vol,
+        sharpe=sharpe,
+        benchmark_volatility=b_vol,
+        benchmark_sharpe=b_sharpe,
+        annual_returns=_annual_returns(equity),
     )
