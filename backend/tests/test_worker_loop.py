@@ -82,3 +82,16 @@ def test_only_one_worker_gets_the_lock(engine: Engine) -> None:
         release_worker_lock(first)
         assert try_acquire_worker_lock(second)  # 잠금을 풀면 다른 Worker가 넘겨받는다
         release_worker_lock(second)
+
+
+def test_watchlist_sync_refreshes_only_stale_symbols(make_session: Callable[[], Session]) -> None:
+    refreshed: list[str] = []
+
+    class RecordingMarket(StoredMarket):
+        def refresh(self, session: Session, symbol: str, now: datetime) -> None:
+            refreshed.append(symbol)
+
+    worker = Worker(make_session, RecordingMarket(), CAL, now=lambda: NOW, watchlist=["QQQ", "VOO"])
+    worker.sync_watchlist()
+    worker.sync_watchlist()  # 30분 안에는 다시 확인하지 않는다
+    assert refreshed == ["VOO"]  # QQQ는 이미 최신 거래일까지 있음

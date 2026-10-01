@@ -76,7 +76,8 @@ def run(stop: threading.Event) -> None:
 
     log.info("worker 시작 id=%s version=%s", worker_id, __version__)
     market = build_market(settings)
-    worker = Worker(make_session, market, get_calendar())
+    watchlist = [s.strip().upper() for s in settings.watchlist_symbols.split(",") if s.strip()]
+    worker = Worker(make_session, market, get_calendar(), watchlist=watchlist)
     notifier = build_notifier(settings, make_session)
     with make_session() as session:
         add_event(
