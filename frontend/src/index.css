@@ -584,13 +584,6 @@ table.compact td {
   font-size: 12px;
   color: var(--faint);
 }
-.bt-summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 8px 32px;
-  margin-top: 12px;
-}
 
 /* ---------- 쉬운 UX 구성 요소 ---------- */
 button.ghost {
@@ -706,7 +699,7 @@ fieldset.plain:disabled {
 /* 전략 고르기 카드 */
 .pick-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;
 }
 button.pick {
@@ -735,22 +728,6 @@ button.pick.active {
 .pick-meta {
   color: var(--faint);
   font-size: 12px;
-}
-
-/* 시험 결과 */
-.verdict {
-  padding: 16px;
-  border-radius: 10px;
-  background: var(--surface);
-}
-.metric-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 14px 18px;
-}
-.metric {
-  display: grid;
-  gap: 2px;
 }
 
 /* 목록형 (모바일에서도 가로로 넘치지 않음) */
@@ -1389,4 +1366,100 @@ button.bot-item.active {
   margin-top: 8px;
   padding-top: 16px;
   border-top: 1px solid var(--border);
+}
+
+/* ---------- 시험해 보기 ---------- */
+/* 홈과 같은 2단: 왼쪽 결과(큰 숫자·그래프·지표) 다음 새 시험 양식, 오른쪽 지난 시험 목록 */
+.bt-verdict {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 14px 0 0;
+  max-width: 62ch;
+}
+.bt-verdict .mark {
+  transform: translateY(-1px);
+}
+.bt-chart {
+  height: 320px;
+  margin-top: 24px;
+}
+.legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.legend i {
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--text);
+}
+.legend i.bench {
+  height: 1px;
+  background: var(--faint);
+}
+.bt-facts {
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+}
+.bt-form {
+  margin-top: 56px;
+  padding-top: 28px;
+  border-top: 1px solid var(--border);
+}
+.bt-form .block-head {
+  flex-wrap: wrap;
+}
+button.bt-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 16px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  text-align: left;
+  font-weight: 400;
+}
+button.bt-item.active {
+  background: var(--surface);
+}
+.bt-item .sym {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bt-item .sub {
+  font-size: 12px;
+  color: var(--faint);
+}
+.bt-item .r {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.bt-item .ret {
+  font-weight: 600;
+  font-size: 13px;
+}
+@media (max-width: 960px) {
+  .bt .home-side {
+    order: 0;
+  }
+}
+@media (max-width: 640px) {
+  .bt-chart {
+    height: 240px;
+  }
+  .bt-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .bt-facts .fact:nth-child(odd) {
+    border-left: 0;
+  }
 }
