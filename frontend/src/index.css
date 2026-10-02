@@ -26,6 +26,12 @@
   --warn: #d98200;
   --warn-soft: rgba(245, 160, 20, 0.12);
   --dry: #e09a00;
+  /* 가격 오름·내림은 국내 관례대로 빨강·파랑. 상태 색(--ok/--bad)과 분리한다. */
+  --rise: #f04452;
+  --rise-soft: rgba(240, 68, 82, 0.09);
+  --fall: #3182f6;
+  --fall-soft: rgba(49, 130, 246, 0.1);
+  --line-fast: #7b5cff;
   --neutral-soft: rgba(107, 118, 132, 0.1);
   --hover: rgba(0, 0, 0, 0.04);
   --chip: #f2f4f6;
@@ -67,6 +73,11 @@
   --warn: #f5b94a;
   --warn-soft: rgba(245, 185, 74, 0.12);
   --dry: #f5b94a;
+  --rise: #ff5c66;
+  --rise-soft: rgba(255, 92, 102, 0.12);
+  --fall: #4ea1ff;
+  --fall-soft: rgba(78, 161, 255, 0.12);
+  --line-fast: #a78bff;
   --neutral-soft: rgba(139, 149, 168, 0.12);
   --hover: rgba(255, 255, 255, 0.04);
   --chip: rgba(255, 255, 255, 0.06);
@@ -348,17 +359,20 @@ h3 {
 .nowrap {
   white-space: nowrap;
 }
-.up,
-.level-INFO {
+.ok {
   color: var(--ok);
 }
-.down,
-.level-ERROR {
+.bad {
   color: var(--bad);
 }
-.warn,
-.level-WARN {
+.warn {
   color: var(--warn);
+}
+.rise {
+  color: var(--rise);
+}
+.fall {
+  color: var(--fall);
 }
 
 /* ---------- 배지 ---------- */
@@ -377,8 +391,7 @@ h3 {
   color: var(--dry);
   background: var(--warn-soft);
 }
-.state-RUNNING,
-.action-BUY {
+.state-RUNNING {
   color: var(--ok);
   background: var(--ok-soft);
 }
@@ -386,13 +399,11 @@ h3 {
   color: var(--warn);
   background: var(--warn-soft);
 }
-.state-STOPPED,
-.action-HOLD {
+.state-STOPPED {
   color: var(--muted);
   background: var(--neutral-soft);
 }
-.state-ERROR,
-.action-SELL {
+.state-ERROR {
   color: var(--bad);
   background: var(--bad-soft);
 }
@@ -410,11 +421,11 @@ h3 {
   border-radius: 50%;
   background: var(--faint);
 }
-.dot.up::before {
+.dot.ok::before {
   background: var(--ok);
   box-shadow: 0 0 8px var(--ok);
 }
-.dot.down::before {
+.dot.bad::before {
   background: var(--bad);
   box-shadow: 0 0 8px var(--bad);
 }

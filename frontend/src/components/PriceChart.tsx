@@ -47,8 +47,8 @@ export function PriceChart({ bot }: { bot: Bot }) {
     const from = shown[0].date
     const text = cssVar('--muted')
     const grid = cssVar('--chart-grid')
-    const up = cssVar('--ok')
-    const down = cssVar('--bad')
+    const up = cssVar('--rise')
+    const down = cssVar('--fall')
     const chart = createChart(el.current, {
       autoSize: true,
       layout: {
@@ -87,7 +87,7 @@ export function PriceChart({ bot }: { bot: Bot }) {
       })),
     )
     if (bot.strategy === 'sma_cross') {
-      const colors = [cssVar('--accent'), cssVar('--dry')]
+      const colors = [cssVar('--line-fast'), cssVar('--dry')]
       ;[bot.params.fast, bot.params.slow].forEach((n, i) => {
         const line = chart.addSeries(LineSeries, { color: colors[i], lineWidth: 2, priceLineVisible: false })
         line.setData(sma(bars.data, n).filter((p) => String(p.time) >= from))
@@ -139,7 +139,7 @@ export function PriceChart({ bot }: { bot: Bot }) {
       </div>
       {bot.strategy === 'sma_cross' && (
         <div className="small muted" style={{ marginTop: 8 }}>
-          <span style={{ color: 'var(--accent)' }}>━ 최근 {bot.params.fast}일 평균</span>{'  '}
+          <span style={{ color: 'var(--line-fast)' }}>━ 최근 {bot.params.fast}일 평균</span>{'  '}
           <span style={{ color: 'var(--dry)' }}>━ {bot.params.slow}일 평균</span> · ▲ 산 날 · ▼ 판 날
         </div>
       )}
