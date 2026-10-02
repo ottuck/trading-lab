@@ -23,7 +23,7 @@ from quant_lab.domain.bot import (
     apply_command,
 )
 from quant_lab.persistence.bars import latest_session_date
-from quant_lab.persistence.bots import add_event, get_bot, set_bot_state
+from quant_lab.persistence.bots import add_event, bot_weights, get_bot, set_bot_state
 from quant_lab.persistence.market_info import upsert_instruments, upsert_live_bars, upsert_quotes
 from quant_lab.persistence.models import BotRow, CommandRow
 
@@ -123,7 +123,9 @@ class Worker:
             return
         now = self.now()
         with self.make_session() as session:
-            bot_symbols = sorted(set(session.scalars(select(BotRow.symbol))))
+            bot_symbols = sorted(
+                {s for bot in session.scalars(select(BotRow)) for s in bot_weights(bot)}
+            )
         try:
             if self._instruments_at is None or now - self._instruments_at >= INSTRUMENT_INTERVAL:
                 self._instruments_at = now

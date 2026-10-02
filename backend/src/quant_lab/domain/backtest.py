@@ -8,7 +8,7 @@
 
 import math
 import statistics
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -17,7 +17,7 @@ from itertools import pairwise
 from quant_lab.domain.bars import DailyBar
 from quant_lab.domain.portfolio import CostModel, Portfolio, RiskLimits, affordable_qty
 from quant_lab.domain.strategy import Strategy, deposit_plan, month_key
-from quant_lab.domain.trading import Action, DecisionRecord, Fill, decide, execute
+from quant_lab.domain.trading import Action, DecisionRecord, Fill, decide_basket, execute
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,8 +25,7 @@ class EquityPoint:
     session_date: date
     equity: Decimal
     cash: Decimal
-    qty: Decimal
-    close: Decimal
+    invested: Decimal  # 보유 주식 평가금액 (여러 종목 합계)
     benchmark: Decimal
     contributed: Decimal  # 이날까지 넣은 돈 (시작 금액 + 입금)
     deposit: Decimal = Decimal(0)  # 이날 들어온 입금액
@@ -70,20 +69,37 @@ class BacktestResult:
     fills: list[Fill]
     equity: list[EquityPoint]
     metrics: Metrics
-    pending: DecisionRecord | None
+    pending: list[DecisionRecord]  # 마지막 날 판단으로 다음 날 체결될 주문
 
 
 def run_backtest(
-    bars: Sequence[DailyBar],
+    bars: Sequence[DailyBar] | Mapping[str, Sequence[DailyBar]],
     strategy: Strategy,
     initial_cash: Decimal,
     costs: CostModel,
     limits: RiskLimits | None = None,
+    weights: Mapping[str, int] | None = None,
 ) -> BacktestResult:
+    """bars는 한 종목의 일봉, 또는 종목별 일봉(여러 종목은 모으기 전략만, weights 합 100).
+
+    여러 종목은 모든 종목에 봉이 있는 거래일만 진행하고, 모든 종목이 warmup을 채운 날부터 판단한다.
+    """
     limits = limits or RiskLimits()
-    start = strategy.warmup - 1  # 첫 판단이 가능한 봉
-    if len(bars) <= start + 1:
-        raise ValueError(f"봉이 부족합니다: {len(bars)}개 (필요 {start + 2}개 이상)")
+    series = dict(bars) if isinstance(bars, Mapping) else {bars[0].symbol: list(bars)}
+    symbols = list(series)
+    weights = dict(weights) if weights else {s: 100 for s in symbols}
+    if len(symbols) > 1 and sum(weights[s] for s in symbols) != 100:
+        raise ValueError("종목 비율의 합은 100이어야 합니다")
+    index = {s: {b.session_date: i for i, b in enumerate(v)} for s, v in series.items()}
+    days = sorted(set.intersection(*(set(i) for i in index.values())))
+    start = next(
+        (k for k, d in enumerate(days) if all(index[s][d] + 1 >= strategy.warmup for s in symbols)),
+        len(days),
+    )
+    if start + 1 >= len(days):
+        raise ValueError(
+            f"봉이 부족합니다: 공통 거래일 {len(days)}일 (warmup {strategy.warmup}일 필요)"
+        )
 
     plan = deposit_plan(strategy)
     pf = Portfolio(cash=initial_cash)
@@ -91,50 +107,54 @@ def run_backtest(
     decisions: list[DecisionRecord] = []
     fills: list[Fill] = []
     equity: list[EquityPoint] = []
-    pending: DecisionRecord | None = None
+    pending: dict[str, DecisionRecord] = {}
     last_month: str | None = None
     bench_buy = False
 
-    for i, bar in enumerate(bars):
+    for k, day in enumerate(days):
+        today = {s: series[s][index[s][day]] for s in symbols}
         # 1) 전날 판단을 오늘 시가로 체결한다.
-        if pending is not None:
-            fill = execute(pf, pending, bar, costs, limits)
+        for symbol, order in pending.items():
+            fill = execute(pf, order, today[symbol], costs, limits)
             if fill is not None:
                 fills.append(fill)
-            pending = None
-        if i == start + 1 or bench_buy:
-            # 비교 기준: 전략의 첫 체결 기회와 같은 날 시가에 전액 매수 후 보유.
-            # 입금이 있으면 다음 날 시가에 또 산다.
-            price = costs.buy_price(bar.open)
-            qty = affordable_qty(bench.cash, price, costs, RiskLimits(), Decimal(0))
-            if qty > 0:
-                bench.buy(qty, price, costs.commission(qty * price))
+        pending = {}
+        if k == start + 1 or bench_buy:
+            # 비교 기준: 전략의 첫 체결 기회와 같은 날 시가에 비율대로 전액 매수 후 보유.
+            # 입금이 있으면 다음 날 시가에 또 산다 ("매달 그냥 사기").
+            cash = bench.cash
+            for symbol in symbols:
+                price = costs.buy_price(today[symbol].open)
+                budget = min(bench.cash, cash * weights[symbol] / 100)
+                qty = affordable_qty(budget, price, costs, RiskLimits(), Decimal(0))
+                if qty > 0:
+                    bench.buy(symbol, qty, price, costs.commission(qty * price))
             bench_buy = False
 
-        # 2) 오늘 종가까지 보고 판단한다. bars[: i + 1] 밖의 데이터는 전략에 넘기지 않는다.
-        if i >= start:
+        # 2) 오늘 종가까지 보고 판단한다. 각 종목의 오늘 봉 밖의 데이터는 전략에 넘기지 않는다.
+        if k >= start:
             deposit = Decimal(0)
-            if plan is not None and plan.due(bar.session_date, last_month):
+            if plan is not None and plan.due(day, last_month):
                 deposit = plan.amount
                 pf.deposit(deposit)
                 bench.deposit(deposit)
-                last_month = month_key(bar.session_date)
+                last_month = month_key(day)
                 bench_buy = True
             # 첫 판단일에는 시작 금액도 새로 들어온 돈으로 본다 ("월급 들어오면 바로").
-            fresh = deposit + (initial_cash if i == start else Decimal(0))
-            record = decide(strategy, bars[: i + 1], pf, costs, limits, fresh)
-            if record is not None:
+            fresh = deposit + (initial_cash if k == start else Decimal(0))
+            histories = {s: series[s][: index[s][day] + 1] for s in symbols}
+            for record in decide_basket(strategy, histories, weights, pf, costs, limits, fresh):
                 decisions.append(record)
                 if record.action is not Action.HOLD:
-                    pending = record
+                    pending[record.symbol] = record
+            marks = {s: today[s].close for s in symbols}
             equity.append(
                 EquityPoint(
-                    session_date=bar.session_date,
-                    equity=pf.equity(bar.close),
+                    session_date=day,
+                    equity=pf.equity(marks),
                     cash=pf.cash,
-                    qty=pf.qty,
-                    close=bar.close,
-                    benchmark=bench.equity(bar.close),
+                    invested=pf.invested(marks),
+                    benchmark=bench.equity(marks),
                     contributed=pf.contributed or initial_cash,
                     deposit=deposit,
                 )
@@ -145,7 +165,7 @@ def run_backtest(
         fills=fills,
         equity=equity,
         metrics=_metrics(equity, fills, initial_cash),
-        pending=pending,
+        pending=list(pending.values()),
     )
 
 
@@ -262,7 +282,7 @@ def _metrics(equity: list[EquityPoint], fills: list[Fill], initial_cash: Decimal
         total_return=_ratio(float(last.equity / contributed - 1)),
         cagr=cagr,
         max_drawdown=_max_drawdown(idx),
-        exposure=_ratio(sum(1 for p in equity if p.qty > 0) / len(equity)),
+        exposure=_ratio(sum(1 for p in equity if p.invested > 0) / len(equity)),
         round_trips=len(sells),
         win_rate=_ratio(wins / len(sells)) if sells else None,
         benchmark_final_equity=last.benchmark,

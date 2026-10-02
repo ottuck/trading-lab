@@ -148,3 +148,27 @@ def test_bot_management(client: TestClient, session: Session, bot_id: int) -> No
     voo = created.json()["id"]
     assert client.delete(f"/api/bots/{voo}").status_code == 204
     assert client.get(f"/api/bots/{voo}").status_code == 404
+
+
+def test_multi_symbol_bot_rules(client: TestClient, bot_id: int) -> None:
+    body = {
+        "name": "me",
+        "symbol": "VOO",
+        "strategy": "dip_saver",
+        "params": {"deposit": 675},
+        "symbols": [{"symbol": "voo", "weight": 50}, {"symbol": "QQQ", "weight": 50}],
+        "initial_cash": "675",
+    }
+    created = client.post("/api/bots", json=body).json()
+    assert created["symbols"] == [{"symbol": "VOO", "weight": 50}, {"symbol": "QQQ", "weight": 50}]
+    assert created["symbol"] == "VOO" and created["account"]["contributed"] == "675"
+    # 비율 합이 100이 아니거나, 사고팔기 전략에 여러 종목이거나, 10개를 넘으면 막는다
+    bad_sum = {
+        **body,
+        "name": "x",
+        "symbols": [{"symbol": "VOO", "weight": 60}, {"symbol": "QQQ", "weight": 60}],
+    }
+    classic = {**body, "name": "y", "strategy": "sma_cross", "params": {}}
+    many = {**body, "name": "z", "symbols": [{"symbol": f"S{i}", "weight": 9} for i in range(11)]}
+    for bad in (bad_sum, classic, many):
+        assert client.post("/api/bots", json=bad).status_code == 400

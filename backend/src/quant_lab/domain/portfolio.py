@@ -3,7 +3,8 @@
 수량은 토스 금액 주문(소수점 매수)처럼 소수점 6자리까지 다룬다 (tossApi.md 9절, 2026-10-02).
 """
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
 
 CENT = Decimal("0.01")
@@ -61,12 +62,22 @@ class RiskLimits:
 
 
 @dataclass
-class Portfolio:
-    """모의 계좌. contributed는 지금까지 넣은 돈(시작 금액 + 입금)으로, 수익률의 기준이다."""
+class Position:
+    """종목 하나의 보유 수량과 평균 단가(수수료 포함)."""
 
-    cash: Decimal
     qty: Decimal = Decimal(0)
     avg_cost: Decimal = Decimal(0)
+
+
+@dataclass
+class Portfolio:
+    """모의 계좌 하나. 여러 종목을 담을 수 있고 현금은 함께 쓴다 (2026-10-02~).
+
+    contributed는 지금까지 넣은 돈(시작 금액 + 입금)으로, 수익률의 기준이다.
+    """
+
+    cash: Decimal
+    positions: dict[str, Position] = field(default_factory=dict)
     realized_pnl: Decimal = Decimal(0)
     contributed: Decimal | None = None
     reserve: Decimal = Decimal(0)  # 모으기 전략이 고점 때 모아 둔 돈. 하락장에만 쓴다
@@ -75,8 +86,23 @@ class Portfolio:
         if self.contributed is None:
             self.contributed = self.cash
 
-    def equity(self, mark: Decimal) -> Decimal:
-        return self.cash + self.qty * mark
+    def qty(self, symbol: str) -> Decimal:
+        pos = self.positions.get(symbol)
+        return pos.qty if pos else Decimal(0)
+
+    def avg_cost(self, symbol: str) -> Decimal:
+        pos = self.positions.get(symbol)
+        return pos.avg_cost if pos else Decimal(0)
+
+    def holding(self) -> bool:
+        return any(p.qty > 0 for p in self.positions.values())
+
+    def invested(self, marks: Mapping[str, Decimal]) -> Decimal:
+        """보유 주식의 평가금액."""
+        return sum((p.qty * marks[s] for s, p in self.positions.items() if p.qty), Decimal(0))
+
+    def equity(self, marks: Mapping[str, Decimal]) -> Decimal:
+        return self.cash + self.invested(marks)
 
     def deposit(self, amount: Decimal) -> None:
         """정기 입금(월급). 현금과 넣은 돈이 함께 늘어난다."""
@@ -85,24 +111,26 @@ class Portfolio:
         self.cash += amount
         self.contributed = (self.contributed or Decimal(0)) + amount
 
-    def buy(self, qty: Decimal, price: Decimal, commission: Decimal) -> None:
+    def buy(self, symbol: str, qty: Decimal, price: Decimal, commission: Decimal) -> None:
         cost = qty * price + commission
         if qty <= 0 or cost > self.cash:
             raise ValueError("매수 수량이 0 이하이거나 현금이 부족합니다")
-        self.avg_cost = (self.avg_cost * self.qty + qty * price + commission) / (self.qty + qty)
-        self.qty += qty
+        pos = self.positions.setdefault(symbol, Position())
+        pos.avg_cost = (pos.avg_cost * pos.qty + qty * price + commission) / (pos.qty + qty)
+        pos.qty += qty
         self.cash -= cost
 
-    def sell(self, qty: Decimal, price: Decimal, commission: Decimal) -> Decimal:
-        if qty <= 0 or qty > self.qty:
+    def sell(self, symbol: str, qty: Decimal, price: Decimal, commission: Decimal) -> Decimal:
+        pos = self.positions.get(symbol)
+        if pos is None or qty <= 0 or qty > pos.qty:
             raise ValueError("매도 수량이 보유 수량을 넘습니다")
         proceeds = qty * price - commission
-        pnl = proceeds - qty * self.avg_cost
-        self.qty -= qty
+        pnl = proceeds - qty * pos.avg_cost
+        pos.qty -= qty
         self.cash += proceeds
         self.realized_pnl += pnl
-        if self.qty == 0:
-            self.avg_cost = Decimal(0)
+        if pos.qty == 0:
+            pos.avg_cost = Decimal(0)
         return pnl
 
 

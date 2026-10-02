@@ -57,7 +57,7 @@ export function isPast(iso: string | null | undefined): boolean {
 }
 
 /** 주식 수량. 소수점은 6자리까지 (토스 소수점 거래), 끝자리 0은 지운다. 예: '0.962140' → '0.96214' */
-export function shares(value: string | number | null | undefined): string {
+export function shares(value: string | number | null | undefined, digits = 6): string {
   if (value == null) return '—'
-  return Number(value).toLocaleString('en-US', { maximumFractionDigits: 6 })
+  return Number(value).toLocaleString('en-US', { maximumFractionDigits: digits })
 }

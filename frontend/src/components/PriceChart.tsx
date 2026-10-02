@@ -57,8 +57,11 @@ const RANGES = [
 export function PriceChart({ bot }: { bot: Bot }) {
   const el = useRef<HTMLDivElement>(null)
   const [days, setDays] = useState(252)
+  // 여러 종목 봇은 위에서 종목을 골라 본다.
+  const [picked, setPicked] = useState(bot.symbol)
+  const symbol = bot.symbols.some((s) => s.symbol === picked) ? picked : bot.symbol
   const { theme } = useTheme()
-  const bars = useQuery({ queryKey: ['bars', bot.symbol], queryFn: () => api.bars(bot.symbol) })
+  const bars = useQuery({ queryKey: ['bars', symbol], queryFn: () => api.bars(symbol) })
   const decisions = useQuery({ queryKey: ['decisions', bot.id], queryFn: () => api.decisions(bot.id) })
   const orders = useQuery({ queryKey: ['orders', bot.id], queryFn: () => api.orders(bot.id) })
 
@@ -134,7 +137,7 @@ export function PriceChart({ bot }: { bot: Bot }) {
     // 판단(BUY/SELL 신호)과 모의 체결을 표시한다.
     const markers: SeriesMarker<Time>[] = []
     for (const d of decisions.data ?? []) {
-      if (d.action === 'HOLD' || d.session_date < from) continue
+      if (d.action === 'HOLD' || d.session_date < from || d.symbol !== symbol) continue
       markers.push({
         time: d.session_date as Time,
         position: d.action === 'BUY' ? 'belowBar' : 'aboveBar',
@@ -144,13 +147,13 @@ export function PriceChart({ bot }: { bot: Bot }) {
       })
     }
     for (const o of orders.data ?? []) {
-      if (o.status !== 'FILLED' || !o.fill_date || o.fill_date < from) continue
+      if (o.status !== 'FILLED' || !o.fill_date || o.fill_date < from || o.symbol !== symbol) continue
       markers.push({
         time: o.fill_date as Time,
         position: o.side === 'BUY' ? 'belowBar' : 'aboveBar',
         shape: o.side === 'BUY' ? 'arrowUp' : 'arrowDown',
         color: o.side === 'BUY' ? up : down,
-        text: `${o.side === 'BUY' ? '산' : '판'} ${shares(o.qty)}주`,
+        text: `${o.side === 'BUY' ? '산' : '판'} ${shares(o.qty, 2)}주`,
       })
     }
     markers.sort((a, b) => String(a.time).localeCompare(String(b.time)))
@@ -162,7 +165,7 @@ export function PriceChart({ bot }: { bot: Bot }) {
       series.current = null
       chart.remove()
     }
-  }, [completedKey, liveBar?.date, decisions.data, orders.data, bot.strategy, bot.params, days, theme])
+  }, [completedKey, liveBar?.date, decisions.data, orders.data, bot.strategy, bot.params, days, theme, symbol])
 
   useEffect(() => {
     if (series.current && liveBar) drawLive(series.current, liveBar)
@@ -173,7 +176,17 @@ export function PriceChart({ bot }: { bot: Bot }) {
     <section className="block">
       <div className="block-head">
         <h2>가격 차트</h2>
-        <span className="sub">{bot.symbol}</span>
+        {bot.symbols.length > 1 ? (
+          <div className="ranges" role="group" aria-label="종목">
+            {bot.symbols.map((s) => (
+              <button key={s.symbol} className={s.symbol === symbol ? 'active' : ''} aria-pressed={s.symbol === symbol} onClick={() => setPicked(s.symbol)}>
+                {s.symbol}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <span className="sub">{bot.symbol}</span>
+        )}
         <div className="ranges" role="group" aria-label="기간" style={{ marginLeft: 'auto' }}>
           {RANGES.map((r) => (
             <button key={r.days} className={r.days === days ? 'active' : ''} aria-pressed={r.days === days} onClick={() => setDays(r.days)}>

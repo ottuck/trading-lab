@@ -1,14 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ColorType, createChart, LineSeries, type Time } from 'lightweight-charts'
 import { useEffect, useRef, useState } from 'react'
-import { backtestApi, type BacktestDetail, type StrategyInfo } from '../api'
+import { backtestApi, type BacktestDetail, type StrategyInfo, type SymbolWeight } from '../api'
 import { money, percent, shares, signedMoney, tone } from '../format'
 import { presetOf, useStrategies } from '../strategies'
 import { cssVar, useTheme } from '../theme'
 import { Term } from './Help'
 import { startNewBot } from '../selectedBot'
 import { StrategyPicker } from './StrategyPicker'
-import { SymbolPicker } from './SymbolPicker'
+import { basketLabel } from '../basket'
+import { BasketPicker, SymbolPicker } from './SymbolPicker'
 
 const PERIODS = [
   { label: '최근 3년', years: 3 },
@@ -31,7 +32,7 @@ function ym(date: string) {
 
 const created = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric' })
 
-type Choice = { symbol: string; strategy: string }
+type Choice = { symbol: string; strategy: string; symbols?: SymbolWeight[] | null }
 
 function RunForm({
   choice,
@@ -47,14 +48,26 @@ function RunForm({
   // 전략마다 고른 프리셋 값을 기억한다. 고르지 않았으면 기본값.
   const [picked, setPicked] = useState<Record<string, Record<string, number>>>({})
   const { symbol, strategy } = choice
-  const setSymbol = (s: string) => onChoice({ ...choice, symbol: s })
+  const setSymbol = (s: string) => onChoice({ ...choice, symbol: s, symbols: null })
+  // 모으기 전략은 여러 종목(최대 10개)을 비율대로 시험한다.
+  const basket = choice.symbols?.length ? choice.symbols : [{ symbol, weight: 100 }]
+  const setBasket = (v: SymbolWeight[]) => onChoice({ ...choice, symbol: v[0].symbol, symbols: v })
   const setStrategy = (s: string) => onChoice({ ...choice, strategy: s })
   const [years, setYears] = useState(10)
   const info = byName[strategy]
   const params = picked[strategy] ?? info?.default_params ?? {}
+  const multi = !!info?.accumulates && basket.length > 1
+  const total = basket.reduce((sum, b) => sum + b.weight, 0)
   const run = useMutation({
     // 모으기 전략은 시작 금액을 보내지 않는다 (서버가 첫 달 입금액으로 시작한다).
-    mutationFn: () => backtestApi.run({ symbol, strategy, params, start: startDate(years) }),
+    mutationFn: () =>
+      backtestApi.run({
+        symbol: multi ? basket[0].symbol : symbol,
+        symbols: multi ? basket : undefined,
+        strategy,
+        params,
+        start: startDate(years),
+      }),
     onSuccess: (d) => {
       void qc.invalidateQueries({ queryKey: ['backtests'] })
       onDone(d.id)
@@ -82,7 +95,11 @@ function RunForm({
             ))}
           </div>
         )}
-        <SymbolPicker label="종목" value={symbol} onChange={setSymbol} />
+        {info?.accumulates ? (
+          <BasketPicker value={basket} onChange={setBasket} />
+        ) : (
+          <SymbolPicker label="종목" value={symbol} onChange={setSymbol} />
+        )}
         <div className="controls">
           <span className="label">기간</span>
           {PERIODS.map((p) => (
@@ -92,7 +109,7 @@ function RunForm({
           ))}
         </div>
         <div className="controls">
-          <button className="primary" disabled={run.isPending || !list.length} onClick={() => run.mutate()}>
+          <button className="primary" disabled={run.isPending || !list.length || (multi && total !== 100)} onClick={() => run.mutate()}>
             {run.isPending
               ? '계산 중…'
               : info?.accumulates
@@ -166,7 +183,7 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
           <div className="bot-line">
             <span className="name">{info?.nickname ?? data.strategy}</span>
             <span>
-              · {data.symbol} ·{' '}
+              · {basketLabel(data.symbols, data.symbol)} ·{' '}
               {monthly
                 ? `${ym(m.start)}부터 매달 $${data.params.deposit?.toLocaleString('en-US')}씩 넣었다면 (모두 ${money(paid)})`
                 : `${ym(m.start)}부터 ${money(m.initial_cash)}로 시작했다면`}
@@ -181,7 +198,7 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
           </div>
         </div>
         <div className="hero-actions">
-          <button className="primary" onClick={() => startNewBot({ symbol: data.symbol, strategy: data.strategy, params: data.params })}>
+          <button className="primary" onClick={() => startNewBot({ symbol: data.symbol, symbols: data.symbols ?? undefined, strategy: data.strategy, params: data.params })}>
             이 전략으로 모의 투자 시작
           </button>
         </div>
@@ -334,7 +351,7 @@ export function BacktestView() {
   const currentInfo = list?.find((b) => b.id === current)
   // 양식의 선택(전략·종목)은 아래에 보이는 결과와 맞춘다. 직접 바꾸면 그 선택을 따른다.
   const [picked, setPicked] = useState<Choice | null>(null)
-  const choice = picked ?? (currentInfo ? { symbol: currentInfo.symbol, strategy: currentInfo.strategy } : { symbol: 'QQQ', strategy: 'sma_cross' })
+  const choice = picked ?? (currentInfo ? { symbol: currentInfo.symbol, strategy: currentInfo.strategy, symbols: currentInfo.symbols } : { symbol: 'QQQ', strategy: 'sma_cross' })
   const show = (id: string) => {
     setSelected(id)
     setPicked(null)
@@ -357,7 +374,7 @@ export function BacktestView() {
               <button key={b.id} className={`bt-item ${b.id === current ? 'active' : ''}`} aria-current={b.id === current} onClick={() => show(b.id)}>
                 <div>
                   <div className="sym">
-                    {byName[b.strategy]?.nickname ?? b.strategy} · {b.symbol}
+                    {byName[b.strategy]?.nickname ?? b.strategy} · {b.symbols?.map((x) => x.symbol).join('·') ?? b.symbol}
                   </div>
                   <div className="sub">
                     {b.metrics.start.slice(0, 4)}년부터 · {created.format(new Date(b.created_at))}

@@ -32,16 +32,24 @@ def backtest_symbol(
     end: date | None,
     now: datetime,
     save: bool,
+    weights: dict[str, int] | None = None,
 ) -> BacktestRun:
-    bars = load_daily_bars(session, symbol, end=end)
-    if start is not None:
-        # start일에 첫 판단을 할 수 있도록 그 앞의 warmup 구간을 함께 넘긴다.
-        first = next((i for i, b in enumerate(bars) if b.session_date >= start), len(bars))
-        bars = bars[max(0, first - strategy.warmup + 1) :]
-    if not bars:
-        raise ValueError(f"{symbol} 일봉이 없습니다. 먼저 sync-bars를 실행하세요.")
+    """symbol 하나, 또는 weights(종목별 비율, 합 100)로 여러 종목을 한 계좌로 시험한다."""
+    weights = weights or {symbol: 100}
+    series = {}
+    for s in weights:
+        bars = load_daily_bars(session, s, end=end)
+        if start is not None:
+            # start일에 첫 판단을 할 수 있도록 그 앞의 warmup 구간을 함께 넘긴다.
+            first = next((i for i, b in enumerate(bars) if b.session_date >= start), len(bars))
+            bars = bars[max(0, first - strategy.warmup + 1) :]
+        if not bars:
+            raise ValueError(f"{s} 일봉이 없습니다. 먼저 sync-bars를 실행하세요.")
+        series[s] = bars
+    symbol = next(iter(weights))
+    bars = series[symbol]
 
-    result = run_backtest(bars, strategy, initial_cash, costs, limits)
+    result = run_backtest(series, strategy, initial_cash, costs, limits, weights=weights)
     saved_id = None
     if save:
         saved_id = save_backtest(
@@ -52,7 +60,8 @@ def backtest_symbol(
             costs=costs,
             limits=limits,
             result=result,
-            data_start=bars[0].session_date,
+            data_start=min(b[0].session_date for b in series.values()),
             created_at=now,
+            weights=weights,
         )
     return BacktestRun(result=result, saved_id=saved_id)
