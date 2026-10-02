@@ -54,7 +54,8 @@ def decide(
 ) -> DecisionRecord | None:
     """history의 마지막 봉(완료된 T일)까지 보고 판단한다. 봉이 부족하면 None.
 
-    deposit은 오늘 들어온 입금액이다 (모으기 전략의 Spend.DEPOSIT이 쓴다).
+    deposit은 오늘 새로 들어온 돈이다: 정기 입금, 그리고 첫 판단일의 시작 금액
+    (모으기 전략의 Spend.DEPOSIT이 쓴다).
     """
     holding = pf.qty > 0
     signal = strategy.signal(history, holding)

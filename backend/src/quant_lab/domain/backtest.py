@@ -120,7 +120,9 @@ def run_backtest(
                 bench.deposit(deposit)
                 last_month = month_key(bar.session_date)
                 bench_buy = True
-            record = decide(strategy, bars[: i + 1], pf, costs, limits, deposit)
+            # 첫 판단일에는 시작 금액도 새로 들어온 돈으로 본다 ("월급 들어오면 바로").
+            fresh = deposit + (initial_cash if i == start else Decimal(0))
+            record = decide(strategy, bars[: i + 1], pf, costs, limits, fresh)
             if record is not None:
                 decisions.append(record)
                 if record.action is not Action.HOLD:
