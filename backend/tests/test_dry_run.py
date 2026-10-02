@@ -2,6 +2,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from sqlalchemy import Engine, func, select
@@ -211,6 +212,20 @@ def test_replay_matches_backtest(
     pf = load_account(session, bot_id)
     last_fill = expected[-1]
     assert pf.qty == (last_fill.qty if last_fill.side == "BUY" else 0)
+
+    # 주간 리포트: 금요일 판단마다 한 번, 그 주 체결 수와 함께
+    reports: list[dict[str, Any]] = list(
+        session.scalars(select(EventRow.data).where(EventRow.kind == "weekly_report"))
+    )
+    fridays = [
+        b.session_date
+        for b in bars
+        if start <= b.session_date <= end and b.session_date.weekday() == 4
+    ]
+    assert [r["week_end"] for r in reports] == [d.isoformat() for d in fridays]
+    assert sum(r["buys"] + r["sells"] for r in reports) == sum(
+        1 for f in expected if f.fill_date <= fridays[-1]
+    )
 
 
 def test_db_rejects_duplicate_decision_for_same_bar(

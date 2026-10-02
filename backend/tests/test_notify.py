@@ -52,7 +52,7 @@ def test_events_become_plain_messages_sent_once(engine: Engine, session: Session
     assert notifier.poll() == 0
     assert [m.split("\n")[0] for m in sent] == [
         "📋 오늘의 점검 · QQQ",
-        "🟢 매수 신호 · QQQ",
+        "🔴 매수 신호 · QQQ",
         "✅ QQQ 13주를 샀어요",
         "⏳ 오늘 판단을 잠시 미뤘어요",
     ]

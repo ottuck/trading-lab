@@ -187,7 +187,7 @@ function HoldingsCard({ bot }: { bot: Bot }) {
 function DecisionCard({ bot }: { bot: Bot }) {
   const d = bot.last_decision
   const [more, setMore] = useState(false)
-  const head = d?.action === 'BUY' ? '🟢 매수 신호' : d?.action === 'SELL' ? '🔴 매도 신호' : d?.holding ? '✋ 그대로 들고 있기' : '⏳ 기다리기'
+  const head = d?.action === 'BUY' ? '🔴 매수 신호' : d?.action === 'SELL' ? '🔵 매도 신호' : d?.holding ? '✋ 그대로 들고 있기' : '⏳ 기다리기'
   return (
     <section className="card">
       <div className="card-title">

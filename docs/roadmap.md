@@ -139,7 +139,7 @@
 
 | 항목 | 메모 |
 | --- | --- |
-| 알림 | 완료 (2026-10-01): 텔레그램 알림·일일 점검, 외부 heartbeat ping. 남은 것: Healthchecks.io 계정 연결(사용자) |
+| 알림 | 완료: 텔레그램 알림·일일 점검·주간 리포트(2026-10-02), 외부 heartbeat ping(Healthchecks 연결 완료). 선택: Healthchecks 알림 한국어 webhook(project.md 6절, 사용자) |
 | 다종목 자동 실행 | 2–3종목. 포트폴리오 단위 위험 한도 |
 | 레버리지 ETF | 별도 위험 한도 검증 후 |
 | 실시간 시세 | WebSocket 담당자 1개, 재연결·재구독 (tossApi.md 5절) |
