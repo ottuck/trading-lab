@@ -187,18 +187,20 @@ def decision_reason(
     if strategy == "dip_saver":
         drop = -float(indicators.get("drawdown", 0)) * 100
         up = float(indicators.get("premium", 0)) * 100
+        # 상장 1년 미만이면 있는 만큼(bars일)의 최고가·평균으로 본다
+        young = indicators.get("bars")
+        top = "상장 뒤 최고가" if young else "1년 최고가"
+        avg = f"상장 뒤 {int(float(young))}일 평균" if young else f"{p.get('sma')}일 평균"
         if drop >= float(p.get("dip", 10)):
             tail = (
                 "모아 둔 돈까지 사요."
                 if action == "BUY"
                 else "살 현금이 없어 다음 입금을 기다려요."
             )
-            return f"1년 최고가보다 {drop:.1f}% 낮아요. {tail}"
+            return f"{top}보다 {drop:.1f}% 낮아요. {tail}"
         hot = float(p.get("hot", 10))
         if hot and up >= hot:
-            return (
-                f"{p.get('sma')}일 평균보다 {up:.1f}% 높아요. 이번엔 사지 않고 현금으로 모아 둬요."
-            )
+            return f"{avg}보다 {up:.1f}% 높아요. 이번엔 사지 않고 현금으로 모아 둬요."
         if action == "BUY":
             return "적당한 가격이에요. 이번 달 넣은 돈으로 사요."
         return "적당한 가격이에요. 다음 월급날에 사요."

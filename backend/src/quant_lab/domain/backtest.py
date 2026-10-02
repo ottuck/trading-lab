@@ -16,7 +16,7 @@ from itertools import pairwise
 
 from quant_lab.domain.bars import DailyBar
 from quant_lab.domain.portfolio import CostModel, Portfolio, RiskLimits, affordable_qty
-from quant_lab.domain.strategy import Strategy, deposit_plan, month_key
+from quant_lab.domain.strategy import Strategy, deposit_plan, min_bars, month_key
 from quant_lab.domain.trading import Action, DecisionRecord, Fill, decide_basket, execute
 
 
@@ -83,6 +83,7 @@ def run_backtest(
     """bars는 한 종목의 일봉, 또는 종목별 일봉(여러 종목은 모으기 전략만, weights 합 100).
 
     여러 종목은 모든 종목에 봉이 있는 거래일만 진행하고, 모든 종목이 warmup을 채운 날부터 판단한다.
+    이력 전체가 warmup보다 짧은 종목(상장 1년 미만)은 전략의 min_bars를 채운 날부터 본다.
     """
     limits = limits or RiskLimits()
     series = dict(bars) if isinstance(bars, Mapping) else {bars[0].symbol: list(bars)}
@@ -92,13 +93,17 @@ def run_backtest(
         raise ValueError("종목 비율의 합은 100이어야 합니다")
     index = {s: {b.session_date: i for i, b in enumerate(v)} for s, v in series.items()}
     days = sorted(set.intersection(*(set(i) for i in index.values())))
+    need = {
+        s: strategy.warmup if len(series[s]) > strategy.warmup else min_bars(strategy)
+        for s in symbols
+    }
     start = next(
-        (k for k, d in enumerate(days) if all(index[s][d] + 1 >= strategy.warmup for s in symbols)),
+        (k for k, d in enumerate(days) if all(index[s][d] + 1 >= need[s] for s in symbols)),
         len(days),
     )
     if start + 1 >= len(days):
         raise ValueError(
-            f"봉이 부족합니다: 공통 거래일 {len(days)}일 (warmup {strategy.warmup}일 필요)"
+            f"봉이 부족합니다: 공통 거래일 {len(days)}일 ({max(need.values())}일 필요)"
         )
 
     plan = deposit_plan(strategy)
