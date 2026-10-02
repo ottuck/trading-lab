@@ -13,6 +13,7 @@ from quant_lab.domain.portfolio import CostModel, Portfolio, RiskLimits
 from quant_lab.persistence.backtests import to_jsonable
 from quant_lab.persistence.models import (
     BotAccountRow,
+    BotDepositRow,
     BotRow,
     CommandRow,
     DecisionRow,
@@ -56,6 +57,7 @@ def create_bot(
             qty=0,
             avg_cost=Decimal(0),
             realized_pnl=Decimal(0),
+            contributed=initial_cash,
             updated_at=now,
         )
     )
@@ -98,7 +100,11 @@ def set_bot_state(
 def load_account(session: Session, bot_id: int) -> Portfolio:
     row = session.get_one(BotAccountRow, bot_id)
     return Portfolio(
-        cash=row.cash, qty=row.qty, avg_cost=row.avg_cost, realized_pnl=row.realized_pnl
+        cash=row.cash,
+        qty=row.qty,
+        avg_cost=row.avg_cost,
+        realized_pnl=row.realized_pnl,
+        contributed=row.contributed,
     )
 
 
@@ -111,6 +117,7 @@ def save_account(session: Session, bot_id: int, pf: Portfolio, now: datetime) ->
             qty=pf.qty,
             avg_cost=pf.avg_cost,
             realized_pnl=pf.realized_pnl,
+            contributed=pf.contributed,
             updated_at=now,
         )
     )
@@ -164,14 +171,22 @@ def unprocessed_commands(session: Session) -> list[CommandRow]:
 
 def delete_bot(session: Session, bot_id: int) -> None:
     """봇과 그 기록을 모두 지운다 (화면의 봇 삭제, replay 임시 봇 정리)."""
-    for model in (EventRow, SimOrderRow, DecisionRow, RunRow, CommandRow, BotAccountRow):
+    for model in (
+        EventRow,
+        SimOrderRow,
+        DecisionRow,
+        RunRow,
+        CommandRow,
+        BotDepositRow,
+        BotAccountRow,
+    ):
         session.execute(delete(model).where(model.bot_id == bot_id))
     session.execute(delete(BotRow).where(BotRow.id == bot_id))
 
 
 def reset_bot_history(session: Session, bot: BotRow, now: datetime) -> None:
     """판단·주문·실행·명령·기록을 지우고 잔고를 시작 금액으로. 다음 tick에 바로 다시 판단한다."""
-    for model in (EventRow, SimOrderRow, DecisionRow, RunRow, CommandRow):
+    for model in (EventRow, SimOrderRow, DecisionRow, RunRow, CommandRow, BotDepositRow):
         session.execute(delete(model).where(model.bot_id == bot.id))
     save_account(session, bot.id, Portfolio(cash=bot.initial_cash), now)
     bot.next_evaluation_at = None

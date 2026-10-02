@@ -115,7 +115,20 @@ class BotAccountRow(Base):
     qty: Mapped[int] = mapped_column(Integer)
     avg_cost: Mapped[Decimal] = mapped_column(PRICE)
     realized_pnl: Mapped[Decimal] = mapped_column(PRICE)
+    contributed: Mapped[Decimal] = mapped_column(PRICE)  # 넣은 돈 (시작 금액 + 입금)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class BotDepositRow(Base):
+    """모으기 전략의 정기 입금. 한 봇에 한 달 한 번 (PK로 중복 입금을 막는다)."""
+
+    __tablename__ = "bot_deposits"
+
+    bot_id: Mapped[int] = mapped_column(ForeignKey("bots.id"), primary_key=True)
+    month: Mapped[str] = mapped_column(String(7), primary_key=True)  # YYYY-MM
+    session_date: Mapped[date] = mapped_column(Date)
+    amount: Mapped[Decimal] = mapped_column(PRICE)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class CommandRow(Base):
@@ -201,6 +214,7 @@ class SimOrderRow(Base):
     commission: Mapped[Decimal | None] = mapped_column(PRICE)
     realized_pnl: Mapped[Decimal | None] = mapped_column(PRICE)
     note: Mapped[str | None] = mapped_column(Text)
+    budget: Mapped[Decimal | None] = mapped_column(PRICE)  # 모으기 매수 예산 (NULL: 현금 전부)
 
 
 class EventRow(Base):

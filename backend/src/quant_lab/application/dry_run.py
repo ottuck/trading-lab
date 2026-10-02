@@ -24,7 +24,7 @@ from quant_lab.application.weekly import is_week_end, weekly_summary
 from quant_lab.domain.bars import TradingCalendar, check_daily_bars, is_completed, outlier_limit
 from quant_lab.domain.bot import BotState
 from quant_lab.domain.portfolio import Portfolio, money
-from quant_lab.domain.strategy import STRATEGIES, Strategy
+from quant_lab.domain.strategy import STRATEGIES, Strategy, deposit_plan, month_key
 from quant_lab.domain.trading import Action, DecisionRecord, Fill, decide, execute
 from quant_lab.persistence.backtests import to_jsonable
 from quant_lab.persistence.bars import load_daily_bars
@@ -39,7 +39,7 @@ from quant_lab.persistence.bots import (
     set_bot_state,
 )
 from quant_lab.persistence.market_info import leverage_of
-from quant_lab.persistence.models import BotRow, DecisionRow, RunRow, SimOrderRow
+from quant_lab.persistence.models import BotDepositRow, BotRow, DecisionRow, RunRow, SimOrderRow
 
 MODE = "DRY_RUN"
 RETRY_AFTER = timedelta(minutes=15)
@@ -227,7 +227,9 @@ def _evaluate(
     order = pending_order(session, bot.id)
     if order is not None and order.signal_date < target:
         fill_bar = next(b for b in bars if b.session_date > order.signal_date)
-        intent = DecisionRecord(order.signal_date, Action(order.side), True, False, "", {})
+        intent = DecisionRecord(
+            order.signal_date, Action(order.side), True, False, "", {}, budget=order.budget
+        )
         fill = execute(pf, intent, fill_bar, costs, limits)
         order.fill_date = fill_bar.session_date
         if fill is None:
@@ -274,8 +276,39 @@ def _evaluate(
                 run_id=run_id,
             )
 
-    # 5) 전략 판단·위험 검사·모의 주문
-    decision = decide(strategy, bars, pf, costs, limits)
+    # 5) 정기 입금(모으기 전략): 이번 달 입금이 아직 없고 입금일이 지났으면 오늘 넣는다.
+    #    백테스트와 같은 규칙이다 (domain/strategy.py DepositPlan). 한 달 한 번은 DB PK가 보장한다.
+    deposit = Decimal(0)
+    plan = deposit_plan(strategy)
+    if plan is not None:
+        last_month = session.scalar(
+            select(func.max(BotDepositRow.month)).where(BotDepositRow.bot_id == bot.id)
+        )
+        if plan.due(target, last_month):
+            deposit = plan.amount
+            pf.deposit(deposit)
+            session.add(
+                BotDepositRow(
+                    bot_id=bot.id,
+                    month=month_key(target),
+                    session_date=target,
+                    amount=deposit,
+                    created_at=now,
+                )
+            )
+            add_event(
+                session,
+                now,
+                "INFO",
+                "deposit",
+                f"{target} 입금 ${deposit}",
+                bot_id=bot.id,
+                run_id=run_id,
+                data={"amount": deposit, "contributed": pf.contributed, "symbol": bot.symbol},
+            )
+
+    # 6) 전략 판단·위험 검사·모의 주문
+    decision = decide(strategy, bars, pf, costs, limits, deposit)
     if decision is None:
         raise _Skip(f"봉이 부족합니다 ({len(bars)}개, 필요 {strategy.warmup}개)")
     row = DecisionRow(
@@ -311,6 +344,7 @@ def _evaluate(
                     status="PENDING",
                     signal_date=target,
                     created_at=now,
+                    budget=decision.budget,
                 )
             )
             session.flush()
@@ -327,11 +361,13 @@ def _evaluate(
 
 
 def _summary(bot: BotRow, pf: Portfolio, close: Decimal) -> dict[str, str | int]:
-    """알림·로그용 잔고 요약 (판단일 종가 기준 평가)."""
+    """알림·로그용 잔고 요약 (판단일 종가 기준 평가). 수익률은 넣은 돈 대비."""
     equity = pf.equity(close)
+    contributed = pf.contributed or bot.initial_cash
     return {
         "equity": str(money(equity)),
-        "total_return": str(round(equity / bot.initial_cash - 1, 6)),
+        "contributed": str(contributed),
+        "total_return": str(round(equity / contributed - 1, 6)),
         "qty": pf.qty,
         "close": str(close),
     }
