@@ -1,6 +1,7 @@
 import type { Draft } from '../botConfig'
-import { presetOf, SLIPPAGE_CHOICES, useStrategies } from '../strategies'
+import { SLIPPAGE_CHOICES, useStrategies } from '../strategies'
 import { Term } from './Help'
+import { PresetFields } from './PresetFields'
 import { StrategyPicker } from './StrategyPicker'
 
 type Props = { draft: Draft; onChange: (d: Draft) => void }
@@ -9,7 +10,6 @@ type Props = { draft: Draft; onChange: (d: Draft) => void }
 export function StrategyFields({ draft, onChange }: Props) {
   const { list, byName } = useStrategies()
   const info = byName[draft.strategy]
-  const current = presetOf(info, draft.params)
   return (
     <div className="stack">
       <StrategyPicker
@@ -17,21 +17,7 @@ export function StrategyFields({ draft, onChange }: Props) {
         value={draft.strategy}
         onChange={(name) => onChange({ ...draft, strategy: name, params: byName[name]?.default_params ?? {} })}
       />
-      {info && info.presets.length > 1 && (
-        <div className="controls">
-          <span className="label">{info.preset_label}</span>
-          {info.presets.map((p) => (
-            <button
-              key={p.key}
-              className={`seg ${current?.key === p.key ? 'active' : ''}`}
-              onClick={() => onChange({ ...draft, params: p.params })}
-            >
-              {p.label}
-            </button>
-          ))}
-          {!current && <span className="faint small">직접 설정한 값 사용 중</span>}
-        </div>
-      )}
+      {info && <PresetFields info={info} params={draft.params} onChange={(params) => onChange({ ...draft, params })} custom />}
     </div>
   )
 }

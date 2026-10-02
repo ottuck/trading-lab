@@ -16,7 +16,7 @@ from quant_lab.persistence.bars import upsert_daily_bars
 from quant_lab.persistence.bots import create_bot
 from quant_lab.persistence.db import get_session
 from quant_lab.persistence.heartbeat import record_heartbeat
-from quant_lab.persistence.models import CommandRow
+from quant_lab.persistence.models import BotPositionRow, CommandRow
 from tests.fakes import WeekdayCalendar, make_bars
 
 CAL = WeekdayCalendar()
@@ -172,3 +172,27 @@ def test_multi_symbol_bot_rules(client: TestClient, bot_id: int) -> None:
     many = {**body, "name": "z", "symbols": [{"symbol": f"S{i}", "weight": 9} for i in range(11)]}
     for bad in (bad_sum, classic, many):
         assert client.post("/api/bots", json=bad).status_code == 400
+
+
+def test_change_symbols_keeps_held_ones(client: TestClient, session: Session) -> None:
+    body = {
+        "name": "me",
+        "symbol": "VOO",
+        "strategy": "dip_saver",
+        "params": {"deposit": 675},
+        "symbols": [{"symbol": "VOO", "weight": 50}, {"symbol": "QQQ", "weight": 50}],
+        "initial_cash": "675",
+    }
+    bot = client.post("/api/bots", json=body).json()
+    session.add(BotPositionRow(bot_id=bot["id"], symbol="VOO", qty=Decimal(1), avg_cost=500))
+    session.commit()
+    # 들고 있는 VOO를 빼면 비율 0으로 남아 더 사지 않고 들고만 있는다
+    new = [{"symbol": "QQQ", "weight": 40}, {"symbol": "GLD", "weight": 60}]
+    url = f"/api/bots/{bot['id']}/symbols"
+    changed = client.put(url, json={"symbols": new}).json()
+    assert changed["symbol"] == "QQQ"
+    assert changed["symbols"] == [*new, {"symbol": "VOO", "weight": 0}]
+    events = f"/api/events?bot_id={bot['id']}&kind=config_change"
+    history = client.get(events).json()
+    assert "들고만 있기: VOO" in history[0]["message"]
+    assert client.put(url, json={"symbols": [{"symbol": "QQQ", "weight": 50}]}).status_code == 400

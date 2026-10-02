@@ -69,8 +69,16 @@ def create_bot(
 
 
 def bot_weights(bot: BotRow) -> dict[str, int]:
-    """종목별 비율 (합 100). 첫 종목이 목록·알림에 보이는 대표 종목이다."""
+    """종목별 비율 (합 100). 첫 종목이 목록·알림에 보이는 대표 종목이다.
+
+    비율 0은 종목을 바꾸며 뺐지만 들고 있는 종목이다: 시세·평가에는 쓰고 더 사지 않는다.
+    """
     return {str(item["symbol"]): int(item["weight"]) for item in bot.symbols}
+
+
+def active_weights(bot: BotRow) -> dict[str, int]:
+    """판단(사기)에 쓰는 종목만 (비율 0 제외)."""
+    return {s: w for s, w in bot_weights(bot).items() if w > 0}
 
 
 def bot_costs(bot: BotRow) -> CostModel:

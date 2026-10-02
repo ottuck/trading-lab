@@ -3,7 +3,7 @@
 주식을 잘 모르는 사람도 이해할 수 있게 전문 용어를 피한다 (텔레그램·화면 공용).
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -19,6 +19,16 @@ class Preset:
 
 
 @dataclass(frozen=True)
+class Choice:
+    """프리셋과 따로 고르는 규칙 하나 (예: 고점에 쉬기). options는 (값, 보이는 말)."""
+
+    key: str
+    label: str
+    options: list[tuple[int, str]]
+    hint: str = ""
+
+
+@dataclass(frozen=True)
 class StrategyInfo:
     name: str
     nickname: str
@@ -28,6 +38,7 @@ class StrategyInfo:
     trades: str  # 거래 빈도를 쉬운 말로
     presets: list[Preset]
     preset_label: str = "반응 속도"  # 프리셋 선택지의 이름
+    choices: list[Choice] = field(default_factory=list)  # 프리셋을 바꿔도 유지되는 규칙
 
 
 CATALOG: dict[str, StrategyInfo] = {
@@ -82,7 +93,7 @@ CATALOG: dict[str, StrategyInfo] = {
         emoji="🐷",
         summary=(
             "매달 월급날 돈을 넣고 사 모아요. 많이 올랐을 땐 현금으로 모아 두고, "
-            "1년 최고가보다 10% 넘게 떨어지면 모아 둔 돈까지 다 사요. 팔지 않아요."
+            "1년 최고가보다 크게 떨어지면 모아 둔 돈까지 다 사요. 팔지 않아요."
         ),
         risk="보통",
         trades="한 달에 한 번 안팎",
@@ -104,6 +115,20 @@ CATALOG: dict[str, StrategyInfo] = {
             ),
         ],
         preset_label="매달 넣는 돈",
+        choices=[
+            Choice(
+                "hot",
+                "고점에 쉬기",
+                [(10, "+10%"), (15, "+15%"), (20, "+20%"), (0, "안 쉼")],
+                "200일 평균보다 이만큼 높으면 그달엔 사지 않고 현금으로 모아 둬요.",
+            ),
+            Choice(
+                "dip",
+                "하락장 기준",
+                [(10, "-10%"), (15, "-15%"), (20, "-20%")],
+                "1년 최고가보다 이만큼 떨어지면 모아 둔 돈까지 다 사요.",
+            ),
+        ],
     ),
 }
 
@@ -162,17 +187,20 @@ def decision_reason(
     if strategy == "dip_saver":
         drop = -float(indicators.get("drawdown", 0)) * 100
         up = float(indicators.get("premium", 0)) * 100
+        # 상장 1년 미만이면 있는 만큼(bars일)의 최고가·평균으로 본다
+        young = indicators.get("bars")
+        top = "상장 뒤 최고가" if young else "1년 최고가"
+        avg = f"상장 뒤 {int(float(young))}일 평균" if young else f"{p.get('sma')}일 평균"
         if drop >= float(p.get("dip", 10)):
             tail = (
                 "모아 둔 돈까지 사요."
                 if action == "BUY"
                 else "살 현금이 없어 다음 입금을 기다려요."
             )
-            return f"1년 최고가보다 {drop:.1f}% 낮아요. {tail}"
-        if up >= float(p.get("hot", 10)):
-            return (
-                f"{p.get('sma')}일 평균보다 {up:.1f}% 높아요. 이번엔 사지 않고 현금으로 모아 둬요."
-            )
+            return f"{top}보다 {drop:.1f}% 낮아요. {tail}"
+        hot = float(p.get("hot", 10))
+        if hot and up >= hot:
+            return f"{avg}보다 {up:.1f}% 높아요. 이번엔 사지 않고 현금으로 모아 둬요."
         if action == "BUY":
             return "적당한 가격이에요. 이번 달 넣은 돈으로 사요."
         return "적당한 가격이에요. 다음 월급날에 사요."
@@ -400,6 +428,9 @@ def event_message(
             True,
         )
     if kind == "config_change":
+        if raw.startswith("종목 변경: "):
+            body = raw.removeprefix("종목 변경: ")
+            return Message("⚙️", "종목을 바꿨어요", body, "INFO", False)
         title = "봇을 만들었어요" if raw.startswith("봇 생성") else "설정을 바꿨어요"
         return Message(
             "⚙️",

@@ -3,12 +3,13 @@ import { ColorType, createChart, LineSeries, type Time } from 'lightweight-chart
 import { useEffect, useRef, useState } from 'react'
 import { backtestApi, type BacktestDetail, type StrategyInfo, type SymbolWeight } from '../api'
 import { money, percent, shares, signedMoney, tone } from '../format'
-import { presetOf, useStrategies } from '../strategies'
+import { useStrategies } from '../strategies'
 import { cssVar, useTheme } from '../theme'
 import { Term } from './Help'
 import { startNewBot } from '../selectedBot'
 import { StrategyPicker } from './StrategyPicker'
-import { basketLabel } from '../basket'
+import { PresetFields } from './PresetFields'
+import { activeOf, basketLabel } from '../basket'
 import { BasketPicker, SymbolPicker } from './SymbolPicker'
 
 const PERIODS = [
@@ -81,20 +82,7 @@ function RunForm({
       </div>
       <div className="stack">
         <StrategyPicker list={list} value={strategy} onChange={setStrategy} />
-        {info && info.presets.length > 1 && (
-          <div className="controls">
-            <span className="label">{info.preset_label}</span>
-            {info.presets.map((p) => (
-              <button
-                key={p.key}
-                className={`seg ${presetOf(info, params)?.key === p.key ? 'active' : ''}`}
-                onClick={() => setPicked({ ...picked, [strategy]: p.params })}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        )}
+        {info && <PresetFields info={info} params={params} onChange={(p) => setPicked({ ...picked, [strategy]: p })} />}
         {info?.accumulates ? (
           <BasketPicker value={basket} onChange={setBasket} />
         ) : (
@@ -351,7 +339,7 @@ export function BacktestView() {
   const currentInfo = list?.find((b) => b.id === current)
   // 양식의 선택(전략·종목)은 아래에 보이는 결과와 맞춘다. 직접 바꾸면 그 선택을 따른다.
   const [picked, setPicked] = useState<Choice | null>(null)
-  const choice = picked ?? (currentInfo ? { symbol: currentInfo.symbol, strategy: currentInfo.strategy, symbols: currentInfo.symbols } : { symbol: 'QQQ', strategy: 'sma_cross' })
+  const choice = picked ?? (currentInfo ? { symbol: currentInfo.symbol, strategy: currentInfo.strategy, symbols: activeOf(currentInfo.symbols ?? []) } : { symbol: 'QQQ', strategy: 'sma_cross' })
   const show = (id: string) => {
     setSelected(id)
     setPicked(null)

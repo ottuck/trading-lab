@@ -54,6 +54,14 @@ def deposit_plan(strategy: object) -> DepositPlan | None:
     return plan if isinstance(plan, DepositPlan) else None
 
 
+def min_bars(strategy: Strategy) -> int:
+    """이력 전체가 warmup보다 짧은 종목(상장 1년 미만)에서 판단을 시작할 수 있는 봉 수.
+
+    전략이 정하지 않으면 warmup과 같다 (짧은 이력으로는 판단하지 않는다).
+    """
+    return int(getattr(strategy, "min_bars", None) or strategy.warmup)
+
+
 class Strategy(Protocol):
     @property
     def name(self) -> str: ...
@@ -256,14 +264,16 @@ class DipSaver:
     """나처럼 모으기: 매달 입금하고 사 모은다. 팔지 않는다.
 
     - 1년(high일) 종가 최고보다 dip% 이상 낮으면: 모아 둔 현금까지 모두 산다 (입금일이 아니어도)
-    - SMA(sma) 보다 hot% 이상 높으면: 사지 않고 현금으로 모아 둔다
+    - SMA(sma) 보다 hot% 이상 높으면: 사지 않고 현금으로 모아 둔다 (hot=0이면 쉬지 않는다)
     - 그 밖에는: 입금일에 그달 입금액만큼 산다 (지난달 잔돈 포함, 고점 때 모아 둔 돈은 빼고)
+
+    상장 1년 미만 종목은 한 달(min_bars) 이력부터 있는 만큼으로 최고가·평균을 본다.
     """
 
     deposit: int = 1350  # 매달 넣는 돈 (달러, 월 20만 엔 안팎)
     day: int = 25  # 입금일 (1~28)
-    dip: int = 10  # %
-    hot: int = 10  # %
+    dip: int = 10  # % (10·15·20 중 고른다)
+    hot: int = 10  # % (10·15·20, 0이면 고점에도 쉬지 않음)
     high: int = 252
     sma: int = 200
     name: ClassVar[str] = "dip_saver"
@@ -271,8 +281,8 @@ class DipSaver:
     def __post_init__(self) -> None:
         if self.deposit <= 0 or not 1 <= self.day <= 28:
             raise ValueError("deposit은 양수, day는 1~28이어야 합니다")
-        if self.dip <= 0 or self.hot <= 0 or self.high <= 1 or self.sma <= 1:
-            raise ValueError("dip, hot은 양수, high, sma는 2 이상이어야 합니다")
+        if self.dip <= 0 or self.hot < 0 or self.high <= 1 or self.sma <= 1:
+            raise ValueError("dip은 양수, hot은 0 이상, high, sma는 2 이상이어야 합니다")
 
     @property
     def params(self) -> dict[str, int]:
@@ -293,12 +303,17 @@ class DipSaver:
     def deposit_plan(self) -> DepositPlan:
         return DepositPlan(Decimal(self.deposit), self.day)
 
+    @property
+    def min_bars(self) -> int:
+        """상장 1년 미만 종목은 한 달(21거래일) 이력부터 판단한다."""
+        return min(21, self.warmup)
+
     def signal(self, history: Sequence[DailyBar], holding: bool) -> Signal | None:
-        if len(history) < self.warmup:
+        if len(history) < self.min_bars:
             return None
         close = history[-1].close
         top = max(b.close for b in history[-self.high :])
-        avg = _sma(history, self.sma)
+        avg = _sma(history, min(self.sma, len(history)))
         drawdown, premium = close / top - 1, close / avg - 1
         indicators = {
             f"high{self.high}": top,
@@ -306,10 +321,12 @@ class DipSaver:
             "drawdown": round(drawdown, 4),
             "premium": round(premium, 4),
         }
+        if len(history) < self.warmup:
+            indicators["bars"] = Decimal(len(history))  # 이력이 짧아 있는 만큼으로 봤다
         state = f"최고 대비 {drawdown:.1%}, SMA{self.sma} 대비 {premium:+.1%}"
         if drawdown <= -Decimal(self.dip) / 100:
             return Signal(True, f"하락장 ({state}): 모은 현금 모두 매수", indicators, Spend.ALL)
-        if premium >= Decimal(self.hot) / 100:
+        if self.hot and premium >= Decimal(self.hot) / 100:
             return Signal(True, f"고점 ({state}): 현금으로 모아 둠", indicators, Spend.NONE)
         return Signal(True, f"보통 ({state}): 입금액만큼 매수", indicators, Spend.DEPOSIT)
 

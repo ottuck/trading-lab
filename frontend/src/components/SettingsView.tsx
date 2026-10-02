@@ -7,7 +7,7 @@ import { sameParams, useStrategies } from '../strategies'
 import { toConfig, toDraft, type Draft } from '../botConfig'
 import { useDismiss } from '../useDismiss'
 import { StrategyFields, TradeFields } from './BotConfigFields'
-import { basketLabel } from '../basket'
+import { activeOf, basketLabel } from '../basket'
 import { BasketPicker, SymbolPicker } from './SymbolPicker'
 
 /* Vercel식 설정: 왼쪽에 섹션 제목·설명, 오른쪽에 입력. 섹션은 가는 선으로 나누고 저장은 맨 아래 하나,
@@ -88,6 +88,55 @@ function History({ botId }: { botId: number }) {
             <time dateTime={a.at}>{ago(a.at)}</time>
           </div>
         ))}
+      </div>
+    </Section>
+  )
+}
+
+/** 만든 뒤 종목·비율 바꾸기. 모으기 전략에서 뺀 종목을 들고 있으면 팔지 않고 들고만 있는다. */
+function SymbolsField({ bot }: { bot: Bot }) {
+  const qc = useQueryClient()
+  const { byName } = useStrategies()
+  const accumulates = !!byName[bot.strategy]?.accumulates
+  const [basket, setBasket] = useState(() => activeOf(bot.symbols))
+  const save = useMutation({
+    mutationFn: () => botApi.updateSymbols(bot.id, basket),
+    onSuccess: (b) => {
+      setBasket(activeOf(b.symbols))
+      void qc.invalidateQueries({ queryKey: ['bots'] })
+      void qc.invalidateQueries({ queryKey: ['history', bot.id] })
+    },
+  })
+  const held = bot.account.positions.filter((p) => Number(p.qty) > 0).map((p) => p.symbol)
+  const picked = basket.map((b) => b.symbol)
+  const dropped = held.filter((s) => !picked.includes(s))
+  const total = basket.reduce((sum, b) => sum + b.weight, 0)
+  const now = activeOf(bot.symbols)
+  const changed = basket.length !== now.length || basket.some((b, i) => b.symbol !== now[i]?.symbol || b.weight !== now[i]?.weight)
+  const locked = !accumulates && dropped.length > 0
+  return (
+    <Section
+      title={accumulates ? '종목과 비율' : '종목'}
+      desc={accumulates ? '다음 입금부터 이 비율대로 나눠 사요. 바꾼 기록은 아래에 남아요.' : '사고팔 종목을 바꿔요. 들고 있는 동안에는 바꿀 수 없어요.'}
+    >
+      {accumulates ? (
+        <BasketPicker value={basket} onChange={setBasket} />
+      ) : (
+        <SymbolPicker label="" value={basket[0]?.symbol ?? bot.symbol} onChange={(symbol) => setBasket([{ symbol, weight: 100 }])} />
+      )}
+      {changed && dropped.length > 0 && (
+        <div className="notice">
+          {locked
+            ? `지금 ${dropped.join(', ')}를 들고 있어요. 이 전략은 판 뒤에 종목을 바꿀 수 있어요.`
+            : `${dropped.join(', ')}는 팔지 않아요. 지금 들고 있는 만큼 그대로 두고 더 사지 않아요.`}
+        </div>
+      )}
+      <div className="controls">
+        <button disabled={!changed || locked || total !== 100 || save.isPending} onClick={() => save.mutate()}>
+          종목 저장
+        </button>
+        {save.isSuccess && !changed && <span className="ok small">바꿨어요. 다음 판단부터 적용돼요.</span>}
+        {save.error && <span className="bad small">{save.error.message}</span>}
       </div>
     </Section>
   )
@@ -202,6 +251,7 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
         {save.isSuccess && <span className="ok small">저장했어요. 다음 판단부터 적용돼요.</span>}
         {save.error && <span className="bad small">{save.error.message}</span>}
       </div>
+      <SymbolsField key={bot.symbols.map((s) => `${s.symbol}${s.weight}`).join()} bot={bot} />
       <NameField key={bot.name} bot={bot} />
       <History botId={bot.id} />
       <h2 className="danger-title">되돌릴 수 없는 동작</h2>

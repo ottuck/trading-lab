@@ -188,6 +188,8 @@ export type StrategyInfo = {
   default_params: Record<string, number>
   accumulates: boolean // 매달 입금하고 사 모으는 전략 (팔지 않음)
   preset_label: string
+  // 프리셋과 따로 고르는 규칙 (예: 고점에 쉬기). 프리셋을 바꿔도 유지된다.
+  choices: { key: string; label: string; options: { value: number; label: string }[]; hint: string }[]
 }
 
 export type ActivityItem = { id: number; at: string; icon: string; title: string; body: string; level: string }
@@ -290,6 +292,7 @@ const json = (method: string, body: unknown): RequestInit => ({
 export const botApi = {
   create: (body: BotCreate) => request<Bot>('/api/bots', json('POST', body)),
   updateConfig: (botId: number, body: BotConfig) => request<Bot>(`/api/bots/${botId}/config`, json('PUT', body)),
+  updateSymbols: (botId: number, symbols: SymbolWeight[]) => request<Bot>(`/api/bots/${botId}/symbols`, json('PUT', { symbols })),
   rename: (botId: number, name: string) => request<Bot>(`/api/bots/${botId}`, json('PATCH', { name })),
   reset: (botId: number) => request<Bot>(`/api/bots/${botId}/reset`, { method: 'POST' }),
   remove: (botId: number) => request<void>(`/api/bots/${botId}`, { method: 'DELETE' }),

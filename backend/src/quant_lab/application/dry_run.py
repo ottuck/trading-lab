@@ -30,11 +30,12 @@ from quant_lab.domain.bars import (
 )
 from quant_lab.domain.bot import BotState
 from quant_lab.domain.portfolio import Portfolio, money
-from quant_lab.domain.strategy import STRATEGIES, Strategy, deposit_plan, month_key
+from quant_lab.domain.strategy import STRATEGIES, Strategy, deposit_plan, min_bars, month_key
 from quant_lab.domain.trading import Action, DecisionRecord, Fill, decide_basket, execute
 from quant_lab.persistence.backtests import to_jsonable
 from quant_lab.persistence.bars import load_daily_bars
 from quant_lab.persistence.bots import (
+    active_weights,
     add_event,
     bot_costs,
     bot_limits,
@@ -217,6 +218,7 @@ def _evaluate(
 
     # 2) 완료 봉 수집·검증 (모든 종목). 한 종목이라도 그날 봉이 없거나 문제가 있으면 전체를 미룬다
     #    (원칙 5: 현금을 함께 쓰므로 일부 종목만 먼저 판단하면 백테스트와 순서가 달라진다).
+    #    종목을 바꾸며 뺀(비율 0) 보유 종목도 평가에 쓰므로 함께 확인하고, 판단은 하지 않는다.
     # 동기화 결과의 품질 문제는 판단에 쓰는 구간(아래 window)만 막는다.
     # 전체 이력에 섞인 오래된 이상치 때문에 봇이 영원히 멈추지 않게 한다.
     weights = bot_weights(bot)
@@ -333,9 +335,11 @@ def _evaluate(
     # 6) 전략 판단·위험 검사·모의 주문 (종목별, 비율 순서대로)
     # 첫 판단(시작·처음부터 다시 시작)은 시작 금액도 새로 들어온 돈으로 본다 (백테스트와 같음).
     fresh = deposit + (bot.initial_cash if last_decided is None else Decimal(0))
-    decisions = decide_basket(strategy, series, weights, pf, costs, limits, fresh)
+    active = active_weights(bot)
+    histories = {s: series[s] for s in active}
+    decisions = decide_basket(strategy, histories, active, pf, costs, limits, fresh)
     if not decisions:
-        raise _Skip(f"봉이 부족합니다 (필요 {strategy.warmup}개)")
+        raise _Skip(f"봉이 부족합니다 (필요 {min_bars(strategy)}개)")
     snapshot = {
         "name": bot.strategy,
         "params": bot.params,
