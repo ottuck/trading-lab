@@ -4,8 +4,48 @@
     {
       "name": "frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "dev"
+      ],
       "port": 5173
+    },
+    {
+      "name": "api-demo",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run",
+        "--directory",
+        "backend",
+        "uvicorn",
+        "quant_lab.api.main:app",
+        "--port",
+        "8001"
+      ],
+      "env": {
+        "DATABASE_URL": "postgresql+psycopg://quant:quant@localhost:5432/quant_lab_demo"
+      },
+      "port": 8001
+    },
+    {
+      "name": "frontend-demo",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5174",
+        "--strictPort"
+      ],
+      "env": {
+        "QL_API_URL": "http://127.0.0.1:8001"
+      },
+      "port": 5174
     }
   ]
 }

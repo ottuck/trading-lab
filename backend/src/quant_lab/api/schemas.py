@@ -117,6 +117,12 @@ class BarView(BaseModel):
     live: bool = False  # 진행 중인 오늘 봉 (아직 확정 아님)
 
 
+class EquityPoint(BaseModel):
+    date: date
+    equity: Decimal
+    live: bool = False
+
+
 class CommandRequest(BaseModel):
     kind: CommandKind
 
