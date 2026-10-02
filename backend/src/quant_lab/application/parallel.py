@@ -28,6 +28,7 @@ class World:
     contributed: Decimal
     cagr: Decimal  # 넣은 시점을 반영한 연 수익률 (XIRR)
     equity: list[tuple[date, Decimal]]  # 달마다 마지막 날 (그래프용)
+    recent: list[tuple[str, Decimal]]  # 지난달·이번 달("YYYY-MM")에 산 금액 (월간 정리용)
 
 
 def variants(params: dict[str, int]) -> list[tuple[str, str, dict[str, int]]]:
@@ -49,7 +50,6 @@ def variants(params: dict[str, int]) -> list[tuple[str, str, dict[str, int]]]:
         add("monthly", "매달 꾸준히 사는 나", regular=1)
     add("patient", "-20%까지 참는 나", dip=20)
     add("eager", "-5%에 바로 사는 나", dip=5)
-    add("double", "두 배로 넣은 나", deposit=params["deposit"] * 2)
     return out
 
 
@@ -57,6 +57,17 @@ def _monthly(points: list[tuple[date, Decimal]]) -> list[tuple[date, Decimal]]:
     """달마다 마지막 거래일만 남긴다 (마지막 날은 항상 남긴다)."""
     out = [p for p, q in pairwise(points) if p[0].month != q[0].month]
     return [*out, points[-1]] if points else out
+
+
+def _months(end: date) -> list[str]:
+    """end가 속한 달과 그 전달 ("YYYY-MM")"""
+    prev = date(end.year - (end.month == 1), (end.month - 2) % 12 + 1, 1)
+    return [f"{prev:%Y-%m}", f"{end:%Y-%m}"]
+
+
+def _recent(end: date, buys: list[tuple[date, Decimal]]) -> list[tuple[str, Decimal]]:
+    months = _months(end)
+    return [(k, sum((v for d, v in buys if f"{d:%Y-%m}" == k), Decimal(0))) for k in months]
 
 
 def _world(key: str, title: str, params: dict[str, int], result: BacktestResult) -> World:
@@ -71,6 +82,7 @@ def _world(key: str, title: str, params: dict[str, int], result: BacktestResult)
         m.contributed,
         m.cagr,
         _monthly([(p.session_date, p.equity) for p in result.equity]),
+        _recent(m.end, [(f.fill_date, f.qty * f.price + f.commission) for f in result.fills]),
     )
 
 
@@ -86,7 +98,7 @@ def parallel_worlds(
 ) -> list[World]:
     """[나, 매달 그냥 사는 나, 다른 나들...]. 일봉은 한 번만 읽는다.
 
-    두 배로 넣은 나는 시작 금액도 두 배다 (첫 판단일의 시작 금액은 그달 입금으로 본다).
+    모든 나는 같은 날 같은 돈을 넣는다 (넣는 돈을 바꾸면 수익률 비교가 어려워 바꾸지 않는다).
     """
     me = DipSaver(**params)
     series = load_series(session, weights, me.warmup, start, end)
@@ -104,11 +116,12 @@ def parallel_worlds(
             m.contributed,
             m.benchmark_cagr,
             _monthly([(p.session_date, p.benchmark) for p in base.equity]),
+            # 매달 그냥 사기는 넣은 돈을 다음 날 바로 다 산다
+            _recent(m.end, [(p.session_date, p.deposit) for p in base.equity]),
         ),
     ]
     for key, title, other in variants(me.params):
         strategy = DipSaver(**other)
-        cash = initial_cash * Decimal(other["deposit"]) / Decimal(me.deposit)
-        result = run_backtest(series, strategy, cash, costs, RiskLimits(), weights=weights)
+        result = run_backtest(series, strategy, initial_cash, costs, RiskLimits(), weights=weights)
         worlds.append(_world(key, title, strategy.params, result))
     return worlds

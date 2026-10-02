@@ -8,8 +8,6 @@ import { cssVar, useTheme } from '../theme'
 /* 평행세계의 나 (N4): 내 규칙을 하나씩 바꾼 나들을 같은 기간에 나란히 본다.
    점수·등수·"잘했다" 문장은 붙이지 않고, 순서도 결과와 상관없이 늘 같다 (project.md 1절). */
 
-const usd = (n: number) => `$${n.toLocaleString('en-US')}`
-
 /** 나와 무엇이 다른지 한 줄로: "고점에 쉬기 +15% → 안 쉼" */
 function diff(me: Record<string, number>, other: Record<string, number> | null): string {
   if (!other) return '규칙 없이 넣을 때마다 바로 사요'
@@ -17,7 +15,6 @@ function diff(me: Record<string, number>, other: Record<string, number> | null):
     regular: (v) => (v ? '매달 사기' : '떨어졌을 때만 사기'),
     hot: (v) => (v ? `+${v}%에 쉬기` : '고점에도 사기'),
     dip: (v) => `-${v}%에 몰아 사기`,
-    deposit: (v) => `월 ${usd(v)}`,
   }
   const key = Object.keys(said).find((k) => (me[k] ?? 1) !== (other[k] ?? 1))
   return key ? `${said[key](me[key] ?? 1)} → ${said[key](other[key] ?? 1)}` : ''
@@ -101,7 +98,6 @@ export function ParallelWorlds({ queryKey, fetch, sub, chooseLabel, confirm, onC
           </div>
           <div className="pw-list" role="listbox" aria-label="평행세계의 나">
             {worlds.map((w) => {
-              const extra = w.contributed !== me.contributed
               return (
                 <button
                   key={w.key}
@@ -118,7 +114,6 @@ export function ParallelWorlds({ queryKey, fetch, sub, chooseLabel, confirm, onC
                     <div className="title">{w.title}</div>
                     <div className="sub">
                       {w.key === 'me' ? '지금 규칙 그대로' : w.same_as_me ? '이 기간엔 나와 같았어요' : diff(me.params ?? {}, w.params)}
-                      {extra && ` · 넣은 돈 ${money(w.contributed)}`}
                     </div>
                   </div>
                   <div className="r">

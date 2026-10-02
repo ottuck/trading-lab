@@ -278,6 +278,11 @@ class WorldPoint(BaseModel):
     equity: Decimal
 
 
+class MonthBuy(BaseModel):
+    month: str  # YYYY-MM
+    bought: Decimal
+
+
 class WorldView(BaseModel):
     key: str  # me(나), dca(매달 그냥 사기), 그 밖은 규칙을 하나 바꾼 나
     title: str
@@ -287,6 +292,7 @@ class WorldView(BaseModel):
     cagr: Decimal  # 넣은 시점을 반영한 연 수익률 (XIRR)
     same_as_me: bool  # 이 기간에는 나와 결과가 같았다
     equity: list[WorldPoint]  # 달마다 마지막 날
+    recent: list[MonthBuy]  # 지난달·이번 달에 산 금액 (월간 정리용)
 
 
 class ParallelView(BaseModel):

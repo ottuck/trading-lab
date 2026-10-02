@@ -202,6 +202,7 @@ export type World = {
   cagr: string
   same_as_me: boolean
   equity: { date: string; equity: string }[]
+  recent: { month: string; bought: string }[] // 지난달·이번 달에 산 금액 (월간 정리)
 }
 export type Parallel = { start: string | null; end: string | null; worlds: World[]; note: string | null }
 export type ParallelRequest = {

@@ -33,3 +33,6 @@ export const SLIPPAGE_CHOICES = [
   { bps: '5', label: '보통 (추천)', hint: '0.05% 불리하게' },
   { bps: '0', label: '이상적으로', hint: '본 가격 그대로' },
 ]
+
+/** 나 카피 봇 (나처럼 모으기). 있으면 홈 첫 화면이 "나 vs 매달 그냥 사기"와 평행세계의 나가 된다. */
+export const isMeBot = (b: { strategy: string }) => b.strategy === 'dip_saver'
