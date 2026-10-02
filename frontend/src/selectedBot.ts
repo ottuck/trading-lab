@@ -61,3 +61,8 @@ export function useNewBotSeed(): NewBotSeed | null {
     () => seed,
   )
 }
+
+/** 화면 이동 (#dashboard, #backtest, #settings, #me) */
+export function goTo(page: string) {
+  location.hash = page
+}

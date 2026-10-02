@@ -4,8 +4,9 @@ import { api, backtestApi, botApi } from '../api'
 import { money, percent } from '../format'
 import { DAYS, DEPOSITS, DIP, HOT, START, STYLES, describe, stepsOf, toParams, type Answers, type Option } from '../me'
 import { suggestName } from '../basket'
-import { selectBot } from '../selectedBot'
+import { goTo, selectBot } from '../selectedBot'
 import { EquityChart } from './BacktestView'
+import { ParallelWorlds } from './Parallel'
 import { BasketPicker } from './SymbolPicker'
 
 /* 질문으로 나 만들기: 한 화면에 질문 하나씩 (토스식). 답하면 바로 다음 질문으로 넘어가고,
@@ -52,7 +53,7 @@ function Question({ n, of, title, hint, children }: { n: number; of: number; tit
   )
 }
 
-function Result({ answers, onEdit }: { answers: Answers; onEdit: () => void }) {
+function Result({ answers, onEdit, onAdopt }: { answers: Answers; onEdit: () => void; onAdopt: (p: Record<string, number>) => void }) {
   const qc = useQueryClient()
   const params = toParams(answers)
   const body = {
@@ -100,7 +101,7 @@ function Result({ answers, onEdit }: { answers: Answers; onEdit: () => void }) {
     onSuccess: (bot) => {
       void qc.invalidateQueries({ queryKey: ['bots'] })
       selectBot(bot.id)
-      location.hash = 'dashboard'
+      goTo('dashboard')
     },
   })
   const m = data?.metrics
@@ -147,6 +148,16 @@ function Result({ answers, onEdit }: { answers: Answers; onEdit: () => void }) {
             비교예요.
           </p>
         </>
+      )}
+
+      {data && m && (
+        <ParallelWorlds
+          queryKey={['parallel', JSON.stringify(body)]}
+          fetch={() => backtestApi.parallel(body)}
+          sub={() => `${ym(m.start)}부터, 규칙을 하나씩 바꿨다면`}
+          chooseLabel="로 바꾸기"
+          onChoose={onAdopt}
+        />
       )}
 
       <div className="me-nav">
@@ -309,7 +320,17 @@ export function MeView() {
           <Choices options={DIP} value={a.dip} onPick={(dip) => pick({ dip })} />,
         )}
 
-      {at > steps.length && <Result answers={a} onEdit={() => setAt(1)} />}
+      {at > steps.length && (
+        <Result
+          answers={a}
+          onEdit={() => setAt(1)}
+          onAdopt={(p) => {
+            // 고른 다른 나의 규칙으로 바꾸고 처음부터 다시 보여준다 (종목·날짜는 그대로).
+            setA({ ...a, deposit: p.deposit, hot: p.hot, dip: p.dip, regular: p.regular })
+            window.scrollTo({ top: 0, behavior: 'smooth' })
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -196,3 +196,16 @@ def test_change_symbols_keeps_held_ones(client: TestClient, session: Session) ->
     history = client.get(events).json()
     assert "들고만 있기: VOO" in history[0]["message"]
     assert client.put(url, json={"symbols": [{"symbol": "QQQ", "weight": 50}]}).status_code == 400
+
+
+def test_parallel_worlds(client: TestClient, bot_id: int) -> None:
+    # 평행세계의 나: 나, 매달 그냥 사기, 규칙을 하나씩 바꾼 나들 (저장하지 않음)
+    params = {"deposit": 500, "day": 1, "dip": 10, "hot": 10, "high": 10, "sma": 5}
+    body = client.post("/api/parallel", json={"symbol": "QQQ", "params": params}).json()
+    worlds = {w["key"]: w for w in body["worlds"]}
+    assert list(worlds)[:2] == ["me", "dca"]
+    assert {"no_rest", "dip_only", "patient", "eager", "double"} <= set(worlds)
+    assert Decimal(worlds["double"]["contributed"]) == 2 * Decimal(worlds["me"]["contributed"])
+    assert worlds["dca"]["contributed"] == worlds["me"]["contributed"]
+    assert not worlds["me"]["same_as_me"] and worlds["me"]["equity"]
+    assert client.get("/api/backtests").json() == []

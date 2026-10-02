@@ -192,6 +192,26 @@ export type StrategyInfo = {
   choices: { key: string; label: string; options: { value: number; label: string }[]; hint: string; requires: string }[]
 }
 
+// 평행세계의 나 (나처럼 모으기 전용, 저장하지 않음)
+export type World = {
+  key: string // me(나), dca(매달 그냥 사기), 그 밖은 규칙을 하나 바꾼 나
+  title: string
+  params: Record<string, number> | null
+  final_equity: string
+  contributed: string
+  cagr: string
+  same_as_me: boolean
+  equity: { date: string; equity: string }[]
+}
+export type Parallel = { start: string | null; end: string | null; worlds: World[]; note: string | null }
+export type ParallelRequest = {
+  symbol: string
+  symbols?: SymbolWeight[]
+  params: Record<string, number>
+  start?: string
+  initial_cash?: string
+}
+
 export type ActivityItem = { id: number; at: string; icon: string; title: string; body: string; level: string }
 
 export type BacktestMetrics = {
@@ -262,6 +282,8 @@ export const backtestApi = {
   strategies: () => request<StrategyInfo[]>('/api/strategies'),
   list: () => request<BacktestSummary[]>('/api/backtests?limit=30'),
   get: (id: string) => request<BacktestDetail>(`/api/backtests/${id}`),
+  parallel: (body: ParallelRequest) =>
+    request<Parallel>('/api/parallel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   run: (body: BacktestRequest) =>
     request<BacktestDetail>('/api/backtests', {
       method: 'POST',
@@ -292,6 +314,7 @@ const json = (method: string, body: unknown): RequestInit => ({
 export const botApi = {
   create: (body: BotCreate) => request<Bot>('/api/bots', json('POST', body)),
   updateConfig: (botId: number, body: BotConfig) => request<Bot>(`/api/bots/${botId}/config`, json('PUT', body)),
+  parallel: (botId: number) => request<Parallel>(`/api/bots/${botId}/parallel`),
   updateSymbols: (botId: number, symbols: SymbolWeight[]) => request<Bot>(`/api/bots/${botId}/symbols`, json('PUT', { symbols })),
   rename: (botId: number, name: string) => request<Bot>(`/api/bots/${botId}`, json('PATCH', { name })),
   reset: (botId: number) => request<Bot>(`/api/bots/${botId}/reset`, { method: 'POST' }),

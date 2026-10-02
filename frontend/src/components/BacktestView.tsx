@@ -8,6 +8,7 @@ import { cssVar, useTheme } from '../theme'
 import { Term } from './Help'
 import { startNewBot } from '../selectedBot'
 import { StrategyPicker } from './StrategyPicker'
+import { ParallelWorlds } from './Parallel'
 import { PresetFields } from './PresetFields'
 import { activeOf, basketLabel } from '../basket'
 import { BasketPicker, SymbolPicker } from './SymbolPicker'
@@ -329,6 +330,23 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
           반영했어요. 과거 결과가 미래를 보장하지는 않아요.
         </p>
       </section>
+      {data.strategy === 'dip_saver' && (
+        <ParallelWorlds
+          queryKey={['parallel', data.id]}
+          fetch={() =>
+            backtestApi.parallel({
+              symbol: data.symbol,
+              symbols: data.symbols ?? undefined,
+              params: data.params,
+              start: m.start,
+              initial_cash: m.initial_cash,
+            })
+          }
+          sub={() => `${ym(m.start)}부터, 규칙을 하나씩 바꿨다면`}
+          chooseLabel="로 모의 투자 시작"
+          onChoose={(params) => startNewBot({ symbol: data.symbol, symbols: data.symbols ?? undefined, strategy: data.strategy, params })}
+        />
+      )}
     </section>
   )
 }
