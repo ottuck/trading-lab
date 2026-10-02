@@ -8,6 +8,25 @@ export type Health = {
   worker: { alive: boolean; worker_id: string | null; last_seen_at: string | null } | null
 }
 
+/** 종목과 비율(%). 봇의 비율 합은 100이다. */
+export type SymbolWeight = { symbol: string; weight: number }
+
+/** 종목 하나의 보유와 평가 (장 마감 기준 + 있으면 실시간). */
+export type Position = {
+  symbol: string
+  weight: number
+  qty: Money
+  avg_cost: Money
+  last_close: Money | null
+  last_close_date: string | null
+  market_value: Money | null
+  unrealized_pnl: Money | null
+  live_price?: Money | null
+  live_at?: string | null
+  live_change?: Money | null
+}
+
+/** qty·avg_cost·last_close·live_price는 대표 종목(첫 종목), 평가금액·손익·자산은 모든 종목 합계. */
 export type Account = {
   initial_cash: Money
   cash: Money
@@ -27,6 +46,8 @@ export type Account = {
   live_change?: Money | null
   live_equity?: Money | null
   live_unrealized_pnl?: Money | null
+  reserve: Money // 모으기 전략이 고점 때 모아 둔 돈
+  positions: Position[]
 }
 
 export type Instrument = {
@@ -39,6 +60,7 @@ export type Instrument = {
 
 export type Decision = {
   id: number
+  symbol: string
   session_date: string
   action: 'BUY' | 'SELL' | 'HOLD'
   target_long: boolean
@@ -53,6 +75,7 @@ export type Decision = {
 
 export type Order = {
   id: number
+  symbol: string
   side: 'BUY' | 'SELL'
   status: 'PENDING' | 'FILLED' | 'UNFILLED'
   signal_date: string
@@ -81,6 +104,7 @@ export type Bot = {
   id: number
   name: string
   symbol: string
+  symbols: SymbolWeight[] // 종목과 비율. 첫 종목이 대표 종목
   strategy: string
   params: Record<string, number>
   state: BotState
@@ -91,7 +115,9 @@ export type Bot = {
   next_evaluation_at: string | null
   account: Account
   last_decision: Decision | null
+  last_decisions: Decision[] // 마지막 판단일의 종목별 판단
   pending_order: Order | null
+  pending_orders: Order[]
   last_run: Run | null
   data_latest_date: string | null
   data_fetched_at: string | null
@@ -196,6 +222,7 @@ export type BacktestSummary = {
   id: string
   created_at: string
   symbol: string
+  symbols?: SymbolWeight[] | null // 여러 종목 시험이면 종목과 비율
   strategy: string
   params: Record<string, number>
   metrics: BacktestMetrics
@@ -222,6 +249,7 @@ export type BacktestDetail = BacktestSummary & {
 
 export type BacktestRequest = {
   symbol: string
+  symbols?: SymbolWeight[]
   strategy: string
   params: Record<string, number>
   start?: string
@@ -249,7 +277,7 @@ export type BotConfig = {
   max_order_value: string | null
 }
 
-export type BotCreate = BotConfig & { name: string; symbol: string; initial_cash: string }
+export type BotCreate = BotConfig & { name: string; symbol: string; symbols?: SymbolWeight[]; initial_cash: string }
 
 export type ConfigEvent = EventItem & { data: { before?: Record<string, unknown>; after?: Record<string, unknown> } | null }
 

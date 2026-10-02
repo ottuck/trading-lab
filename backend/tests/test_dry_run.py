@@ -211,7 +211,7 @@ def test_replay_matches_backtest(
     ]
     pf = load_account(session, bot_id)
     last_fill = expected[-1]
-    assert pf.qty == (last_fill.qty if last_fill.side == "BUY" else 0)
+    assert pf.qty("QQQ") == (last_fill.qty if last_fill.side == "BUY" else 0)
 
     # 주간 리포트: 금요일 판단마다 한 번, 그 주 체결 수와 함께
     reports: list[dict[str, Any]] = list(
@@ -228,10 +228,19 @@ def test_replay_matches_backtest(
     )
 
 
+@pytest.mark.parametrize("weights", [{"QQQ": 100}, {"QQQ": 60, "VOO": 40}])
 def test_dip_saver_replay_matches_backtest(
-    make_session: Callable[[], Session], session: Session, bars: list[DailyBar]
+    make_session: Callable[[], Session],
+    session: Session,
+    bars: list[DailyBar],
+    weights: dict[str, int],
 ) -> None:
-    """모으기 전략도 정기 평가 재생이 백테스트와 같은 입금·추가 매수를 만든다."""
+    """모으기 전략도 정기 평가 재생이 백테스트와 같은 입금·추가 매수를 만든다.
+
+    두 종목이면 현금을 함께 쓰며 고점 종목의 몫은 모아 두고, 하락장 종목이 몰아 산다.
+    """
+    voo = make_bars("VOO", [80 + (i % 7) * 3 - (i % 5) * 2 for i in range(len(CLOSES))])
+    upsert_daily_bars(session, voo, "test", datetime(2026, 1, 1, tzinfo=UTC))
     strategy = DipSaver(deposit=500, day=1, dip=5, hot=5, high=10, sma=5)
     bot = create_bot(
         session,
@@ -243,6 +252,7 @@ def test_dip_saver_replay_matches_backtest(
         costs=COSTS,
         limits=RiskLimits(),
         now=datetime.now(UTC),
+        weights=weights,
     )
     bot.state = BotState.RUNNING
     session.commit()
@@ -250,17 +260,23 @@ def test_dip_saver_replay_matches_backtest(
         make_session, bot.id, CAL, bars[strategy.warmup - 1].session_date, bars[-1].session_date
     )
 
-    expected = run_backtest(bars, strategy, Decimal(500), COSTS)
+    series = {"QQQ": bars, "VOO": voo}
+    expected = run_backtest(
+        {s: series[s] for s in weights}, strategy, Decimal(500), COSTS, weights=weights
+    )
     filled = session.scalars(
         select(SimOrderRow).where(SimOrderRow.status == "FILLED").order_by(SimOrderRow.id)
     )
     assert len(expected.fills) >= 3 and all(f.side == "BUY" for f in expected.fills)
-    assert [(o.signal_date, o.fill_date, o.qty, o.price) for o in filled] == [
-        (f.signal_date, f.fill_date, f.qty, f.price) for f in expected.fills
+    assert {f.symbol for f in expected.fills} == set(weights)
+    assert [(o.symbol, o.signal_date, o.fill_date, o.qty, o.price) for o in filled] == [
+        (f.symbol, f.signal_date, f.fill_date, f.qty, f.price) for f in expected.fills
     ]
     deposits = session.scalars(select(BotDepositRow.session_date).order_by(BotDepositRow.month))
     assert list(deposits) == [p.session_date for p in expected.equity if p.deposit > 0]
-    assert load_account(session, bot.id).contributed == expected.metrics.contributed
+    pf = load_account(session, bot.id)
+    assert pf.contributed == expected.metrics.contributed
+    assert pf.cash == expected.equity[-1].cash
 
 
 def test_db_rejects_duplicate_decision_for_same_bar(

@@ -43,6 +43,7 @@ def save_backtest(
     result: BacktestResult,
     data_start: date,
     created_at: datetime,
+    weights: dict[str, int] | None = None,
 ) -> uuid.UUID:
     actions = [d for d in result.decisions if d.action is not Action.HOLD or d.blocked]
     row = BacktestRow(
@@ -50,6 +51,9 @@ def save_backtest(
         created_at=created_at,
         code_version=__version__,
         symbol=symbol,
+        symbols=[{"symbol": s, "weight": w} for s, w in weights.items()]
+        if weights and len(weights) > 1
+        else None,
         strategy=strategy,
         params=params,
         data_start=data_start,

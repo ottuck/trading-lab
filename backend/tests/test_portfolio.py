@@ -17,12 +17,12 @@ def test_toss_fee_rules() -> None:
 
 def test_round_trip_pnl_includes_commissions() -> None:
     pf = Portfolio(cash=Decimal(10_000))
-    pf.buy(Decimal(10), Decimal(100), Decimal(1))
+    pf.buy("QQQ", Decimal(10), Decimal(100), Decimal(1))
     assert pf.cash == Decimal(8_999)
-    assert pf.avg_cost == Decimal("100.1")
-    pnl = pf.sell(Decimal(10), Decimal(110), Decimal("1.10"))
+    assert pf.avg_cost("QQQ") == Decimal("100.1")
+    pnl = pf.sell("QQQ", Decimal(10), Decimal(110), Decimal("1.10"))
     assert pnl == Decimal("97.90")  # 1100 - 1.10 - 1001
-    assert pf.qty == 0
+    assert pf.qty("QQQ") == 0
     assert pf.cash == Decimal("10097.90")
 
 

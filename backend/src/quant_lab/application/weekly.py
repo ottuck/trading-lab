@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from quant_lab.domain.bars import TradingCalendar
+from quant_lab.persistence.bots import bot_weights
 from quant_lab.persistence.models import BotRow, EventRow, RunRow, SimOrderRow
 
 
@@ -56,6 +57,18 @@ def weekly_summary(
     def change(a: Any, b: Any) -> str:
         return str(round(Decimal(str(b)) / Decimal(str(a)) - 1, 6))
 
+    def hold_change(a: dict[str, Any], b: dict[str, Any]) -> str:
+        """그냥 들고 있었다면의 이번 주 변화. 여러 종목이면 종목 비율로 가중 평균한다."""
+        if "closes" not in a or "closes" not in b:
+            return change(a["close"], b["close"])
+        weights = bot_weights(bot)
+        total = sum(
+            Decimal(w) * (Decimal(b["closes"][s]) / Decimal(a["closes"][s]) - 1)
+            for s, w in weights.items()
+            if s in a["closes"] and s in b["closes"]
+        )
+        return str(round(total / 100, 6))
+
     # 이번 주에 들어온 입금은 수익이 아니므로 뺀다 (모으기 전략).
     added = Decimal(str(end.get("contributed", 0))) - Decimal(
         str(start.get("contributed", end.get("contributed", 0)))
@@ -68,7 +81,7 @@ def weekly_summary(
         "equity": end["equity"],
         "total_return": end["total_return"],
         "week_return": change(start["equity"], Decimal(str(end["equity"])) - added),
-        "hold_return": change(start["close"], end["close"]),
+        "hold_return": hold_change(start, end),
         "buys": counts.get("BUY", 0),
         "sells": counts.get("SELL", 0),
     }

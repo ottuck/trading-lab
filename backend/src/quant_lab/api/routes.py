@@ -1,6 +1,7 @@
 """조회와 명령 API. 토스를 호출하지 않고 DB만 읽는다 (project.md 3절 원칙 6)."""
 
 import uuid
+from collections import defaultdict
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated, Any
@@ -27,19 +28,23 @@ from quant_lab.api.schemas import (
     EventView,
     InstrumentView,
     OrderView,
+    PositionView,
     PresetView,
     RunView,
     StrategyInfo,
+    SymbolWeight,
 )
 from quant_lab.application.backtesting import backtest_symbol
 from quant_lab.application.messages import CATALOG, action_phrase, decision_reason, event_message
 from quant_lab.config import get_settings
 from quant_lab.domain.portfolio import CostModel, Portfolio, RiskLimits, affordable_qty
 from quant_lab.domain.strategy import STRATEGIES, Strategy, deposit_plan
+from quant_lab.domain.trading import MAX_SYMBOLS
 from quant_lab.persistence.backtests import to_jsonable
 from quant_lab.persistence.bots import (
     add_event,
     bot_costs,
+    bot_weights,
     create_bot,
     delete_bot,
     enqueue_command,
@@ -52,6 +57,7 @@ from quant_lab.persistence.models import (
     BacktestRow,
     BotAccountRow,
     BotDepositRow,
+    BotPositionRow,
     BotRow,
     DailyBarRow,
     DecisionRow,
@@ -68,54 +74,98 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 
 def _account(session: Session, bot: BotRow) -> AccountView:
+    """종목별 보유를 장 마감 가격(+ 있으면 실시간 가격)으로 평가하고 합계를 낸다."""
     acc = session.get_one(BotAccountRow, bot.id)
-    last = session.scalars(
-        select(DailyBarRow)
-        .where(DailyBarRow.symbol == bot.symbol)
-        .order_by(DailyBarRow.session_date.desc())
-        .limit(1)
-    ).first()
-    if last is None:
-        return AccountView(
-            initial_cash=bot.initial_cash,
-            cash=acc.cash,
-            qty=acc.qty,
-            avg_cost=acc.avg_cost,
-            realized_pnl=acc.realized_pnl,
-            last_close=None,
-            last_close_date=None,
-            market_value=None,
-            unrealized_pnl=None,
-            equity=None,
-            total_return=None,
-            contributed=acc.contributed,
+    held = {
+        p.symbol: p
+        for p in session.scalars(select(BotPositionRow).where(BotPositionRow.bot_id == bot.id))
+    }
+    weights = bot_weights(bot)
+    symbols = list(weights) + [s for s in held if s not in weights]
+    views: list[PositionView] = []
+    complete = True
+    market_value = cost_basis = live_value = Decimal(0)
+    live_at = None
+    for symbol in symbols:
+        pos = held.get(symbol)
+        qty = pos.qty if pos else Decimal(0)
+        avg = pos.avg_cost if pos else Decimal(0)
+        last = session.scalars(
+            select(DailyBarRow)
+            .where(DailyBarRow.symbol == symbol)
+            .order_by(DailyBarRow.session_date.desc())
+            .limit(1)
+        ).first()
+        quote = session.get(QuoteRow, symbol)
+        if last is None:
+            complete = False
+            views.append(
+                PositionView(
+                    symbol=symbol,
+                    weight=weights.get(symbol, 0),
+                    qty=qty,
+                    avg_cost=avg,
+                    last_close=None,
+                    last_close_date=None,
+                    market_value=None,
+                    unrealized_pnl=None,
+                )
+            )
+            continue
+        value = qty * last.close
+        market_value += value
+        cost_basis += qty * avg
+        live_value += qty * (quote.price if quote else last.close)
+        if quote is not None:
+            live_at = max(live_at, quote.quoted_at) if live_at else quote.quoted_at
+        views.append(
+            PositionView(
+                symbol=symbol,
+                weight=weights.get(symbol, 0),
+                qty=qty,
+                avg_cost=avg,
+                last_close=last.close,
+                last_close_date=last.session_date,
+                market_value=value,
+                unrealized_pnl=value - qty * avg,
+                live_price=quote.price if quote else None,
+                live_at=quote.quoted_at if quote else None,
+                live_change=quote.price / last.close - 1 if quote and last.close else None,
+            )
         )
-    market_value = acc.qty * last.close
+    main = views[0]
+    common: dict[str, Any] = {
+        "initial_cash": bot.initial_cash,
+        "cash": acc.cash,
+        "qty": main.qty,
+        "avg_cost": main.avg_cost,
+        "realized_pnl": acc.realized_pnl,
+        "contributed": acc.contributed,
+        "reserve": acc.reserve,
+        "positions": views,
+        "last_close": main.last_close,
+        "last_close_date": main.last_close_date,
+    }
+    if not complete:
+        return AccountView(
+            **common, market_value=None, unrealized_pnl=None, equity=None, total_return=None
+        )
     equity = acc.cash + market_value
     live: dict[str, Any] = {}
-    quote = session.get(QuoteRow, bot.symbol)
-    if quote is not None:
-        live_value = acc.qty * quote.price
+    if live_at is not None:
         live = {
-            "live_price": quote.price,
-            "live_at": quote.quoted_at,
-            "live_change": quote.price / last.close - 1 if last.close else None,
+            "live_price": main.live_price,
+            "live_at": live_at,
+            "live_change": main.live_change,
             "live_equity": acc.cash + live_value,
-            "live_unrealized_pnl": live_value - acc.qty * acc.avg_cost,
+            "live_unrealized_pnl": live_value - cost_basis,
         }
     return AccountView(
-        initial_cash=bot.initial_cash,
-        cash=acc.cash,
-        qty=acc.qty,
-        avg_cost=acc.avg_cost,
-        realized_pnl=acc.realized_pnl,
-        last_close=last.close,
-        last_close_date=last.session_date,
+        **common,
         market_value=market_value,
-        unrealized_pnl=market_value - acc.qty * acc.avg_cost,
+        unrealized_pnl=market_value - cost_basis,
         equity=equity,
         total_return=(equity / acc.contributed - 1) if acc.contributed else None,
-        contributed=acc.contributed,
         **live,
     )
 
@@ -147,9 +197,24 @@ def _bot_view(session: Session, bot: BotRow) -> BotView:
         .order_by(DecisionRow.session_date.desc())
         .limit(1)
     ).first()
+    last_decisions = (
+        session.scalars(
+            select(DecisionRow).where(
+                DecisionRow.bot_id == bot.id,
+                DecisionRow.session_date == last_decision.session_date,
+            )
+        ).all()
+        if last_decision
+        else []
+    )
+    order = {s: i for i, s in enumerate(bot_weights(bot))}
+    last_decisions = sorted(last_decisions, key=lambda d: order.get(d.symbol, len(order)))
+    main = next((d for d in last_decisions if d.symbol == bot.symbol), last_decision)
     pending = session.scalars(
-        select(SimOrderRow).where(SimOrderRow.bot_id == bot.id, SimOrderRow.status == "PENDING")
-    ).first()
+        select(SimOrderRow)
+        .where(SimOrderRow.bot_id == bot.id, SimOrderRow.status == "PENDING")
+        .order_by(SimOrderRow.id)
+    ).all()
     last_run = session.scalars(
         select(RunRow).where(RunRow.bot_id == bot.id).order_by(RunRow.started_at.desc()).limit(1)
     ).first()
@@ -162,6 +227,7 @@ def _bot_view(session: Session, bot: BotRow) -> BotView:
         id=bot.id,
         name=bot.name,
         symbol=bot.symbol,
+        symbols=[SymbolWeight(symbol=s, weight=w) for s, w in bot_weights(bot).items()],
         strategy=bot.strategy,
         params=bot.params,
         state=bot.state,
@@ -171,8 +237,10 @@ def _bot_view(session: Session, bot: BotRow) -> BotView:
         risk=bot.risk,
         next_evaluation_at=bot.next_evaluation_at,
         account=_account(session, bot),
-        last_decision=_decision(last_decision, bot) if last_decision else None,
-        pending_order=_order(pending) if pending else None,
+        last_decision=_decision(main, bot) if main else None,
+        last_decisions=[_decision(d, bot) for d in last_decisions],
+        pending_order=_order(pending[0]) if pending else None,
+        pending_orders=[_order(o) for o in pending],
         last_run=RunView.model_validate(last_run, from_attributes=True) if last_run else None,
         data_latest_date=data_latest,
         data_fetched_at=data_fetched,
@@ -208,6 +276,29 @@ def _checked_strategy(config: BotConfig) -> Strategy:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"파라미터 오류: {exc}") from exc
 
 
+def _checked_weights(body: BotCreate | BacktestRequest, strategy: Strategy) -> dict[str, int]:
+    """종목과 비율을 검증한다: 최대 10개, 비율 합 100, 여러 종목은 모으기 전략만."""
+    if not body.symbols:
+        return {body.symbol.upper(): 100}
+    weights: dict[str, int] = {}
+    for item in body.symbols:
+        symbol = item.symbol.strip().upper()
+        if not symbol or symbol in weights or item.weight <= 0:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"종목·비율을 확인해 주세요: {symbol}")
+        weights[symbol] = item.weight
+    if len(weights) > MAX_SYMBOLS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, f"종목은 {MAX_SYMBOLS}개까지 고를 수 있어요"
+        )
+    if sum(weights.values()) != 100:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "종목 비율의 합은 100이어야 해요")
+    if len(weights) > 1 and deposit_plan(strategy) is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "여러 종목은 매달 넣고 사 모으는 전략에서만 쓸 수 있어요"
+        )
+    return weights
+
+
 def _limits(config: BotConfig) -> RiskLimits:
     return RiskLimits(
         max_position_value=config.max_position_value, max_order_value=config.max_order_value
@@ -236,24 +327,26 @@ def create(session: SessionDep, body: BotCreate) -> BotView:
     strategy = _checked_strategy(body)
     if session.scalar(select(BotRow.id).where(BotRow.name == body.name)) is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, f"같은 이름의 봇이 있습니다: {body.name}")
+    weights = _checked_weights(body, strategy)
     now = datetime.now(UTC)
     bot = create_bot(
         session,
         name=body.name,
-        symbol=body.symbol.upper(),
+        symbol=next(iter(weights)),
         strategy=strategy.name,
         params=strategy.params,
         initial_cash=body.initial_cash,
         costs=CostModel(commission_rate=body.commission_rate, slippage_bps=body.slippage_bps),
         limits=_limits(body),
         now=now,
+        weights=weights,
     )
     add_event(
         session,
         now,
         "INFO",
         "config_change",
-        f"봇 생성: {bot.symbol} {bot.strategy} {bot.params}",
+        f"봇 생성: {'·'.join(weights)} {bot.strategy} {bot.params}",
         bot_id=bot.id,
         data={"after": body.model_dump(mode="json")},
     )
@@ -266,6 +359,10 @@ def update_config(session: SessionDep, bot_id: int, body: BotConfig) -> BotView:
     """실행 중에도 바꿀 수 있다. 다음 판단부터 적용된다 (평가와는 행 잠금으로 순서가 정해진다)."""
     bot = _require_bot(session, bot_id, for_update=True)
     strategy = _checked_strategy(body)
+    if len(bot.symbols) > 1 and deposit_plan(strategy) is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "여러 종목 봇은 매달 넣고 사 모으는 전략만 쓸 수 있어요"
+        )
     before = {
         "strategy": bot.strategy,
         "params": bot.params,
@@ -393,16 +490,25 @@ def orders(
 def equity(session: SessionDep, bot_id: int) -> list[EquityPoint]:
     """홈 차트용 하루 단위 모의 자산. 첫 판단일부터 입금·체결 기록을 장 마감 가격에 다시 적용한다.
 
-    benchmark는 같은 돈으로 "그냥 들고 있었다면"의 자산이다. 첫 판단 다음 날 시가에 전부 사고,
-    입금이 있으면 다음 날 시가에 또 산다 (백테스트의 비교 기준과 같은 규칙).
+    benchmark는 같은 돈으로 "그냥 들고 있었다면"의 자산이다. 첫 판단 다음 날 시가에 종목 비율대로
+    전부 사고, 입금이 있으면 다음 날 시가에 또 산다 (백테스트의 비교 기준과 같은 규칙).
+    여러 종목은 모든 종목에 봉이 있는 날만 그린다.
     """
     bot = _require_bot(session, bot_id)
+    weights = bot_weights(bot)
     first = session.scalar(
         select(func.min(DecisionRow.session_date)).where(DecisionRow.bot_id == bot_id)
     )
     start = first or bot.created_at.date()
     fills = [
-        (o.fill_date, o.side, o.qty or 0, (o.qty or 0) * (o.price or 0), o.commission or 0)
+        (
+            o.fill_date,
+            o.symbol,
+            o.side,
+            o.qty or 0,
+            (o.qty or 0) * (o.price or 0),
+            o.commission or 0,
+        )
         for o in session.scalars(
             select(SimOrderRow)
             .where(SimOrderRow.bot_id == bot_id, SimOrderRow.status == "FILLED")
@@ -414,52 +520,70 @@ def equity(session: SessionDep, bot_id: int) -> list[EquityPoint]:
         d.session_date: d.amount
         for d in session.scalars(select(BotDepositRow).where(BotDepositRow.bot_id == bot_id))
     }
-    bars = session.scalars(
-        select(DailyBarRow)
-        .where(DailyBarRow.symbol == bot.symbol, DailyBarRow.session_date >= start)
-        .order_by(DailyBarRow.session_date)
-    )
+    bars: dict[str, dict[date, DailyBarRow]] = {
+        s: {
+            r.session_date: r
+            for r in session.scalars(
+                select(DailyBarRow).where(
+                    DailyBarRow.symbol == s, DailyBarRow.session_date >= start
+                )
+            )
+        }
+        for s in weights
+    }
+    days = sorted(set.intersection(*(set(b) for b in bars.values())))
     costs = bot_costs(bot)
-    cash, qty, contributed, i = bot.initial_cash, Decimal(0), bot.initial_cash, 0
+    cash, contributed, i = bot.initial_cash, bot.initial_cash, 0
+    qty: dict[str, Decimal] = defaultdict(Decimal)
     bench = Portfolio(cash=bot.initial_cash)
     bench_buy = False
     out: list[EquityPoint] = []
-    for n, bar in enumerate(bars):
+    for n, day in enumerate(days):
         if bench_buy or n == 1:
-            price = costs.buy_price(bar.open)
-            q = affordable_qty(bench.cash, price, costs, RiskLimits(), Decimal(0))
-            if q > 0:
-                bench.buy(q, price, costs.commission(q * price))
+            budget_base = bench.cash
+            for s, w in weights.items():
+                price = costs.buy_price(bars[s][day].open)
+                q = affordable_qty(
+                    min(bench.cash, budget_base * w / 100), price, costs, RiskLimits(), Decimal(0)
+                )
+                if q > 0:
+                    bench.buy(s, q, price, costs.commission(q * price))
             bench_buy = False
-        while i < len(fills) and fills[i][0] <= bar.session_date:
-            _, side, k, notional, commission = fills[i]
+        while i < len(fills) and fills[i][0] <= day:
+            _, symbol, side, k, notional, commission = fills[i]
             if side == "BUY":
-                cash, qty = cash - notional - commission, qty + k
+                cash, qty[symbol] = cash - notional - commission, qty[symbol] + k
             else:
-                cash, qty = cash + notional - commission, qty - k
+                cash, qty[symbol] = cash + notional - commission, qty[symbol] - k
             i += 1
-        if bar.session_date in deposits:
-            amount = deposits[bar.session_date]
+        if day in deposits:
+            amount = deposits[day]
             cash, contributed = cash + amount, contributed + amount
             bench.deposit(amount)
             bench_buy = True
+        marks = {s: bars[s][day].close for s in weights}
         out.append(
             EquityPoint(
-                date=bar.session_date,
-                equity=cash + qty * bar.close,
+                date=day,
+                equity=cash + sum((qty[s] * marks.get(s, Decimal(0)) for s in qty), Decimal(0)),
                 contributed=contributed,
-                benchmark=bench.equity(bar.close),
+                benchmark=bench.equity(marks),
             )
         )
     # 오늘 진행 중인 장이 있으면 실시간 가격으로 한 점을 더한다 (홈의 "지금 가치"와 같은 값).
-    lb, quote = session.get(LiveBarRow, bot.symbol), session.get(QuoteRow, bot.symbol)
-    if out and lb is not None and quote is not None and lb.session_date > out[-1].date:
+    live = {s: (session.get(LiveBarRow, s), session.get(QuoteRow, s)) for s in weights}
+    if out and all(
+        lb is not None and q is not None and lb.session_date > out[-1].date
+        for lb, q in live.values()
+    ):
+        marks = {s: q.price for s, (_, q) in live.items() if q is not None}
+        live_day = max(lb.session_date for lb, _ in live.values() if lb is not None)
         out.append(
             EquityPoint(
-                date=lb.session_date,
-                equity=cash + qty * quote.price,
+                date=live_day,
+                equity=cash + sum((qty[s] * marks.get(s, Decimal(0)) for s in qty), Decimal(0)),
                 contributed=contributed,
-                benchmark=bench.equity(quote.price),
+                benchmark=bench.equity(marks),
                 live=True,
             )
         )
@@ -522,7 +646,8 @@ def bars(
 def instruments(session: SessionDep) -> list[InstrumentView]:
     """관심 종목 + 봇 종목 (종목 버튼·레버리지 표시). 레버리지 배수는 Worker가 채운다."""
     watch = [s.strip().upper() for s in get_settings().watchlist_symbols.split(",") if s.strip()]
-    watch += [s for s in session.scalars(select(BotRow.symbol).distinct()) if s not in watch]
+    for bot in session.scalars(select(BotRow)):
+        watch += [s for s in bot_weights(bot) if s not in watch]
     infos = {r.symbol: r for r in session.scalars(select(InstrumentRow))}
     quotes = {q.symbol: q for q in session.scalars(select(QuoteRow))}
     return [
@@ -605,13 +730,15 @@ def run_backtest(session: SessionDep, body: BacktestRequest) -> BacktestDetail:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"알 수 없는 전략: {body.strategy}")
     try:
         strategy = factory(**body.params)
+        weights = _checked_weights(body, strategy)
         plan = deposit_plan(strategy)
         # 모으기 전략은 첫 달 입금액으로 시작한다 ("월급부터 모았다면").
         initial = body.initial_cash or (plan.amount if plan else Decimal(10_000))
         run = backtest_symbol(
             session,
-            body.symbol.upper(),
+            next(iter(weights)),
             strategy,
+            weights=weights,
             initial_cash=initial,
             costs=CostModel(commission_rate=body.commission_rate, slippage_bps=body.slippage_bps),
             limits=RiskLimits(),

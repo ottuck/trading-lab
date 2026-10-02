@@ -88,14 +88,19 @@ CATALOG: dict[str, StrategyInfo] = {
         trades="한 달에 한 번 안팎",
         presets=[
             Preset(
-                "half",
-                "월 $675 (VOO·QQQ 반반)",
+                "small",
+                "월 $675",
                 {"deposit": 675, "day": 25, "dip": 10, "hot": 10, "high": 252, "sma": 200},
             ),
             Preset(
-                "full",
-                "월 $1,350",
+                "base",
+                "월 $1,350 (기본)",
                 {"deposit": 1350, "day": 25, "dip": 10, "hot": 10, "high": 252, "sma": 200},
+            ),
+            Preset(
+                "large",
+                "월 $2,700",
+                {"deposit": 2700, "day": 25, "dip": 10, "hot": 10, "high": 252, "sma": 200},
             ),
         ],
         preset_label="매달 넣는 돈",
