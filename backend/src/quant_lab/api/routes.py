@@ -46,6 +46,7 @@ from quant_lab.persistence.models import (
     DecisionRow,
     EventRow,
     InstrumentRow,
+    LiveBarRow,
     QuoteRow,
     RunRow,
     SimOrderRow,
@@ -356,12 +357,27 @@ def bars(
     if start:
         stmt = stmt.where(DailyBarRow.session_date >= start)
     rows = list(session.scalars(stmt.order_by(DailyBarRow.session_date.desc()).limit(limit)))
-    return [
+    out = [
         BarView(
             date=r.session_date, open=r.open, high=r.high, low=r.low, close=r.close, volume=r.volume
         )
         for r in reversed(rows)
     ]
+    # 완료 봉보다 새 날짜의 진행 중 봉이 있으면 끝에 붙인다 (차트 표시용).
+    lb = session.get(LiveBarRow, symbol.upper())
+    if lb is not None and (not out or lb.session_date > out[-1].date):
+        out.append(
+            BarView(
+                date=lb.session_date,
+                open=lb.open,
+                high=lb.high,
+                low=lb.low,
+                close=lb.close,
+                volume=lb.volume,
+                live=True,
+            )
+        )
+    return out
 
 
 @router.get("/instruments")

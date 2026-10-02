@@ -358,3 +358,64 @@ export function Dashboard({ bot }: { bot: Bot }) {
     </>
   )
 }
+
+function botReturn(bot: Bot): string | null {
+  const a = bot.account
+  return a.live_equity != null && Number(a.initial_cash)
+    ? String(Number(a.live_equity) / Number(a.initial_cash) - 1)
+    : a.total_return
+}
+
+const SELECTED_KEY = 'quant-lab:bot'
+
+function readSelected(): number | null {
+  try {
+    return Number(localStorage.getItem(SELECTED_KEY)) || null
+  } catch {
+    return null
+  }
+}
+
+/** 홈: 봇이 여럿이면 위쪽 탭으로 하나씩 본다. 고른 봇은 이 브라우저에 기억한다. */
+export function Home({ bots }: { bots: Bot[] }) {
+  const { byName } = useStrategies()
+  const instruments = useInstruments().data
+  const [selected, setSelected] = useState(readSelected)
+  const bot = bots.find((b) => b.id === selected) ?? bots[0]
+  const pick = (id: number) => {
+    setSelected(id)
+    try {
+      localStorage.setItem(SELECTED_KEY, String(id))
+    } catch {
+      // 저장이 막힌 브라우저에서는 이번 방문 동안만 기억한다.
+    }
+  }
+  return (
+    <>
+      {bots.length > 1 && (
+        <div className="bot-tabs" role="tablist">
+          {bots.map((b) => {
+            const lev = leverageOf(instruments, b.symbol)
+            const ret = botReturn(b)
+            return (
+              <button
+                key={b.id}
+                role="tab"
+                aria-selected={b.id === bot.id}
+                className={`bot-tab ${b.id === bot.id ? 'active' : ''}`}
+                onClick={() => pick(b.id)}
+              >
+                <span className="bot-tab-name">
+                  {byName[b.strategy]?.emoji} {b.symbol}
+                  {lev > 1 && <span className="lev">{lev}배</span>}
+                </span>
+                <span className={`bot-tab-ret ${tone(ret)}`}>{percent(ret)}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+      <Dashboard key={bot.id} bot={bot} />
+    </>
+  )
+}
