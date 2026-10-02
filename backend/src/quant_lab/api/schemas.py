@@ -272,6 +272,12 @@ class BotConfig(BaseModel):
     max_order_value: Decimal | None = None
 
 
+class SymbolsUpdate(BaseModel):
+    """만든 뒤 종목·비율 바꾸기. 비율 합 100, 최대 10개."""
+
+    symbols: list[SymbolWeight]
+
+
 class BotRename(BaseModel):
     name: str
 

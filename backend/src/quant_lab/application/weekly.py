@@ -61,13 +61,19 @@ def weekly_summary(
         """그냥 들고 있었다면의 이번 주 변화. 여러 종목이면 종목 비율로 가중 평균한다."""
         if "closes" not in a or "closes" not in b:
             return change(a["close"], b["close"])
-        weights = bot_weights(bot)
+        # 주중에 종목을 바꿨으면 두 날 모두 가격이 있는 종목만 그 비율로 본다.
+        both = {
+            s: w
+            for s, w in bot_weights(bot).items()
+            if w > 0 and s in a["closes"] and s in b["closes"]
+        }
+        if not both:
+            return change(a["close"], b["close"])
         total = sum(
             Decimal(w) * (Decimal(b["closes"][s]) / Decimal(a["closes"][s]) - 1)
-            for s, w in weights.items()
-            if s in a["closes"] and s in b["closes"]
+            for s, w in both.items()
         )
-        return str(round(total / 100, 6))
+        return str(round(total / sum(both.values()), 6))
 
     # 이번 주에 들어온 입금은 수익이 아니므로 뺀다 (모으기 전략).
     added = Decimal(str(end.get("contributed", 0))) - Decimal(

@@ -292,6 +292,7 @@ const json = (method: string, body: unknown): RequestInit => ({
 export const botApi = {
   create: (body: BotCreate) => request<Bot>('/api/bots', json('POST', body)),
   updateConfig: (botId: number, body: BotConfig) => request<Bot>(`/api/bots/${botId}/config`, json('PUT', body)),
+  updateSymbols: (botId: number, symbols: SymbolWeight[]) => request<Bot>(`/api/bots/${botId}/symbols`, json('PUT', { symbols })),
   rename: (botId: number, name: string) => request<Bot>(`/api/bots/${botId}`, json('PATCH', { name })),
   reset: (botId: number) => request<Bot>(`/api/bots/${botId}/reset`, { method: 'POST' }),
   remove: (botId: number) => request<void>(`/api/bots/${botId}`, { method: 'DELETE' }),

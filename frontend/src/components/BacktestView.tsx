@@ -9,7 +9,7 @@ import { Term } from './Help'
 import { startNewBot } from '../selectedBot'
 import { StrategyPicker } from './StrategyPicker'
 import { PresetFields } from './PresetFields'
-import { basketLabel } from '../basket'
+import { activeOf, basketLabel } from '../basket'
 import { BasketPicker, SymbolPicker } from './SymbolPicker'
 
 const PERIODS = [
@@ -339,7 +339,7 @@ export function BacktestView() {
   const currentInfo = list?.find((b) => b.id === current)
   // 양식의 선택(전략·종목)은 아래에 보이는 결과와 맞춘다. 직접 바꾸면 그 선택을 따른다.
   const [picked, setPicked] = useState<Choice | null>(null)
-  const choice = picked ?? (currentInfo ? { symbol: currentInfo.symbol, strategy: currentInfo.strategy, symbols: currentInfo.symbols } : { symbol: 'QQQ', strategy: 'sma_cross' })
+  const choice = picked ?? (currentInfo ? { symbol: currentInfo.symbol, strategy: currentInfo.strategy, symbols: activeOf(currentInfo.symbols ?? []) } : { symbol: 'QQQ', strategy: 'sma_cross' })
   const show = (id: string) => {
     setSelected(id)
     setPicked(null)
