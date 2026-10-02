@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from quant_lab.adapters.toss.client import Quote, StockInfo, TossClient
 from quant_lab.application.bar_sync import SyncResult, sync_daily_bars
-from quant_lab.domain.bars import TradingCalendar, outlier_limit
+from quant_lab.domain.bars import DailyBar, TradingCalendar, outlier_limit
 from quant_lab.persistence.market_info import leverage_of
 
 
@@ -28,6 +28,8 @@ class LiveSource(Protocol):
 
     def quotes(self, symbols: list[str]) -> list[Quote]: ...
 
+    def live_bars(self, symbols: list[str]) -> list[DailyBar]: ...
+
 
 class TossMarket:
     def __init__(self, client: TossClient, calendar: TradingCalendar) -> None:
@@ -45,6 +47,10 @@ class TossMarket:
 
     def quotes(self, symbols: list[str]) -> list[Quote]:
         return self.client.prices(symbols)
+
+    def live_bars(self, symbols: list[str]) -> list[DailyBar]:
+        """종목마다 가장 최근 일봉 1개 (진행 중이면 정규장 전 거래부터 채워진 값)."""
+        return [b for s in symbols for b in self.client.daily_candles(s, count=1).bars[-1:]]
 
     def confirm_session(self, day: date) -> bool:
         today = self.client.us_market_calendar(day)["today"]

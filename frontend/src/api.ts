@@ -107,7 +107,7 @@ export type EventItem = {
   run_id: string | null
 }
 
-export type Bar = { date: string; open: Money; high: Money; low: Money; close: Money; volume: Money }
+export type Bar = { date: string; open: Money; high: Money; low: Money; close: Money; volume: Money; live?: boolean }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init)

@@ -8,11 +8,19 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from quant_lab.adapters.toss.client import Quote, StockInfo
 from quant_lab.application.market import StoredMarket
+from quant_lab.domain.bars import DailyBar
 from quant_lab.domain.bot import BotState, CommandKind
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.persistence.bars import upsert_daily_bars
 from quant_lab.persistence.bots import create_bot, enqueue_command, get_bot
-from quant_lab.persistence.models import CommandRow, DecisionRow, EventRow, InstrumentRow, QuoteRow
+from quant_lab.persistence.models import (
+    CommandRow,
+    DecisionRow,
+    EventRow,
+    InstrumentRow,
+    LiveBarRow,
+    QuoteRow,
+)
 from quant_lab.worker.loop import Worker, release_worker_lock, try_acquire_worker_lock
 from tests.fakes import WeekdayCalendar, make_bars
 
@@ -109,6 +117,9 @@ class FakeLive:
         self.quote_calls += 1
         return [Quote(s, Decimal("123.45"), NOW) for s in symbols]
 
+    def live_bars(self, symbols: list[str]) -> list[DailyBar]:
+        return make_bars(symbols[0], [123])
+
 
 def test_live_quotes_only_for_bot_symbols_in_trading_hours(
     make_session: Callable[[], Session], session: Session
@@ -126,3 +137,4 @@ def test_live_quotes_only_for_bot_symbols_in_trading_hours(
     assert live.quote_calls == 1
     assert session.get_one(QuoteRow, "QQQ").price == Decimal("123.45")
     assert session.get_one(InstrumentRow, "QQQ").leverage_factor == 3
+    assert session.get_one(LiveBarRow, "QQQ").close == 123

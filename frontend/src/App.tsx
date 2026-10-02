@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { api } from './api'
 import { BacktestView } from './components/BacktestView'
 import { Brand, ThemeMenu } from './components/Brand'
-import { Dashboard } from './components/Dashboard'
+import { Home } from './components/Dashboard'
 import { HelpButton } from './components/Help'
 import { SettingsView } from './components/SettingsView'
 import { ago } from './format'
@@ -95,7 +95,7 @@ export default function App() {
         {tab === 'dashboard' && bots.data && !bots.data.length && (
           <section className="card muted">아직 봇이 없어요. 설정 탭에서 만들어 주세요.</section>
         )}
-        {tab === 'dashboard' && bots.data?.map((b) => <Dashboard key={b.id} bot={b} />)}
+        {tab === 'dashboard' && !!bots.data?.length && <Home bots={bots.data} />}
         {tab === 'backtest' && <BacktestView />}
         {tab === 'settings' && bots.data && <SettingsView bots={bots.data} />}
       </main>

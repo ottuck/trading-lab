@@ -24,7 +24,7 @@ from quant_lab.domain.bot import (
 )
 from quant_lab.persistence.bars import latest_session_date
 from quant_lab.persistence.bots import add_event, get_bot, set_bot_state
-from quant_lab.persistence.market_info import upsert_instruments, upsert_quotes
+from quant_lab.persistence.market_info import upsert_instruments, upsert_live_bars, upsert_quotes
 from quant_lab.persistence.models import BotRow, CommandRow
 
 # 같은 DB에 Worker가 둘 뜨지 않게 하는 PostgreSQL advisory lock 키 ("QLAB")
@@ -115,7 +115,7 @@ class Worker:
         return outcomes
 
     def refresh_live(self) -> None:
-        """화면용 종목 정보(하루 한 번)와 봇 종목 현재가(거래 시간 중 30초마다).
+        """화면용 종목 정보(하루 한 번)와 봇 종목 현재가·진행 중 일봉(거래 시간 중 30초마다).
 
         실패해도 판단·모의 체결과 무관하므로 로그만 남긴다 (알림 없음).
         """
@@ -140,8 +140,10 @@ class Worker:
             ):
                 self._quotes_at = now
                 quotes = self.live.quotes(bot_symbols)
+                live_bars = self.live.live_bars(bot_symbols)
                 with self.make_session() as session:
                     upsert_quotes(session, quotes, now)
+                    upsert_live_bars(session, live_bars, now)
                     session.commit()
         except Exception as exc:
             log.warning("실시간 정보 갱신 실패: %s", exc)

@@ -114,6 +114,7 @@ class BarView(BaseModel):
     low: Decimal
     close: Decimal
     volume: Decimal
+    live: bool = False  # 진행 중인 오늘 봉 (아직 확정 아님)
 
 
 class CommandRequest(BaseModel):
