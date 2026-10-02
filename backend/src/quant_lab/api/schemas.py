@@ -219,6 +219,10 @@ class BotConfig(BaseModel):
     max_order_value: Decimal | None = None
 
 
+class BotRename(BaseModel):
+    name: str
+
+
 class BotCreate(BotConfig):
     name: str
     symbol: str

@@ -1372,3 +1372,21 @@ button.bot-item.active {
 .toggle input {
   accent-color: var(--accent);
 }
+
+/* 설정: 봇 고르기·이름·봇 관리 */
+.bot-chips .chip-sub {
+  margin-left: 4px;
+  font-weight: 500;
+  opacity: 0.6;
+}
+.name-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.danger-zone {
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}

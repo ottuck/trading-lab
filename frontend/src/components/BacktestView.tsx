@@ -6,6 +6,8 @@ import { kstTime, money, percent, signedMoney, tone } from '../format'
 import { strategyTitle, useStrategies } from '../strategies'
 import { cssVar, useTheme } from '../theme'
 import { Term } from './Help'
+import { startNewBot } from '../selectedBot'
+import { StrategyPicker } from './StrategyPicker'
 import { SymbolPicker } from './SymbolPicker'
 
 const PERIODS = [
@@ -22,37 +24,22 @@ function startDate(years: number): string | undefined {
   return d.toISOString().slice(0, 10)
 }
 
-export function StrategyPicker({
-  list,
-  value,
-  onChange,
-}: {
-  list: StrategyInfo[]
-  value: string
-  onChange: (name: string) => void
-}) {
-  return (
-    <div className="pick-grid">
-      {list.map((s) => (
-        <button key={s.name} className={`pick ${s.name === value ? 'active' : ''}`} onClick={() => onChange(s.name)}>
-          <div className="pick-title">
-            {s.emoji} {s.nickname}
-          </div>
-          <div className="pick-desc">{s.summary}</div>
-          <div className="pick-meta">
-            위험 {s.risk} · 거래 {s.trades}
-          </div>
-        </button>
-      ))}
-    </div>
-  )
-}
+type Choice = { symbol: string; strategy: string }
 
-function RunForm({ onDone }: { onDone: (id: string) => void }) {
+function RunForm({
+  choice,
+  onChoice,
+  onDone,
+}: {
+  choice: Choice
+  onChoice: (c: Choice) => void
+  onDone: (id: string) => void
+}) {
   const qc = useQueryClient()
   const { list } = useStrategies()
-  const [symbol, setSymbol] = useState('QQQ')
-  const [strategy, setStrategy] = useState('sma_cross')
+  const { symbol, strategy } = choice
+  const setSymbol = (s: string) => onChoice({ ...choice, symbol: s })
+  const setStrategy = (s: string) => onChoice({ ...choice, strategy: s })
   const [years, setYears] = useState(10)
   const run = useMutation({
     mutationFn: () => {
@@ -139,8 +126,16 @@ function Detail({ id, info }: { id: string; info?: StrategyInfo }) {
   const abs = (v: string | null | undefined) => percent(v).replace('+', '')
   return (
     <section className="card stack">
-      <div className="card-title" style={{ marginBottom: 0 }}>
-        {strategyTitle(info, data.strategy)} <span className="sub">{data.symbol}</span>
+      <div className="panel-head">
+        <div className="card-title" style={{ marginBottom: 0 }}>
+          {strategyTitle(info, data.strategy)} <span className="sub">{data.symbol}</span>
+        </div>
+        <button
+          className="primary"
+          onClick={() => startNewBot({ symbol: data.symbol, strategy: data.strategy, params: data.params })}
+        >
+          이 전략으로 모의 투자 시작
+        </button>
       </div>
       <div className="verdict">
         <div className="muted small">
@@ -241,6 +236,13 @@ export function BacktestView() {
   const [selected, setSelected] = useState<string | null>(null)
   const current = selected ?? list?.[0]?.id ?? null
   const currentInfo = list?.find((b) => b.id === current)
+  // 위쪽 선택(전략·종목)은 아래에 보이는 결과와 맞춘다. 직접 바꾸면 그 선택을 따른다.
+  const [picked, setPicked] = useState<Choice | null>(null)
+  const choice = picked ?? (currentInfo ? { symbol: currentInfo.symbol, strategy: currentInfo.strategy } : { symbol: 'QQQ', strategy: 'sma_cross' })
+  const show = (id: string) => {
+    setSelected(id)
+    setPicked(null)
+  }
   return (
     <>
       <section className="card stack">
@@ -250,7 +252,7 @@ export function BacktestView() {
           </div>
           <div className="muted small">전략을 고르면, 그 전략을 예전부터 따라 했다면 어땠을지 실제 가격으로 계산해요.</div>
         </div>
-        <RunForm onDone={setSelected} />
+        <RunForm choice={choice} onChoice={setPicked} onDone={show} />
       </section>
       {current && <Detail id={current} info={currentInfo ? byName[currentInfo.strategy] : undefined} />}
       {list && list.length > 0 && (
@@ -258,7 +260,7 @@ export function BacktestView() {
           <div className="card-title">지난 시험</div>
           <ul className="history">
             {list.map((b) => (
-              <li key={b.id} className={b.id === current ? 'selected' : ''} onClick={() => setSelected(b.id)}>
+              <li key={b.id} className={b.id === current ? 'selected' : ''} onClick={() => show(b.id)}>
                 <div>
                   <div>
                     {strategyTitle(byName[b.strategy], b.strategy)} · {b.symbol}

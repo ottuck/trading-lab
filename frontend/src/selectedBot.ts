@@ -34,3 +34,29 @@ export function useSelectedBot<T extends { id: number }>(bots: T[]): T {
   const id = useSyncExternalStore(subscribe, () => selected)
   return bots.find((b) => b.id === id) ?? bots[0]
 }
+
+/** "새 봇 만들기" 요청. 시험해 보기 결과에서 오면 종목·전략이 미리 채워진다. */
+export type NewBotSeed = { symbol?: string; strategy?: string; params?: Record<string, number> }
+let seed: NewBotSeed | null = null
+const seedListeners = new Set<() => void>()
+
+export function startNewBot(next: NewBotSeed = {}) {
+  seed = next
+  seedListeners.forEach((l) => l())
+  location.hash = 'settings'
+}
+
+export function closeNewBot() {
+  seed = null
+  seedListeners.forEach((l) => l())
+}
+
+export function useNewBotSeed(): NewBotSeed | null {
+  return useSyncExternalStore(
+    (l) => {
+      seedListeners.add(l)
+      return () => seedListeners.delete(l)
+    },
+    () => seed,
+  )
+}

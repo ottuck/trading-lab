@@ -163,7 +163,16 @@ def unprocessed_commands(session: Session) -> list[CommandRow]:
 
 
 def delete_bot(session: Session, bot_id: int) -> None:
-    """replay 등 임시 봇 정리용. 운영 봇에는 쓰지 않는다."""
+    """봇과 그 기록을 모두 지운다 (화면의 봇 삭제, replay 임시 봇 정리)."""
     for model in (EventRow, SimOrderRow, DecisionRow, RunRow, CommandRow, BotAccountRow):
         session.execute(delete(model).where(model.bot_id == bot_id))
     session.execute(delete(BotRow).where(BotRow.id == bot_id))
+
+
+def reset_bot_history(session: Session, bot: BotRow, now: datetime) -> None:
+    """판단·주문·실행·명령·기록을 지우고 잔고를 시작 금액으로. 다음 tick에 바로 다시 판단한다."""
+    for model in (EventRow, SimOrderRow, DecisionRow, RunRow, CommandRow):
+        session.execute(delete(model).where(model.bot_id == bot.id))
+    save_account(session, bot.id, Portfolio(cash=bot.initial_cash), now)
+    bot.next_evaluation_at = None
+    bot.updated_at = now

@@ -50,11 +50,14 @@ def test_events_become_plain_messages_sent_once(engine: Engine, session: Session
 
     assert notifier.poll() == 4
     assert notifier.poll() == 0
-    assert [m.split("\n")[0] for m in sent] == [
+    # 한 번에 생긴 소식은 한 통으로 묶는다
+    assert len(sent) == 1
+    parts = sent[0].split("\n\n")
+    assert [p.split("\n")[0] for p in parts] == [
         "📋 오늘의 점검 · QQQ",
         "🔴 매수 신호 · QQQ",
         "✅ QQQ 13주를 샀어요",
         "⏳ 오늘 판단을 잠시 미뤘어요",
     ]
-    assert "상승 흐름이에요" in sent[1] and "내일 장이 열리면 QQQ를 사요" in sent[1]
-    assert "아직 최신 시세가 도착하지 않았어요" in sent[3]
+    assert "상승 흐름이에요" in parts[1] and "내일 장이 열리면 QQQ를 사요" in parts[1]
+    assert "아직 최신 시세가 도착하지 않았어요" in parts[3]

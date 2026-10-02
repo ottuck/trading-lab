@@ -18,6 +18,7 @@ from quant_lab.api.schemas import (
     BarView,
     BotConfig,
     BotCreate,
+    BotRename,
     BotView,
     CommandAccepted,
     CommandRequest,
@@ -33,11 +34,18 @@ from quant_lab.api.schemas import (
 from quant_lab.application.backtesting import backtest_symbol
 from quant_lab.application.messages import CATALOG, action_phrase, decision_reason, event_message
 from quant_lab.config import get_settings
-from quant_lab.domain.bot import BotState
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.domain.strategy import STRATEGIES, Strategy
 from quant_lab.persistence.backtests import to_jsonable
-from quant_lab.persistence.bots import add_event, create_bot, enqueue_command, get_bot, list_bots
+from quant_lab.persistence.bots import (
+    add_event,
+    create_bot,
+    delete_bot,
+    enqueue_command,
+    get_bot,
+    list_bots,
+    reset_bot_history,
+)
 from quant_lab.persistence.db import get_session
 from quant_lab.persistence.models import (
     BacktestRow,
@@ -172,8 +180,9 @@ def _bot_view(session: Session, bot: BotRow) -> BotView:
     )
 
 
-def _require_bot(session: Session, bot_id: int) -> BotRow:
-    bot = get_bot(session, bot_id)
+def _require_bot(session: Session, bot_id: int, *, for_update: bool = False) -> BotRow:
+    # for_update: Worker 평가도 같은 행을 잠그므로, 평가 중이면 끝날 때까지 기다렸다가 바꾼다.
+    bot = get_bot(session, bot_id, for_update=for_update)
     if bot is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"봇 {bot_id}가 없습니다")
     return bot
@@ -249,13 +258,8 @@ def create(session: SessionDep, body: BotCreate) -> BotView:
 
 @router.put("/bots/{bot_id}/config")
 def update_config(session: SessionDep, bot_id: int, body: BotConfig) -> BotView:
-    """실행 중에는 바꾸지 않는다. 일시정지·중지 후 바꾸고 다시 시작한다."""
-    bot = _require_bot(session, bot_id)
-    if bot.state == BotState.RUNNING:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "실행 중인 봇은 설정을 바꿀 수 없습니다. 일시정지 후 변경하세요.",
-        )
+    """실행 중에도 바꿀 수 있다. 다음 판단부터 적용된다 (평가와는 행 잠금으로 순서가 정해진다)."""
+    bot = _require_bot(session, bot_id, for_update=True)
     strategy = _checked_strategy(body)
     before = {
         "strategy": bot.strategy,
@@ -287,6 +291,57 @@ def update_config(session: SessionDep, bot_id: int, body: BotConfig) -> BotView:
     )
     session.commit()
     return _bot_view(session, bot)
+
+
+@router.patch("/bots/{bot_id}")
+def rename(session: SessionDep, bot_id: int, body: BotRename) -> BotView:
+    bot = _require_bot(session, bot_id, for_update=True)
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "이름을 입력해 주세요")
+    if name != bot.name:
+        if session.scalar(select(BotRow.id).where(BotRow.name == name)) is not None:
+            raise HTTPException(status.HTTP_409_CONFLICT, f"같은 이름의 봇이 있습니다: {name}")
+        now = datetime.now(UTC)
+        add_event(
+            session,
+            now,
+            "INFO",
+            "config_change",
+            f"이름 변경: {bot.name} → {name}",
+            bot_id=bot.id,
+            data={"before": {"name": bot.name}, "after": {"name": name}},
+        )
+        bot.name, bot.updated_at = name, now
+        session.commit()
+    return _bot_view(session, bot)
+
+
+@router.post("/bots/{bot_id}/reset")
+def reset(session: SessionDep, bot_id: int) -> BotView:
+    """처음부터 다시 시작: 판단·주문·실행 기록을 지우고 시작 금액으로. 설정·상태는 그대로."""
+    bot = _require_bot(session, bot_id, for_update=True)
+    now = datetime.now(UTC)
+    reset_bot_history(session, bot, now)
+    add_event(session, now, "INFO", "bot_reset", "처음부터 다시 시작", bot_id=bot.id)
+    session.commit()
+    return _bot_view(session, bot)
+
+
+@router.delete("/bots/{bot_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove(session: SessionDep, bot_id: int) -> None:
+    bot = _require_bot(session, bot_id, for_update=True)
+    name, symbol = bot.name, bot.symbol
+    delete_bot(session, bot_id)
+    add_event(
+        session,
+        datetime.now(UTC),
+        "INFO",
+        "bot_deleted",
+        f"봇 삭제: {name}",
+        data={"name": name, "symbol": symbol},
+    )
+    session.commit()
 
 
 @router.get("/bots/{bot_id}")

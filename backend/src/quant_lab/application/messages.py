@@ -290,6 +290,17 @@ def event_message(
             "INFO",
             True,
         )
+    if kind == "bot_reset":
+        return Message(
+            "🔄",
+            f"{obj(who)} 처음부터 다시 시작해요",
+            "모의 잔고를 시작 금액으로 되돌리고 기록을 지웠어요. 곧 오늘 판단부터 다시 해요.",
+            "INFO",
+            True,
+        )
+    if kind == "bot_deleted":
+        name = d.get("name") or who
+        return Message("🗑️", f"{obj(name)} 지웠어요", "봇과 그 기록을 모두 지웠어요.", "INFO", True)
     if kind == "restart_resume":
         return Message(
             "🔄",
