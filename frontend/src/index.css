@@ -1763,3 +1763,73 @@ button.switcher-btn:hover:not(:disabled) {
   color: var(--text);
   font-weight: 600;
 }
+
+/* 평행세계의 나: 위에 나와 고른 나의 그래프, 아래에 나들의 목록(순서는 늘 같다). */
+.pw-chart {
+  height: 220px;
+  margin-top: 4px;
+}
+.pw-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 6px 0 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.legend i.pw-mine {
+  background: var(--text);
+}
+.legend i.other {
+  background: var(--accent);
+}
+.pw-list {
+  display: grid;
+  border-top: 1px solid var(--border);
+}
+.pw-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  text-align: left;
+}
+.pw-item > div:first-child {
+  min-width: 0;
+}
+.pw-item .title {
+  font-weight: 600;
+}
+.pw-item .sub {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.pw-item .r {
+  text-align: right;
+  flex-shrink: 0;
+}
+.pw-item .value {
+  font-weight: 600;
+}
+.pw-item[aria-selected='true'] {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.pw-item.pw-mine:disabled {
+  opacity: 1;
+  cursor: default;
+  background: var(--surface);
+}
+.pw-choose {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}

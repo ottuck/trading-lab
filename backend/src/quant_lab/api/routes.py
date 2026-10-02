@@ -30,21 +30,27 @@ from quant_lab.api.schemas import (
     EventView,
     InstrumentView,
     OrderView,
+    ParallelRequest,
+    ParallelView,
     PositionView,
     PresetView,
     RunView,
     StrategyInfo,
     SymbolsUpdate,
     SymbolWeight,
+    WorldPoint,
+    WorldView,
 )
 from quant_lab.application.backtesting import backtest_symbol
 from quant_lab.application.messages import CATALOG, action_phrase, decision_reason, event_message
+from quant_lab.application.parallel import World, parallel_worlds
 from quant_lab.config import get_settings
 from quant_lab.domain.portfolio import CostModel, Portfolio, RiskLimits, affordable_qty
-from quant_lab.domain.strategy import STRATEGIES, Strategy, deposit_plan
+from quant_lab.domain.strategy import STRATEGIES, DipSaver, Strategy, deposit_plan
 from quant_lab.domain.trading import MAX_SYMBOLS
 from quant_lab.persistence.backtests import to_jsonable
 from quant_lab.persistence.bots import (
+    active_weights,
     add_event,
     bot_costs,
     bot_weights,
@@ -826,6 +832,75 @@ def run_backtest(session: SessionDep, body: BacktestRequest) -> BacktestDetail:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     assert run.saved_id is not None
     return backtest(session, run.saved_id)
+
+
+def _parallel_view(worlds: list[World]) -> ParallelView:
+    me = worlds[0].final_equity
+    return ParallelView(
+        start=worlds[0].start,
+        end=worlds[0].end,
+        worlds=[
+            WorldView(
+                key=w.key,
+                title=w.title,
+                params=w.params,
+                final_equity=w.final_equity,
+                contributed=w.contributed,
+                cagr=w.cagr,
+                same_as_me=w.key != "me" and w.final_equity == me,
+                equity=[WorldPoint(date=d, equity=e) for d, e in w.equity],
+            )
+            for w in worlds
+        ],
+    )
+
+
+@router.post("/parallel")
+def parallel(session: SessionDep, body: ParallelRequest) -> ParallelView:
+    """평행세계의 나: 내 규칙을 하나씩 바꾼 나들을 같은 기간에 계산한다 (저장하지 않음)."""
+    try:
+        strategy = DipSaver(**body.params)
+        weights = _checked_weights(body.symbol, body.symbols, strategy)
+        worlds = parallel_worlds(
+            session,
+            weights,
+            strategy.params,
+            start=body.start,
+            end=body.end,
+            initial_cash=body.initial_cash or Decimal(strategy.deposit),
+            costs=CostModel(commission_rate=Decimal("0.001"), slippage_bps=Decimal(5)),
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    return _parallel_view(worlds)
+
+
+@router.get("/bots/{bot_id}/parallel")
+def bot_parallel(session: SessionDep, bot_id: int) -> ParallelView:
+    """운영 중인 나처럼 모으기 봇의 평행세계: 첫 판단일부터 지금 규칙으로 다시 계산한다."""
+    bot = _require_bot(session, bot_id)
+    if bot.strategy != "dip_saver":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "나처럼 모으기 봇만 볼 수 있어요")
+    first = session.scalar(
+        select(func.min(DecisionRow.session_date)).where(DecisionRow.bot_id == bot_id)
+    )
+    if first is None:
+        return ParallelView(start=None, end=None, worlds=[], note="아직 첫 판단 전이에요.")
+    try:
+        worlds = parallel_worlds(
+            session,
+            active_weights(bot),
+            bot.params,
+            start=first,
+            end=None,
+            initial_cash=bot.initial_cash,
+            costs=bot_costs(bot),
+        )
+    except ValueError:
+        return ParallelView(
+            start=first, end=None, worlds=[], note="시작한 지 얼마 안 돼서 아직 비교할 날이 없어요."
+        )
+    return _parallel_view(worlds)
 
 
 @router.get("/backtests")
