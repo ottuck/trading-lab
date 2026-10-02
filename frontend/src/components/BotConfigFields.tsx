@@ -1,0 +1,68 @@
+import type { Draft } from '../botConfig'
+import { presetOf, SLIPPAGE_CHOICES, useStrategies } from '../strategies'
+import { Term } from './Help'
+import { StrategyPicker } from './StrategyPicker'
+
+/** 봇 설정 입력칸(전략·반응 속도·체결 가격 가정·최대 투자 금액). 설정 화면과 새 봇 만들기에서 같이 쓴다. */
+export function ConfigFields({ draft, onChange }: { draft: Draft; onChange: (d: Draft) => void }) {
+  const { list, byName } = useStrategies()
+  const info = byName[draft.strategy]
+  const current = presetOf(info, draft.params)
+  const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch })
+  return (
+    <div className="stack">
+      <div>
+        <div className="label" style={{ marginBottom: 6 }}>
+          어떤 전략으로 할까요?
+        </div>
+        <StrategyPicker
+          list={list}
+          value={draft.strategy}
+          onChange={(name) => set({ strategy: name, params: byName[name]?.default_params ?? {} })}
+        />
+      </div>
+      {info && info.presets.length > 1 && (
+        <div className="controls">
+          <span className="label">반응 속도</span>
+          {info.presets.map((p) => (
+            <button key={p.key} className={`seg ${current?.key === p.key ? 'active' : ''}`} onClick={() => set({ params: p.params })}>
+              {p.label}
+            </button>
+          ))}
+          {!current && <span className="faint small">직접 설정한 값 사용 중</span>}
+        </div>
+      )}
+      <div className="controls">
+        <span className="label">
+          <Term k="체결 가격 가정" />
+        </span>
+        {SLIPPAGE_CHOICES.map((c) => (
+          <button key={c.bps} className={`seg ${c.bps === draft.slippage ? 'active' : ''}`} onClick={() => set({ slippage: c.bps })} title={c.hint}>
+            {c.label}
+          </button>
+        ))}
+      </div>
+      <div className="controls">
+        <span className="label">
+          <Term k="최대 투자 금액" />
+        </span>
+        <button className={`seg ${!draft.maxPosition ? 'active' : ''}`} onClick={() => set({ maxPosition: '' })}>
+          가진 현금 전부
+        </button>
+        <span className="dollar">
+          $
+          <input
+            inputMode="numeric"
+            placeholder="직접 입력"
+            value={draft.maxPosition}
+            onChange={(e) => set({ maxPosition: e.target.value.replace(/[^0-9]/g, '') })}
+            size={8}
+          />
+        </span>
+      </div>
+      <div className="faint small">
+        <Term k="수수료">수수료</Term>는 토스증권 요율(0.1%)이 자동으로 적용돼요.
+      </div>
+    </div>
+  )
+}

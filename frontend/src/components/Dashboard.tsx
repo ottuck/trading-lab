@@ -6,7 +6,7 @@ import { leverageOf, useInstruments } from '../instruments'
 import { sourceLabel } from '../source'
 import { useStrategies } from '../strategies'
 import { Term } from './Help'
-import { selectBot, useSelectedBot } from '../selectedBot'
+import { selectBot, startNewBot, useSelectedBot } from '../selectedBot'
 import { PriceChart } from './PriceChart'
 import { LeverageNotice } from './SymbolPicker'
 
@@ -612,7 +612,7 @@ export function Home({ bots }: { bots: Bot[] }) {
         <div className="bot-list">
           <div className="bot-list-head">
             내 봇
-            <button className="link" onClick={() => (location.hash = 'settings')}>
+            <button className="link" onClick={() => startNewBot()}>
               + 새 봇
             </button>
           </div>
