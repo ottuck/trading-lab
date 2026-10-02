@@ -117,6 +117,10 @@ def test_dip_saver_deposits_monthly_buys_dips_and_never_sells() -> None:
     dip_buys = [
         f for f in result.fills if by_date[f.signal_date].indicators["drawdown"] <= Decimal("-0.1")
     ]
-    assert dip_buys and dip_buys[0].qty * dip_buys[0].price > 500
+    cash_after = {p.session_date: p.cash for p in result.equity}
+    assert dip_buys and cash_after[dip_buys[0].fill_date] < dip_buys[0].price  # 남김없이 샀다
+    assert (
+        result.fills[0].signal_date == by_date[min(by_date)].session_date
+    )  # 시작 금액은 첫날 바로
     # 비교 기준(매달 그냥 사기)도 같은 돈을 넣는다
     assert result.equity[-1].contributed == m.contributed
