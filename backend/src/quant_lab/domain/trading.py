@@ -38,7 +38,7 @@ class Fill:
     side: Action
     signal_date: date
     fill_date: date
-    qty: int
+    qty: Decimal
     price: Decimal
     commission: Decimal
     realized_pnl: Decimal | None

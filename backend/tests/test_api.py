@@ -62,7 +62,7 @@ def bot_id(session: Session) -> int:
 def test_bot_view_shows_position_and_reason(client: TestClient, bot_id: int) -> None:
     body = client.get(f"/api/bots/{bot_id}").json()
     assert body["state"] == "RUNNING"
-    assert body["account"]["qty"] > 0
+    assert Decimal(body["account"]["qty"]) > 0
     assert Decimal(body["account"]["equity"]) > 0
     assert body["account"]["last_close_date"] == BARS[-1].session_date.isoformat()
     assert body["last_decision"]["session_date"] == BARS[12].session_date.isoformat()
@@ -141,7 +141,7 @@ def test_bot_management(client: TestClient, session: Session, bot_id: int) -> No
 
     # 처음부터 다시 시작: 잔고·기록 초기화, 설정·상태 유지
     reset = client.post(f"/api/bots/{bot_id}/reset").json()
-    assert reset["account"]["qty"] == 0 and reset["account"]["cash"] == "10000"
+    assert Decimal(reset["account"]["qty"]) == 0 and reset["account"]["cash"] == "10000"
     assert reset["last_decision"] is None and reset["state"] == "RUNNING"
     assert reset["strategy"] == "trend_filter"
 

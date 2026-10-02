@@ -112,7 +112,7 @@ class BotAccountRow(Base):
 
     bot_id: Mapped[int] = mapped_column(ForeignKey("bots.id"), primary_key=True)
     cash: Mapped[Decimal] = mapped_column(PRICE)
-    qty: Mapped[int] = mapped_column(Integer)
+    qty: Mapped[Decimal] = mapped_column(PRICE)  # 소수점 6자리까지 (2026-10-02~)
     avg_cost: Mapped[Decimal] = mapped_column(PRICE)
     realized_pnl: Mapped[Decimal] = mapped_column(PRICE)
     contributed: Mapped[Decimal] = mapped_column(PRICE)  # 넣은 돈 (시작 금액 + 입금)
@@ -210,7 +210,7 @@ class SimOrderRow(Base):
     signal_date: Mapped[date] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     fill_date: Mapped[date | None] = mapped_column(Date)
-    qty: Mapped[int | None] = mapped_column(Integer)
+    qty: Mapped[Decimal | None] = mapped_column(PRICE)
     price: Mapped[Decimal | None] = mapped_column(PRICE)
     commission: Mapped[Decimal | None] = mapped_column(PRICE)
     realized_pnl: Mapped[Decimal | None] = mapped_column(PRICE)

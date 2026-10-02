@@ -362,7 +362,7 @@ def _evaluate(
     return _commit_ok(session, bot, outcome, calendar, now, _summary(bot, pf, bars[-1].close))
 
 
-def _summary(bot: BotRow, pf: Portfolio, close: Decimal) -> dict[str, str | int]:
+def _summary(bot: BotRow, pf: Portfolio, close: Decimal) -> dict[str, str]:
     """알림·로그용 잔고 요약 (판단일 종가 기준 평가). 수익률은 넣은 돈 대비."""
     equity = pf.equity(close)
     contributed = pf.contributed or bot.initial_cash
@@ -370,7 +370,7 @@ def _summary(bot: BotRow, pf: Portfolio, close: Decimal) -> dict[str, str | int]
         "equity": str(money(equity)),
         "contributed": str(contributed),
         "total_return": str(round(equity / contributed - 1, 6)),
-        "qty": pf.qty,
+        "qty": str(pf.qty),
         "close": str(close),
     }
 
@@ -381,7 +381,7 @@ def _commit_ok(
     outcome: EvaluationOutcome,
     calendar: TradingCalendar,
     now: datetime,
-    summary: dict[str, str | int],
+    summary: dict[str, str],
 ) -> EvaluationOutcome:
     assert outcome.session_date is not None
     bot.next_evaluation_at = next_evaluation_time(calendar, outcome.session_date)
@@ -400,7 +400,8 @@ def _commit_ok(
             now,
             "INFO",
             "sim_fill",
-            f"{f.side} {f.qty}주 @ {f.price:.2f} ({f.fill_date} 시가, {f.signal_date} 판단)",
+            f"{f.side} {f.qty.normalize():f}주 @ {f.price:.2f} "
+            f"({f.fill_date} 시가, {f.signal_date} 판단)",
             bot_id=bot.id,
             run_id=outcome.run_id,
             data={**to_jsonable(f), "symbol": bot.symbol},

@@ -420,7 +420,7 @@ def equity(session: SessionDep, bot_id: int) -> list[EquityPoint]:
         .order_by(DailyBarRow.session_date)
     )
     costs = bot_costs(bot)
-    cash, qty, contributed, i = bot.initial_cash, 0, bot.initial_cash, 0
+    cash, qty, contributed, i = bot.initial_cash, Decimal(0), bot.initial_cash, 0
     bench = Portfolio(cash=bot.initial_cash)
     bench_buy = False
     out: list[EquityPoint] = []

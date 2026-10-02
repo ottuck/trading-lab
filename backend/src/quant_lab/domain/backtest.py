@@ -25,7 +25,7 @@ class EquityPoint:
     session_date: date
     equity: Decimal
     cash: Decimal
-    qty: int
+    qty: Decimal
     close: Decimal
     benchmark: Decimal
     contributed: Decimal  # 이날까지 넣은 돈 (시작 금액 + 입금)

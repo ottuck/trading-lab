@@ -13,7 +13,7 @@ from quant_lab.domain.bot import CommandKind
 class AccountView(BaseModel):
     initial_cash: Decimal
     cash: Decimal
-    qty: int
+    qty: Decimal
     avg_cost: Decimal
     realized_pnl: Decimal
     last_close: Decimal | None
@@ -59,7 +59,7 @@ class OrderView(BaseModel):
     status: str
     signal_date: date
     fill_date: date | None
-    qty: int | None
+    qty: Decimal | None
     price: Decimal | None
     commission: Decimal | None
     realized_pnl: Decimal | None

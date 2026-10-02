@@ -1,12 +1,12 @@
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 from typing import ClassVar
 
 from quant_lab.domain.backtest import run_backtest
 from quant_lab.domain.bars import DailyBar
-from quant_lab.domain.portfolio import CostModel, RiskLimits
+from quant_lab.domain.portfolio import QTY_STEP, CostModel, RiskLimits
 from quant_lab.domain.strategy import DipSaver, Signal, SmaCross
 from quant_lab.domain.trading import Action
 from tests.fakes import make_bars
@@ -51,7 +51,7 @@ def test_decision_at_close_fills_next_open() -> None:
         bars[2].session_date,
     )
     assert buy.price == bars[2].open
-    assert buy.qty == int(CASH / bars[2].open)
+    assert buy.qty == (CASH / bars[2].open).quantize(QTY_STEP, rounding=ROUND_DOWN)  # 소수점 6자리
     assert (sell.side, sell.signal_date, sell.fill_date) == (
         Action.SELL,
         bars[3].session_date,
