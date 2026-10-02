@@ -46,6 +46,14 @@ class BarIssue:
     detail: str
 
 
+def outlier_limit(leverage_factor: Decimal | None) -> Decimal:
+    """하루 종가 변동률 이상치 기준.
+
+    레버리지 ETF는 정상적으로도 크게 움직인다 (TQQQ 2020-03-16 약 -34%).
+    """
+    return Decimal("0.9") if leverage_factor and leverage_factor > 1 else Decimal("0.5")
+
+
 def check_daily_bars(
     bars: Sequence[DailyBar], calendar: TradingCalendar, max_abs_return: Decimal = Decimal("0.5")
 ) -> list[BarIssue]:

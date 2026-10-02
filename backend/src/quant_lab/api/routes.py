@@ -23,6 +23,7 @@ from quant_lab.api.schemas import (
     CommandRequest,
     DecisionView,
     EventView,
+    InstrumentView,
     OrderView,
     PresetView,
     RunView,
@@ -30,6 +31,7 @@ from quant_lab.api.schemas import (
 )
 from quant_lab.application.backtesting import backtest_symbol
 from quant_lab.application.messages import CATALOG, action_phrase, decision_reason, event_message
+from quant_lab.config import get_settings
 from quant_lab.domain.bot import BotState
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.domain.strategy import STRATEGIES, Strategy
@@ -43,6 +45,8 @@ from quant_lab.persistence.models import (
     DailyBarRow,
     DecisionRow,
     EventRow,
+    InstrumentRow,
+    QuoteRow,
     RunRow,
     SimOrderRow,
 )
@@ -75,6 +79,17 @@ def _account(session: Session, bot: BotRow) -> AccountView:
         )
     market_value = acc.qty * last.close
     equity = acc.cash + market_value
+    live: dict[str, Any] = {}
+    quote = session.get(QuoteRow, bot.symbol)
+    if quote is not None:
+        live_value = acc.qty * quote.price
+        live = {
+            "live_price": quote.price,
+            "live_at": quote.quoted_at,
+            "live_change": quote.price / last.close - 1 if last.close else None,
+            "live_equity": acc.cash + live_value,
+            "live_unrealized_pnl": live_value - acc.qty * acc.avg_cost,
+        }
     return AccountView(
         initial_cash=bot.initial_cash,
         cash=acc.cash,
@@ -87,6 +102,7 @@ def _account(session: Session, bot: BotRow) -> AccountView:
         unrealized_pnl=market_value - acc.qty * acc.avg_cost,
         equity=equity,
         total_return=(equity / bot.initial_cash - 1) if bot.initial_cash else None,
+        **live,
     )
 
 
@@ -345,6 +361,25 @@ def bars(
             date=r.session_date, open=r.open, high=r.high, low=r.low, close=r.close, volume=r.volume
         )
         for r in reversed(rows)
+    ]
+
+
+@router.get("/instruments")
+def instruments(session: SessionDep) -> list[InstrumentView]:
+    """관심 종목 + 봇 종목 (종목 버튼·레버리지 표시). 레버리지 배수는 Worker가 채운다."""
+    watch = [s.strip().upper() for s in get_settings().watchlist_symbols.split(",") if s.strip()]
+    watch += [s for s in session.scalars(select(BotRow.symbol).distinct()) if s not in watch]
+    infos = {r.symbol: r for r in session.scalars(select(InstrumentRow))}
+    quotes = {q.symbol: q for q in session.scalars(select(QuoteRow))}
+    return [
+        InstrumentView(
+            symbol=s,
+            name=infos[s].name if s in infos else None,
+            leverage_factor=infos[s].leverage_factor if s in infos else None,
+            live_price=quotes[s].price if s in quotes else None,
+            live_at=quotes[s].quoted_at if s in quotes else None,
+        )
+        for s in watch
     ]
 
 

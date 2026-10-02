@@ -20,6 +20,20 @@ export type Account = {
   unrealized_pnl: Money | null
   equity: Money | null
   total_return: Money | null
+  // 실시간(화면 표시용). 판단은 장 마감 기준 값을 쓴다.
+  live_price?: Money | null
+  live_at?: string | null
+  live_change?: Money | null
+  live_equity?: Money | null
+  live_unrealized_pnl?: Money | null
+}
+
+export type Instrument = {
+  symbol: string
+  name: string | null
+  leverage_factor: Money | null
+  live_price: Money | null
+  live_at: string | null
 }
 
 export type Decision = {
@@ -114,6 +128,7 @@ export const api = {
   events: (level?: string) =>
     request<EventItem[]>(`/api/events?limit=200${level ? `&level=${level}` : ''}`),
   bars: (symbol: string) => request<Bar[]>(`/api/bars/${symbol}?limit=750`),
+  instruments: () => request<Instrument[]>('/api/instruments'),
   command: (botId: number, kind: CommandKind) =>
     request<{ id: number }>(`/api/bots/${botId}/commands`, {
       method: 'POST',

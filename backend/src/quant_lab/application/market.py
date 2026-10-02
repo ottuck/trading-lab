@@ -5,9 +5,10 @@ from typing import Protocol
 
 from sqlalchemy.orm import Session
 
-from quant_lab.adapters.toss.client import TossClient
+from quant_lab.adapters.toss.client import Quote, StockInfo, TossClient
 from quant_lab.application.bar_sync import SyncResult, sync_daily_bars
-from quant_lab.domain.bars import TradingCalendar
+from quant_lab.domain.bars import TradingCalendar, outlier_limit
+from quant_lab.persistence.market_info import leverage_of
 
 
 class MarketData(Protocol):
@@ -20,13 +21,30 @@ class MarketData(Protocol):
         ...
 
 
+class LiveSource(Protocol):
+    """화면 표시용 실시간 정보. 판단에는 쓰지 않는다."""
+
+    def instruments(self, symbols: list[str]) -> list[StockInfo]: ...
+
+    def quotes(self, symbols: list[str]) -> list[Quote]: ...
+
+
 class TossMarket:
     def __init__(self, client: TossClient, calendar: TradingCalendar) -> None:
         self.client = client
         self.calendar = calendar
 
     def refresh(self, session: Session, symbol: str, now: datetime) -> SyncResult:
-        return sync_daily_bars(self.client, session, self.calendar, symbol, now)
+        limit = outlier_limit(leverage_of(session, symbol))
+        return sync_daily_bars(
+            self.client, session, self.calendar, symbol, now, max_abs_return=limit
+        )
+
+    def instruments(self, symbols: list[str]) -> list[StockInfo]:
+        return self.client.stocks(symbols)
+
+    def quotes(self, symbols: list[str]) -> list[Quote]:
+        return self.client.prices(symbols)
 
     def confirm_session(self, day: date) -> bool:
         today = self.client.us_market_calendar(day)["today"]

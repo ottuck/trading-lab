@@ -77,7 +77,8 @@ def run(stop: threading.Event) -> None:
     log.info("worker 시작 id=%s version=%s", worker_id, __version__)
     market = build_market(settings)
     watchlist = [s.strip().upper() for s in settings.watchlist_symbols.split(",") if s.strip()]
-    worker = Worker(make_session, market, get_calendar(), watchlist=watchlist)
+    live = market if isinstance(market, TossMarket) else None  # 실시간 가격은 토스 모드에서만
+    worker = Worker(make_session, market, get_calendar(), watchlist=watchlist, live=live)
     notifier = build_notifier(settings, make_session)
     with make_session() as session:
         add_event(

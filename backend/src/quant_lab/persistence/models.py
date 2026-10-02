@@ -204,7 +204,7 @@ class SimOrderRow(Base):
 
 
 class EventRow(Base):
-    """화면 로그 탭에 보여줄 기록."""
+    """알림·최근 활동의 원본 기록."""
 
     __tablename__ = "events"
     __table_args__ = (Index("ix_events_at", "at"),)
@@ -217,3 +217,26 @@ class EventRow(Base):
     bot_id: Mapped[int | None] = mapped_column(ForeignKey("bots.id"))
     run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("runs.id"))
     data: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+
+
+class InstrumentRow(Base):
+    """관심 종목·봇 종목의 기본 정보. Worker가 토스 /stocks로 하루 한 번 갱신한다."""
+
+    __tablename__ = "instruments"
+
+    symbol: Mapped[str] = mapped_column(String(20), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    security_type: Mapped[str] = mapped_column(String(20))
+    leverage_factor: Mapped[Decimal | None] = mapped_column(PRICE)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class QuoteRow(Base):
+    """종목별 최신 현재가 (화면 표시용). 판단에는 쓰지 않는다 (완료 일봉만 사용)."""
+
+    __tablename__ = "quotes"
+
+    symbol: Mapped[str] = mapped_column(String(20), primary_key=True)
+    price: Mapped[Decimal] = mapped_column(PRICE)
+    quoted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

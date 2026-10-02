@@ -5,6 +5,7 @@ import { ago, money } from '../format'
 import { presetOf, SLIPPAGE_CHOICES, strategyTitle, useStrategies } from '../strategies'
 import { StrategyPicker } from './BacktestView'
 import { Term } from './Help'
+import { SymbolPicker } from './SymbolPicker'
 
 type Draft = {
   strategy: string
@@ -187,14 +188,11 @@ function NewBot() {
           <input value={name} onChange={(e) => setName(e.target.value)} size={12} placeholder="예: voo-봇" />
         </label>
         <label>
-          종목
-          <input value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} size={6} />
-        </label>
-        <label>
           시작 금액 $
           <input value={cash} inputMode="numeric" onChange={(e) => setCash(e.target.value.replace(/[^0-9]/g, ''))} size={8} />
         </label>
       </div>
+      <SymbolPicker label="종목" value={symbol} onChange={setSymbol} />
       <ConfigFields draft={draft} onChange={setDraft} />
       <div className="controls">
         <button className="primary" disabled={create.isPending || !name} onClick={() => create.mutate()}>

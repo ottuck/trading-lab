@@ -3,6 +3,7 @@
 import logging
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import Connection, func, select
 from sqlalchemy.orm import Session
@@ -13,7 +14,7 @@ from quant_lab.application.dry_run import (
     evaluate_bot,
     latest_completed_session,
 )
-from quant_lab.application.market import MarketData
+from quant_lab.application.market import LiveSource, MarketData
 from quant_lab.domain.bars import TradingCalendar
 from quant_lab.domain.bot import (
     BotState,
@@ -23,11 +24,15 @@ from quant_lab.domain.bot import (
 )
 from quant_lab.persistence.bars import latest_session_date
 from quant_lab.persistence.bots import add_event, get_bot, set_bot_state
+from quant_lab.persistence.market_info import upsert_instruments, upsert_quotes
 from quant_lab.persistence.models import BotRow, CommandRow
 
 # 같은 DB에 Worker가 둘 뜨지 않게 하는 PostgreSQL advisory lock 키 ("QLAB")
 WORKER_LOCK_KEY = 0x514C4142
 WATCHLIST_CHECK_INTERVAL = timedelta(minutes=30)
+QUOTE_INTERVAL = timedelta(seconds=30)
+INSTRUMENT_INTERVAL = timedelta(days=1)
+NEW_YORK = ZoneInfo("America/New_York")
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +43,22 @@ def try_acquire_worker_lock(conn: Connection) -> bool:
     # 트랜잭션을 열어 둔 채 두지 않는다 (idle in transaction 타임아웃에 연결이 끊기지 않게).
     conn.commit()
     return acquired
+
+
+def us_trading_hours(now: datetime) -> bool:
+    """토스 미국 주식 거래 시간(데이마켓~애프터마켓): 뉴욕 기준 일요일 20:00 ~ 금요일 20:00.
+
+    휴장일은 따로 거르지 않는다 (가격이 그대로일 뿐 해가 없다).
+    """
+    ny = now.astimezone(NEW_YORK)
+    day, hour = ny.weekday(), ny.hour  # 월=0 … 일=6
+    if day == 5:
+        return False
+    if day == 6:
+        return hour >= 20
+    if day == 4:
+        return hour < 20
+    return True
 
 
 def release_worker_lock(conn: Connection) -> None:
@@ -54,14 +75,18 @@ class Worker:
         calendar: TradingCalendar,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
         watchlist: Sequence[str] = (),
+        live: LiveSource | None = None,
     ) -> None:
         self.make_session = make_session
         self.market = market
         self.calendar = calendar
         self.now = now
         self.watchlist = list(watchlist)
+        self.live = live
         self._watchlist_checked_at: datetime | None = None
         self._watchlist_failing: set[str] = set()
+        self._quotes_at: datetime | None = None
+        self._instruments_at: datetime | None = None
 
     def recover_after_restart(self) -> None:
         """실행 중이던 봇은 그대로 이어서 돈다. 밀린 평가는 다음 tick에서 바로 처리된다.
@@ -86,7 +111,40 @@ class Worker:
         outcomes = self.process_commands()
         outcomes += self.run_due_bots()
         self.sync_watchlist()
+        self.refresh_live()
         return outcomes
+
+    def refresh_live(self) -> None:
+        """화면용 종목 정보(하루 한 번)와 봇 종목 현재가(거래 시간 중 30초마다).
+
+        실패해도 판단·모의 체결과 무관하므로 로그만 남긴다 (알림 없음).
+        """
+        if self.live is None:
+            return
+        now = self.now()
+        with self.make_session() as session:
+            bot_symbols = sorted(set(session.scalars(select(BotRow.symbol))))
+        try:
+            if self._instruments_at is None or now - self._instruments_at >= INSTRUMENT_INTERVAL:
+                self._instruments_at = now
+                symbols = sorted(set(self.watchlist) | set(bot_symbols))
+                if symbols:
+                    infos = self.live.instruments(symbols)
+                    with self.make_session() as session:
+                        upsert_instruments(session, infos, now)
+                        session.commit()
+            if (
+                bot_symbols
+                and us_trading_hours(now)
+                and (self._quotes_at is None or now - self._quotes_at >= QUOTE_INTERVAL)
+            ):
+                self._quotes_at = now
+                quotes = self.live.quotes(bot_symbols)
+                with self.make_session() as session:
+                    upsert_quotes(session, quotes, now)
+                    session.commit()
+        except Exception as exc:
+            log.warning("실시간 정보 갱신 실패: %s", exc)
 
     def sync_watchlist(self) -> list[str]:
         """관심 종목 일봉을 최신 완료 거래일까지 맞춘다 (백테스트용). 30분에 한 번만 확인한다.

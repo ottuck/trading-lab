@@ -5,6 +5,8 @@ import { ago, kstTime, money, percent, signedMoney, tone } from '../format'
 import { strategyTitle, useStrategies } from '../strategies'
 import { Term } from './Help'
 import { PriceChart } from './PriceChart'
+import { leverageOf, useInstruments } from '../instruments'
+import { LeverageNotice } from './SymbolPicker'
 
 const STATE_LABEL: Record<BotState, string> = {
   RUNNING: '돌아가는 중',
@@ -126,8 +128,21 @@ function StatusCard({ bot }: { bot: Bot }) {
   )
 }
 
+/** 실시간 가격이 있으면 "실시간 · 3분 전", 없으면 장 마감 기준이라고 알려준다. */
+function LiveTag({ at }: { at: string | null | undefined }) {
+  return at ? (
+    <span className="live" title={kstTime(at)}>
+      실시간 · {ago(at)}
+    </span>
+  ) : null
+}
+
 function AccountCard({ bot }: { bot: Bot }) {
   const a = bot.account
+  const live = a.live_equity != null
+  const equity = live ? a.live_equity : a.equity
+  const ret = live && Number(a.initial_cash) ? String(Number(a.live_equity) / Number(a.initial_cash) - 1) : a.total_return
+  const unrealized = a.live_unrealized_pnl ?? a.unrealized_pnl
   return (
     <section className="card stack">
       <div className="card-title" style={{ marginBottom: 0 }}>
@@ -135,17 +150,22 @@ function AccountCard({ bot }: { bot: Bot }) {
       </div>
       <div className="kv">
         <span className="label">
-          <Term k="지금 가치" />
+          <Term k="지금 가치" /> <LiveTag at={a.live_at} />
         </span>
-        <span className="value big">{money(a.equity)}</span>
-        <span className={`small ${tone(a.total_return)}`} style={{ fontWeight: 700 }}>
-          {percent(a.total_return)} <span className="muted">· 시작 {money(a.initial_cash)}</span>
+        <span className="value big">{money(equity)}</span>
+        <span className={`small ${tone(ret)}`} style={{ fontWeight: 700 }}>
+          {percent(ret)} <span className="muted">· 시작 {money(a.initial_cash)}</span>
         </span>
+        {live && a.equity && (
+          <span className="faint small">
+            {a.last_close_date} 장 마감 기준 {money(a.equity)} ({percent(a.total_return)})
+          </span>
+        )}
       </div>
       <div className="kv-grid">
         <KV label="남은 현금">{money(a.cash)}</KV>
-        <KV label={<Term k="평가 손익" />} className={tone(a.unrealized_pnl)}>
-          {signedMoney(a.unrealized_pnl)}
+        <KV label={<Term k="평가 손익" />} className={tone(unrealized)}>
+          {signedMoney(unrealized)}
         </KV>
         <KV label={<Term k="확정 손익" />} className={tone(a.realized_pnl)}>
           {signedMoney(a.realized_pnl)}
@@ -157,7 +177,10 @@ function AccountCard({ bot }: { bot: Bot }) {
 
 function HoldingsCard({ bot }: { bot: Bot }) {
   const a = bot.account
-  const ret = a.qty && Number(a.avg_cost) ? String(Number(a.last_close) / Number(a.avg_cost) - 1) : null
+  const price = a.live_price ?? a.last_close
+  const value = a.qty && price ? String(a.qty * Number(price)) : a.market_value
+  const pnl = a.live_unrealized_pnl ?? a.unrealized_pnl
+  const ret = a.qty && Number(a.avg_cost) ? String(Number(price) / Number(a.avg_cost) - 1) : null
   return (
     <section className="card">
       <div className="card-title">들고 있는 주식</div>
@@ -170,16 +193,25 @@ function HoldingsCard({ bot }: { bot: Bot }) {
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div className="value md">{money(a.market_value)}</div>
-            <div className={`small ${tone(a.unrealized_pnl)}`} style={{ fontWeight: 700 }}>
-              {signedMoney(a.unrealized_pnl)} ({percent(ret)})
+            <div className="value md">{money(value)}</div>
+            <div className={`small ${tone(pnl)}`} style={{ fontWeight: 700 }}>
+              {signedMoney(pnl)} ({percent(ret)})
             </div>
           </div>
         </div>
       ) : (
         <div className="empty">아직 들고 있는 주식이 없어요. 현금으로 기다리는 중이에요.</div>
       )}
-      {a.qty > 0 && <div className="chart-foot">지금 가격 {money(a.last_close)} ({a.last_close_date} 장 마감 기준)</div>}
+      <div className="chart-foot">
+        {bot.symbol} 지금 가격 {money(price)}{' '}
+        {a.live_price ? (
+          <>
+            <span className={tone(a.live_change)}>({percent(a.live_change)} 장 마감 대비)</span> · <LiveTag at={a.live_at} />
+          </>
+        ) : (
+          `(${a.last_close_date ?? '—'} 장 마감 기준)`
+        )}
+      </div>
     </section>
   )
 }
@@ -298,14 +330,17 @@ function OrdersCard({ botId }: { botId: number }) {
 
 export function Dashboard({ bot }: { bot: Bot }) {
   const { byName } = useStrategies()
+  const lev = leverageOf(useInstruments().data, bot.symbol)
   return (
     <>
       <div className="bot-heading">
         <h2>{bot.name}</h2>
         <span className="muted">
-          {bot.symbol} · {strategyTitle(byName[bot.strategy], bot.strategy)}
+          {bot.symbol}
+          {lev > 1 && <span className="lev">{lev}배</span>} · {strategyTitle(byName[bot.strategy], bot.strategy)}
         </span>
       </div>
+      {lev > 1 && <LeverageNotice symbol={bot.symbol} factor={lev} />}
       <div className="row">
         <StatusCard bot={bot} />
         <AccountCard bot={bot} />

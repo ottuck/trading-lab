@@ -19,6 +19,7 @@ from quant_lab.application.backtesting import backtest_symbol
 from quant_lab.application.bar_sync import sync_daily_bars
 from quant_lab.application.replay import replay_bot
 from quant_lab.config import get_settings
+from quant_lab.domain.bars import outlier_limit
 from quant_lab.domain.bot import CommandKind
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.domain.strategy import STRATEGIES
@@ -46,11 +47,11 @@ def _toss_client() -> TossClient:
 def cmd_sync_bars(args: argparse.Namespace) -> int:
     client = _toss_client()
     calendar = get_calendar()
-    leveraged = {s.symbol for s in client.stocks(args.symbols) if (s.leverage_factor or 1) > 1}
+    leverage = {s.symbol: s.leverage_factor for s in client.stocks(args.symbols)}
     exit_code = 0
     with sessionmaker(get_engine())() as session:
         for symbol in args.symbols:
-            limit = Decimal("0.9") if symbol in leveraged else Decimal("0.5")
+            limit = outlier_limit(leverage.get(symbol))
             result = sync_daily_bars(
                 client, session, calendar, symbol, datetime.now(UTC), max_abs_return=limit
             )
