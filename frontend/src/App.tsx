@@ -2,6 +2,7 @@ import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { api } from './api'
 import { BacktestView } from './components/BacktestView'
+import { Brand, ThemeMenu } from './components/Brand'
 import { Dashboard } from './components/Dashboard'
 import { HelpButton } from './components/Help'
 import { SettingsView } from './components/SettingsView'
@@ -74,14 +75,12 @@ export default function App() {
   return (
     <>
       <header className="topbar">
-        <div className="brand">
-          <h1>Quant Lab</h1>
-          <span className="badge dry">모의 투자</span>
-        </div>
+        <Brand />
         <div className="topbar-right">
           <SystemStatus />
           <RefreshControls />
           <HelpButton />
+          <ThemeMenu />
         </div>
       </header>
       <nav className="tabs">
