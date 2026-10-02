@@ -98,7 +98,7 @@ export default function App() {
           <section className="card me-empty">
             <div>
               <b>나처럼 투자하는 봇을 만들어 볼까요?</b>
-              <p className="muted">질문 5개에 답하면 지난 10년을 &quot;매달 그냥 사기&quot;와 나란히 보여드려요.</p>
+              <p className="muted">질문 몇 개에 답하면 내 투자 습관을 복사한 봇이 만들어져요.</p>
             </div>
             <button className="primary" onClick={() => (location.hash = 'me')}>
               질문으로 나 만들기

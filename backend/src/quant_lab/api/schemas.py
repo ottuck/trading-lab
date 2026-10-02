@@ -220,6 +220,7 @@ class ChoiceView(BaseModel):
     label: str
     options: list[ChoiceOption]
     hint: str
+    requires: str = ""
 
 
 class StrategyInfo(BaseModel):

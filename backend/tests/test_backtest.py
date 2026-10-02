@@ -129,6 +129,12 @@ def test_dip_saver_deposits_monthly_buys_dips_and_never_sells() -> None:
     eager = run_backtest(bars, replace(s, hot=0), Decimal(500), NO_COST)
     assert {d.session_date for d in hot} & {f.signal_date for f in eager.fills}
 
+    # 떨어졌을 때만 사기(regular=0): 평소엔 모아 두고 하락장에만 산다
+    saver = run_backtest(bars, replace(s, regular=0), Decimal(500), NO_COST)
+    days = {d.session_date: d for d in saver.decisions}
+    assert saver.fills
+    assert all(days[f.signal_date].indicators["drawdown"] <= Decimal("-0.1") for f in saver.fills)
+
 
 def test_dip_saver_young_listing_uses_available_history() -> None:
     # 상장 석 달(63일) 종목: 1년이 안 돼도 한 달 이력부터 있는 만큼으로 판단한다
