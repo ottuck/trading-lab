@@ -226,11 +226,11 @@ def event_message(
         phrase = action_phrase(action, bool(d.get("holding")), sym)
         if action == "BUY":
             return Message(
-                "🟢", f"매수 신호 · {sym}", f"{reason}\n{phrase} (모의 투자)", "INFO", True
+                "🔴", f"매수 신호 · {sym}", f"{reason}\n{phrase} (모의 투자)", "INFO", True
             )
         if action == "SELL":
             return Message(
-                "🔴", f"매도 신호 · {sym}", f"{reason}\n{phrase} (모의 투자)", "INFO", True
+                "🔵", f"매도 신호 · {sym}", f"{reason}\n{phrase} (모의 투자)", "INFO", True
             )
         body = "\n".join(x for x in (f"{phrase} {reason}", equity_line) if x)
         return Message("📋", f"오늘의 점검 · {sym}", body, "INFO", True)
@@ -260,6 +260,35 @@ def event_message(
             True,
         )
 
+    if kind == "weekly_report":
+        week, hold = Decimal(d["week_return"]), Decimal(d["hold_return"])
+        buys, sells = int(d.get("buys", 0)), int(d.get("sells", 0))
+        trades = (
+            f"이번 주 거래 {buys + sells}번 (산 것 {buys}번, 판 것 {sells}번)"
+            if buys + sells
+            else "이번 주 거래는 없었어요"
+        )
+        if week > hold:
+            verdict = "이번 주는 그냥 들고 있을 때보다 나았어요."
+        elif week < hold:
+            verdict = "이번 주는 그냥 들고 있는 게 더 나았어요."
+        else:
+            verdict = "이번 주는 그냥 들고 있을 때와 같았어요."
+        return Message(
+            "📊",
+            f"이번 주 정리 · {sym}",
+            "\n".join(
+                (
+                    f"내 모의 자산 {_usd(d['equity'])} · 이번 주 {week * 100:+.2f}%",
+                    f"그냥 들고 있었다면 이번 주 {hold * 100:+.2f}%",
+                    verdict,
+                    trades,
+                    f"시작부터 {Decimal(d['total_return']) * 100:+.2f}%",
+                )
+            ),
+            "INFO",
+            True,
+        )
     if kind == "restart_resume":
         return Message(
             "🔄",
