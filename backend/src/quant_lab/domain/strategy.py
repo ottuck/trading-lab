@@ -266,6 +266,7 @@ class DipSaver:
     - 1년(high일) 종가 최고보다 dip% 이상 낮으면: 모아 둔 현금까지 모두 산다 (입금일이 아니어도)
     - SMA(sma) 보다 hot% 이상 높으면: 사지 않고 현금으로 모아 둔다 (hot=0이면 쉬지 않는다)
     - 그 밖에는: 입금일에 그달 입금액만큼 산다 (지난달 잔돈 포함, 고점 때 모아 둔 돈은 빼고)
+    - regular=0(떨어졌을 때만 사기)이면 평소에도 사지 않고 모아 두다가 하락장에만 산다
 
     상장 1년 미만 종목은 한 달(min_bars) 이력부터 있는 만큼으로 최고가·평균을 본다.
     """
@@ -276,6 +277,7 @@ class DipSaver:
     hot: int = 10  # % (10·15·20, 0이면 고점에도 쉬지 않음)
     high: int = 252
     sma: int = 200
+    regular: int = 1  # 1: 매달 산다, 0: 떨어졌을 때만 산다 (넣은 돈은 그때까지 모아 둔다)
     name: ClassVar[str] = "dip_saver"
 
     def __post_init__(self) -> None:
@@ -283,6 +285,8 @@ class DipSaver:
             raise ValueError("deposit은 양수, day는 1~28이어야 합니다")
         if self.dip <= 0 or self.hot < 0 or self.high <= 1 or self.sma <= 1:
             raise ValueError("dip은 양수, hot은 0 이상, high, sma는 2 이상이어야 합니다")
+        if self.regular not in (0, 1):
+            raise ValueError("regular는 0(떨어졌을 때만) 또는 1(매달)이어야 합니다")
 
     @property
     def params(self) -> dict[str, int]:
@@ -293,6 +297,7 @@ class DipSaver:
             "hot": self.hot,
             "high": self.high,
             "sma": self.sma,
+            "regular": self.regular,
         }
 
     @property
@@ -326,6 +331,8 @@ class DipSaver:
         state = f"최고 대비 {drawdown:.1%}, SMA{self.sma} 대비 {premium:+.1%}"
         if drawdown <= -Decimal(self.dip) / 100:
             return Signal(True, f"하락장 ({state}): 모은 현금 모두 매수", indicators, Spend.ALL)
+        if not self.regular:
+            return Signal(True, f"평소 ({state}): 떨어질 때까지 모아 둠", indicators, Spend.NONE)
         if self.hot and premium >= Decimal(self.hot) / 100:
             return Signal(True, f"고점 ({state}): 현금으로 모아 둠", indicators, Spend.NONE)
         return Signal(True, f"보통 ({state}): 입금액만큼 매수", indicators, Spend.DEPOSIT)
