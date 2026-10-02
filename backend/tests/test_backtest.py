@@ -7,7 +7,7 @@ from typing import ClassVar
 from quant_lab.domain.backtest import run_backtest
 from quant_lab.domain.bars import DailyBar
 from quant_lab.domain.portfolio import CostModel, RiskLimits
-from quant_lab.domain.strategy import Signal, SmaCross
+from quant_lab.domain.strategy import DipSaver, Signal, SmaCross
 from quant_lab.domain.trading import Action
 from tests.fakes import make_bars
 
@@ -95,3 +95,28 @@ def test_risk_metrics_and_annual_returns() -> None:
     assert years == sorted(set(years)) and len(years) >= 2
     assert m.benchmark_volatility > 0
     assert m.benchmark_sharpe is not None and m.benchmark_sharpe > 0
+
+
+def test_dip_saver_deposits_monthly_buys_dips_and_never_sells() -> None:
+    # 보합 → 빠르게 오름(고점, 쉼) → 30% 빠짐(하락장, 모은 돈 모두) → 보합
+    closes = [100] * 30 + [100 + 3 * i for i in range(1, 16)]
+    closes += [145 - 3 * i for i in range(1, 16)] + [100] * 40
+    bars = make_bars("VOO", closes)
+    s = DipSaver(deposit=500, day=1, dip=10, hot=10, high=20, sma=10)
+    result = run_backtest(bars, s, Decimal(500), NO_COST)
+    m = result.metrics
+
+    months = {(b.session_date.year, b.session_date.month) for b in bars[s.warmup - 1 :]}
+    assert m.deposits == len(months)
+    assert m.contributed == Decimal(500) * (1 + len(months))
+    assert all(f.side is Action.BUY for f in result.fills)
+    by_date = {d.session_date: d for d in result.decisions}
+    # 고점에서는 입금일이어도 사지 않고, 하락장에서는 모아 둔 현금까지 쓴다
+    hot = [d for d in result.decisions if d.indicators["premium"] >= Decimal("0.1")]
+    assert hot and all(d.action is Action.HOLD for d in hot)
+    dip_buys = [
+        f for f in result.fills if by_date[f.signal_date].indicators["drawdown"] <= Decimal("-0.1")
+    ]
+    assert dip_buys and dip_buys[0].qty * dip_buys[0].price > 500
+    # 비교 기준(매달 그냥 사기)도 같은 돈을 넣는다
+    assert result.equity[-1].contributed == m.contributed

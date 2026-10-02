@@ -3,7 +3,7 @@ import { useRef, useState } from 'react'
 import { api, botApi, type Bot } from '../api'
 import { ago, money } from '../format'
 import { closeNewBot, selectBot, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
-import { useStrategies } from '../strategies'
+import { sameParams, useStrategies } from '../strategies'
 import { toConfig, toDraft, type Draft } from '../botConfig'
 import { useDismiss } from '../useDismiss'
 import { StrategyFields, TradeFields } from './BotConfigFields'
@@ -166,7 +166,7 @@ function DangerZone({ bot, others }: { bot: Bot; others: Bot[] }) {
 }
 
 function sameStrategy(d: Draft, bot: Bot) {
-  return d.strategy === bot.strategy && JSON.stringify(d.params) === JSON.stringify(bot.params)
+  return d.strategy === bot.strategy && sameParams(d.params, bot.params)
 }
 
 function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
@@ -227,7 +227,10 @@ function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
   // 이름은 직접 고치기 전까지 종목·전략에 맞춰 자동으로 제안한다.
   const [customName, setCustomName] = useState<string | null>(null)
   const name = customName ?? suggestName(symbol, draft.strategy, taken)
-  const [cash, setCash] = useState('10000')
+  // 시작 금액은 직접 고치기 전까지 전략에 맞춘다 (모으기 전략은 한 달 입금액).
+  const { byName } = useStrategies()
+  const [customCash, setCustomCash] = useState<string | null>(null)
+  const cash = customCash ?? (byName[draft.strategy]?.accumulates ? String(draft.params.deposit ?? 675) : '10000')
   const [startNow, setStartNow] = useState(true)
   const create = useMutation({
     mutationFn: async () => {
@@ -266,7 +269,7 @@ function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
               id="new-bot-cash"
               value={cash}
               inputMode="numeric"
-              onChange={(e) => setCash(e.target.value.replace(/[^0-9]/g, ''))}
+              onChange={(e) => setCustomCash(e.target.value.replace(/[^0-9]/g, ''))}
               size={8}
             />
           </label>

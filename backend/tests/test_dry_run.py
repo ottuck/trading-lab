@@ -17,10 +17,10 @@ from quant_lab.domain.backtest import run_backtest
 from quant_lab.domain.bars import DailyBar
 from quant_lab.domain.bot import BotState
 from quant_lab.domain.portfolio import CostModel, RiskLimits
-from quant_lab.domain.strategy import SmaCross
+from quant_lab.domain.strategy import DipSaver, SmaCross
 from quant_lab.persistence.bars import upsert_daily_bars
 from quant_lab.persistence.bots import create_bot, get_bot, load_account
-from quant_lab.persistence.models import DecisionRow, EventRow, SimOrderRow
+from quant_lab.persistence.models import BotDepositRow, DecisionRow, EventRow, SimOrderRow
 from tests.fakes import WeekdayCalendar, make_bars
 
 CAL = WeekdayCalendar()
@@ -226,6 +226,41 @@ def test_replay_matches_backtest(
     assert sum(r["buys"] + r["sells"] for r in reports) == sum(
         1 for f in expected if f.fill_date <= fridays[-1]
     )
+
+
+def test_dip_saver_replay_matches_backtest(
+    make_session: Callable[[], Session], session: Session, bars: list[DailyBar]
+) -> None:
+    """모으기 전략도 정기 평가 재생이 백테스트와 같은 입금·추가 매수를 만든다."""
+    strategy = DipSaver(deposit=500, day=1, dip=5, hot=5, high=10, sma=5)
+    bot = create_bot(
+        session,
+        name="dip",
+        symbol="QQQ",
+        strategy="dip_saver",
+        params=strategy.params,
+        initial_cash=Decimal(500),
+        costs=COSTS,
+        limits=RiskLimits(),
+        now=datetime.now(UTC),
+    )
+    bot.state = BotState.RUNNING
+    session.commit()
+    replay_bot(
+        make_session, bot.id, CAL, bars[strategy.warmup - 1].session_date, bars[-1].session_date
+    )
+
+    expected = run_backtest(bars, strategy, Decimal(500), COSTS)
+    filled = session.scalars(
+        select(SimOrderRow).where(SimOrderRow.status == "FILLED").order_by(SimOrderRow.id)
+    )
+    assert len(expected.fills) >= 3 and all(f.side == "BUY" for f in expected.fills)
+    assert [(o.signal_date, o.fill_date, o.qty, o.price) for o in filled] == [
+        (f.signal_date, f.fill_date, f.qty, f.price) for f in expected.fills
+    ]
+    deposits = session.scalars(select(BotDepositRow.session_date).order_by(BotDepositRow.month))
+    assert list(deposits) == [p.session_date for p in expected.equity if p.deposit > 0]
+    assert load_account(session, bot.id).contributed == expected.metrics.contributed
 
 
 def test_db_rejects_duplicate_decision_for_same_bar(

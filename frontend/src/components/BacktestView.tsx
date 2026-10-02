@@ -3,7 +3,7 @@ import { ColorType, createChart, LineSeries, type Time } from 'lightweight-chart
 import { useEffect, useRef, useState } from 'react'
 import { backtestApi, type BacktestDetail, type StrategyInfo } from '../api'
 import { money, percent, signedMoney, tone } from '../format'
-import { useStrategies } from '../strategies'
+import { presetOf, useStrategies } from '../strategies'
 import { cssVar, useTheme } from '../theme'
 import { Term } from './Help'
 import { startNewBot } from '../selectedBot'
@@ -43,16 +43,18 @@ function RunForm({
   onDone: (id: string) => void
 }) {
   const qc = useQueryClient()
-  const { list } = useStrategies()
+  const { list, byName } = useStrategies()
+  // 전략마다 고른 프리셋 값을 기억한다. 고르지 않았으면 기본값.
+  const [picked, setPicked] = useState<Record<string, Record<string, number>>>({})
   const { symbol, strategy } = choice
   const setSymbol = (s: string) => onChoice({ ...choice, symbol: s })
   const setStrategy = (s: string) => onChoice({ ...choice, strategy: s })
   const [years, setYears] = useState(10)
+  const info = byName[strategy]
+  const params = picked[strategy] ?? info?.default_params ?? {}
   const run = useMutation({
-    mutationFn: () => {
-      const info = list.find((s) => s.name === strategy)
-      return backtestApi.run({ symbol, strategy, params: info?.default_params ?? {}, start: startDate(years) })
-    },
+    // 모으기 전략은 시작 금액을 보내지 않는다 (서버가 첫 달 입금액으로 시작한다).
+    mutationFn: () => backtestApi.run({ symbol, strategy, params, start: startDate(years) }),
     onSuccess: (d) => {
       void qc.invalidateQueries({ queryKey: ['backtests'] })
       onDone(d.id)
@@ -66,6 +68,20 @@ function RunForm({
       </div>
       <div className="stack">
         <StrategyPicker list={list} value={strategy} onChange={setStrategy} />
+        {info && info.presets.length > 1 && (
+          <div className="controls">
+            <span className="label">{info.preset_label}</span>
+            {info.presets.map((p) => (
+              <button
+                key={p.key}
+                className={`seg ${presetOf(info, params)?.key === p.key ? 'active' : ''}`}
+                onClick={() => setPicked({ ...picked, [strategy]: p.params })}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
         <SymbolPicker label="종목" value={symbol} onChange={setSymbol} />
         <div className="controls">
           <span className="label">기간</span>
@@ -77,7 +93,11 @@ function RunForm({
         </div>
         <div className="controls">
           <button className="primary" disabled={run.isPending || !list.length} onClick={() => run.mutate()}>
-            {run.isPending ? '계산 중…' : '$10,000로 시험해 보기'}
+            {run.isPending
+              ? '계산 중…'
+              : info?.accumulates
+                ? `매달 $${params.deposit?.toLocaleString('en-US')}씩 시험해 보기`
+                : '$10,000로 시험해 보기'}
           </button>
           {run.error && <span className="bad small">{run.error.message}</span>}
         </div>
@@ -134,7 +154,11 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
   const won = Number(m.final_equity) >= Number(m.benchmark_final_equity)
   const smallerDrop = Number(m.max_drawdown) > Number(m.benchmark_max_drawdown)
   const abs = (v: string | null | undefined) => percent(v).replace('+', '')
-  const gain = String(Number(m.final_equity) - Number(m.initial_cash))
+  const paid = m.contributed ?? m.initial_cash
+  const monthly = (m.deposits ?? 0) > 0
+  const gain = String(Number(m.final_equity) - Number(paid))
+  // 입금이 있으면 비교 기준은 "넣을 때마다 바로 사기"다.
+  const bench = monthly ? '매달 그냥 사기' : '그냥 보유'
   return (
     <section className="bt-result">
       <div className="hero-head">
@@ -142,7 +166,10 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
           <div className="bot-line">
             <span className="name">{info?.nickname ?? data.strategy}</span>
             <span>
-              · {data.symbol} · {ym(m.start)}부터 {money(m.initial_cash)}로 시작했다면
+              · {data.symbol} ·{' '}
+              {monthly
+                ? `${ym(m.start)}부터 매달 $${data.params.deposit?.toLocaleString('en-US')}씩 넣었다면 (모두 ${money(paid)})`
+                : `${ym(m.start)}부터 ${money(m.initial_cash)}로 시작했다면`}
             </span>
           </div>
           <div className="hero-value">{money(m.final_equity)}</div>
@@ -162,9 +189,15 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
       <p className="bt-verdict">
         <span className={`mark ${won ? 'rise' : 'fall'}`} />
         <span>
-          {won ? '그냥 들고 있는 것보다 결과가 좋았어요.' : '그냥 들고 있는 게 더 많이 벌었어요.'}{' '}
+          {monthly
+            ? won
+              ? '매달 그냥 산 것보다 결과가 좋았어요.'
+              : '매달 그냥 산 게 더 많이 벌었어요.'
+            : won
+              ? '그냥 들고 있는 것보다 결과가 좋았어요.'
+              : '그냥 들고 있는 게 더 많이 벌었어요.'}{' '}
           {smallerDrop &&
-            `${won ? '게다가' : '대신'} 가장 크게 떨어진 폭은 ${abs(m.max_drawdown)}로, 그냥 보유(${abs(m.benchmark_max_drawdown)})보다 작았어요.`}
+            `${won ? '게다가' : '대신'} 가장 크게 떨어진 폭은 ${abs(m.max_drawdown)}로, ${bench}(${abs(m.benchmark_max_drawdown)})보다 작았어요.`}
         </span>
       </p>
 
@@ -175,31 +208,35 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
         </span>
         <span className="legend">
           <i className="bench" />
-          <Term k="그냥 들고 있었다면">그냥 보유</Term> {money(m.benchmark_final_equity)} ({percent(m.benchmark_total_return)})
+          <Term k="그냥 들고 있었다면">{bench}</Term> {money(m.benchmark_final_equity)} ({percent(m.benchmark_total_return)})
         </span>
         <span className="paper">눈금은 비율 기준</span>
       </div>
 
       <div className="facts bt-facts">
-        <Fact term="연평균 수익률" a={percent(m.cagr)} b={`그냥 보유 ${percent(m.benchmark_cagr)}`} t={m.cagr} />
-        <Fact term="가장 크게 떨어진 폭" a={abs(m.max_drawdown)} b={`그냥 보유 ${abs(m.benchmark_max_drawdown)}`} />
+        <Fact term="연평균 수익률" a={percent(m.cagr)} b={`${bench} ${percent(m.benchmark_cagr)}`} t={m.cagr} />
+        <Fact term="가장 크게 떨어진 폭" a={abs(m.max_drawdown)} b={`${bench} ${abs(m.benchmark_max_drawdown)}`} />
         {m.volatility !== undefined && (
-          <Fact term="가격 출렁임" a={abs(m.volatility)} b={`그냥 보유 ${abs(m.benchmark_volatility)}`} />
+          <Fact term="가격 출렁임" a={abs(m.volatility)} b={`${bench} ${abs(m.benchmark_volatility)}`} />
         )}
         {m.sharpe !== undefined && (
           <Fact
             term="위험 대비 수익 점수"
             a={m.sharpe == null ? '—' : Number(m.sharpe).toFixed(2)}
-            b={`그냥 보유 ${m.benchmark_sharpe == null ? '—' : Number(m.benchmark_sharpe).toFixed(2)}`}
+            b={`${bench} ${m.benchmark_sharpe == null ? '—' : Number(m.benchmark_sharpe).toFixed(2)}`}
           />
         )}
         <Fact
           term="투자 중이던 기간"
           a={abs(m.exposure)}
           b={
-            <>
-              거래 {m.round_trips}번 · <Term k="이긴 거래 비율">이긴 비율</Term> {m.win_rate == null ? '—' : abs(m.win_rate)}
-            </>
+            monthly ? (
+              `${data.fills.length}번 샀어요 · 팔지 않아요`
+            ) : (
+              <>
+                거래 {m.round_trips}번 · <Term k="이긴 거래 비율">이긴 비율</Term> {m.win_rate == null ? '—' : abs(m.win_rate)}
+              </>
+            )
           }
         />
       </div>
@@ -215,7 +252,7 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
                 <tr>
                   <th>연도</th>
                   <th className="num">이 전략</th>
-                  <th className="num">그냥 보유</th>
+                  <th className="num">{bench}</th>
                   <th className="num">차이</th>
                 </tr>
               </thead>
@@ -328,7 +365,9 @@ export function BacktestView() {
                 </div>
                 <div className="r">
                   <div className={`ret ${tone(b.metrics.cagr)}`}>연 {percent(b.metrics.cagr)}</div>
-                  <div className="sub">보유 {percent(b.metrics.benchmark_cagr)}</div>
+                  <div className="sub">
+                    {(b.metrics.deposits ?? 0) > 0 ? '매달 그냥' : '보유'} {percent(b.metrics.benchmark_cagr)}
+                  </div>
                 </div>
               </button>
             ))}

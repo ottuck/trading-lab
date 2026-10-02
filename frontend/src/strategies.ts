@@ -13,8 +13,13 @@ export function strategyTitle(info: StrategyInfo | undefined, fallback: string) 
 }
 
 /** 현재 파라미터가 어느 프리셋인지. 없으면 null(직접 설정). */
+/** 파라미터가 같은지. DB(JSONB)는 키 순서를 바꿔 저장하므로 문자열이 아니라 키별로 비교한다. */
+export function sameParams(a: Record<string, number>, b: Record<string, number>) {
+  return Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((k) => a[k] === b[k])
+}
+
 export function presetOf(info: StrategyInfo | undefined, params: Record<string, number>) {
-  return info?.presets.find((p) => JSON.stringify(p.params) === JSON.stringify(params)) ?? null
+  return info?.presets.find((p) => sameParams(p.params, params)) ?? null
 }
 
 export const SLIPPAGE_CHOICES = [

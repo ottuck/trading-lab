@@ -19,7 +19,7 @@ export function StrategyFields({ draft, onChange }: Props) {
       />
       {info && info.presets.length > 1 && (
         <div className="controls">
-          <span className="label">반응 속도</span>
+          <span className="label">{info.preset_label}</span>
           {info.presets.map((p) => (
             <button
               key={p.key}

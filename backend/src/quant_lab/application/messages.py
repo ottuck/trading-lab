@@ -27,6 +27,7 @@ class StrategyInfo:
     risk: str  # 낮음·보통·높음
     trades: str  # 거래 빈도를 쉬운 말로
     presets: list[Preset]
+    preset_label: str = "반응 속도"  # 프리셋 선택지의 이름
 
 
 CATALOG: dict[str, StrategyInfo] = {
@@ -75,6 +76,30 @@ CATALOG: dict[str, StrategyInfo] = {
             Preset("quick", "20일 기준 (빠르게)", {"entry": 20, "exit": 10}),
         ],
     ),
+    "dip_saver": StrategyInfo(
+        name="dip_saver",
+        nickname="나처럼 모으기",
+        emoji="🐷",
+        summary=(
+            "매달 월급날 돈을 넣고 사 모아요. 많이 올랐을 땐 현금으로 모아 두고, "
+            "1년 최고가보다 10% 넘게 떨어지면 모아 둔 돈까지 다 사요. 팔지 않아요."
+        ),
+        risk="보통",
+        trades="한 달에 한 번 안팎",
+        presets=[
+            Preset(
+                "half",
+                "월 $675 (VOO·QQQ 반반)",
+                {"deposit": 675, "day": 25, "dip": 10, "hot": 10, "high": 252, "sma": 200},
+            ),
+            Preset(
+                "full",
+                "월 $1,350",
+                {"deposit": 1350, "day": 25, "dip": 10, "hot": 10, "high": 252, "sma": 200},
+            ),
+        ],
+        preset_label="매달 넣는 돈",
+    ),
 }
 
 
@@ -118,9 +143,27 @@ def decision_reason(
     indicators: dict[str, Any],
     target_long: bool,
     holding: bool,
+    action: str | None = None,
 ) -> str:
     """전략 지표를 일상어 한두 문장으로 바꾼다."""
     p = params
+    if strategy == "dip_saver":
+        drop = -float(indicators.get("drawdown", 0)) * 100
+        up = float(indicators.get("premium", 0)) * 100
+        if drop >= float(p.get("dip", 10)):
+            tail = (
+                "모아 둔 돈까지 사요."
+                if action == "BUY"
+                else "살 현금이 없어 다음 입금을 기다려요."
+            )
+            return f"1년 최고가보다 {drop:.1f}% 낮아요. {tail}"
+        if up >= float(p.get("hot", 10)):
+            return (
+                f"{p.get('sma')}일 평균보다 {up:.1f}% 높아요. 이번엔 사지 않고 현금으로 모아 둬요."
+            )
+        if action == "BUY":
+            return "적당한 가격이에요. 이번 달 넣은 돈으로 사요."
+        return "적당한 가격이에요. 다음 월급날에 사요."
     if strategy == "sma_cross":
         fast, slow = (
             _ind(indicators, f"sma{p.get('fast')}"),
@@ -158,7 +201,8 @@ def decision_reason(
 
 def action_phrase(action: str, holding: bool, symbol: str) -> str:
     if action == "BUY":
-        return f"내일 장이 열리면 {obj(symbol)} 사요."
+        more = "더 " if holding else ""
+        return f"내일 장이 열리면 {obj(symbol)} {more}사요."
     if action == "SELL":
         return f"내일 장이 열리면 {obj(symbol)} 팔아요."
     return f"{obj(symbol)} 계속 들고 있어요." if holding else "지금은 사지 않고 기다려요."
@@ -222,6 +266,7 @@ def event_message(
             d.get("indicators", {}),
             bool(d.get("target_long")),
             bool(d.get("holding")),
+            action=d.get("action"),
         )
         phrase = action_phrase(action, bool(d.get("holding")), sym)
         if action == "BUY":
@@ -233,7 +278,13 @@ def event_message(
                 "🔵", f"매도 신호 · {sym}", f"{reason}\n{phrase} (모의 투자)", "INFO", True
             )
         body = "\n".join(x for x in (f"{phrase} {reason}", equity_line) if x)
-        return Message("📋", f"오늘의 점검 · {sym}", body, "INFO", True)
+        # 아무것도 하지 않는 날의 점검은 앱 기록에만 남긴다. 텔레그램은 거래·문제·주간 정리만.
+        return Message("📋", f"오늘의 점검 · {sym}", body, "INFO", False)
+
+    if kind == "deposit":
+        amount, total = _usd(d.get("amount", 0)), _usd(d.get("contributed", 0))
+        body = f"모의 계좌에 {amount}를 넣었어요. 지금까지 넣은 돈 {total}"
+        return Message("💵", f"월급 입금 · {sym}", body, "INFO", False)
 
     if kind == "sim_fill":
         qty, price = d.get("qty"), d.get("price")

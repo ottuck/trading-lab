@@ -25,7 +25,6 @@ const RANGES = [
   { key: '1Y', label: '1년', days: 252 },
   { key: 'ALL', label: '전체', days: Infinity },
 ] as const
-type Range = (typeof RANGES)[number]
 
 const kstShort = new Intl.DateTimeFormat('ko-KR', {
   timeZone: 'Asia/Seoul',
@@ -50,10 +49,11 @@ function currentEquity(bot: Bot): string | null {
   return bot.account.live_equity ?? bot.account.equity
 }
 
+/** 넣은 돈 대비 수익률 (실시간 가격이 있으면 그것으로). */
 function botReturn(bot: Bot): string | null {
   const a = bot.account
-  return a.live_equity != null && Number(a.initial_cash)
-    ? String(Number(a.live_equity) / Number(a.initial_cash) - 1)
+  return a.live_equity != null && Number(a.contributed)
+    ? String(Number(a.live_equity) / Number(a.contributed) - 1)
     : a.total_return
 }
 
@@ -117,7 +117,21 @@ function Controls({ bot, onSent }: { bot: Bot; onSent: (msg: string) => void }) 
 
 /* ---------- 자산 차트 (마우스를 올리면 큰 숫자가 그날 값으로 바뀐다) ---------- */
 
-type Hover = { value: number; date: string } | null
+/** 한 시점의 자산(eq), 넣은 돈(c), 같은 돈으로 그냥 들고 있었다면(b). */
+type Snap = { eq: number; c: number; b: number }
+
+const snap = (p: EquityPoint): Snap => ({ eq: Number(p.equity), c: Number(p.contributed), b: Number(p.benchmark) })
+
+type Gain = { gain: number; base: number }
+
+/** 기간 손익. 그사이 넣은 돈(정기 입금)은 수익이 아니므로 뺀다. "전체"는 넣은 돈 합계와 비교한다. */
+function gainOf(startValue: number, endValue: number, start: Snap, end: Snap, whole: boolean): Gain {
+  if (whole) return { gain: endValue - end.c, base: end.c }
+  const added = end.c - start.c
+  return { gain: endValue - startValue - added, base: startValue + added }
+}
+
+const ratio = (g: Gain) => (g.base ? String(g.gain / g.base) : null)
 
 function useSize() {
   const ref = useRef<HTMLDivElement>(null)
@@ -131,29 +145,38 @@ function useSize() {
   return [ref, size] as const
 }
 
+/** SVG 선 경로. step이면 계단(입금처럼 하루에 한 번 바뀌는 값). */
+function path(values: number[], x: (i: number) => number, y: (v: number) => number, step = false) {
+  return values
+    .map((v, i) => {
+      if (!i) return 'M' + x(i).toFixed(1) + ',' + y(v).toFixed(1)
+      return step ? 'H' + x(i).toFixed(1) + 'V' + y(v).toFixed(1) : 'L' + x(i).toFixed(1) + ',' + y(v).toFixed(1)
+    })
+    .join('')
+}
+
 function EquityChart({
   points,
-  base,
   fills,
   rising,
   onHover,
 }: {
   points: EquityPoint[]
-  base: number
   fills: Order[]
   rising: boolean
-  onHover: (h: Hover) => void
+  onHover: (i: number | null) => void
 }) {
   const [ref, { width, height: H }] = useSize()
   const [idx, setIdx] = useState<number | null>(null)
-  const ys = points.map((p) => Number(p.equity))
-  const min = Math.min(base, ...ys)
-  const span = Math.max(base, ...ys) - min || 1
+  const s = points.map(snap)
+  const ys = s.map((p) => p.eq)
+  const every = s.flatMap((p) => [p.eq, p.c, p.b])
+  const min = Math.min(...every)
+  const span = Math.max(...every) - min || 1
   const pad = 8
   const x = (i: number) => (points.length > 1 ? (i / (points.length - 1)) * width : 0)
   const y = (v: number) => pad + (1 - (v - min) / span) * (H - pad * 2)
   const color = rising ? 'var(--rise)' : 'var(--fall)'
-  const d = ys.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('')
   const byDate = new Map(points.map((p, i) => [p.date, i]))
   const marks = fills.flatMap((o) => {
     const i = o.fill_date ? byDate.get(o.fill_date) : undefined
@@ -164,13 +187,13 @@ function EquityChart({
     const r = ref.current!.getBoundingClientRect()
     const i = Math.round(Math.min(1, Math.max(0, (clientX - r.left) / r.width)) * (points.length - 1))
     setIdx(i)
-    onHover({ value: ys[i], date: points[i].date })
+    onHover(i)
   }
   const leave = () => {
     setIdx(null)
     onHover(null)
   }
-  const fillAt = idx == null ? undefined : marks.find((m) => m.i === idx)?.o
+  const fillsAt = idx == null ? [] : marks.filter((m) => m.i === idx).map((m) => m.o)
 
   return (
     <div
@@ -184,8 +207,9 @@ function EquityChart({
     >
       {width > 0 && (
         <svg viewBox={`0 0 ${width} ${H}`} preserveAspectRatio="none">
-          <line x1={0} x2={width} y1={y(base)} y2={y(base)} stroke="var(--faint)" strokeDasharray="2 4" />
-          <path d={d} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+          <path d={path(s.map((p) => p.c), x, y, true)} fill="none" stroke="var(--faint)" strokeDasharray="2 4" />
+          <path d={path(s.map((p) => p.b), x, y)} fill="none" stroke="var(--faint)" strokeWidth={1.25} strokeLinejoin="round" />
+          <path d={path(ys, x, y)} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
           {marks.map(({ i, o }) => (
             <circle
               key={o.id}
@@ -200,16 +224,18 @@ function EquityChart({
           {idx != null && (
             <g>
               <line x1={x(idx)} x2={x(idx)} y1={0} y2={H} stroke="var(--border-strong)" />
+              <circle cx={x(idx)} cy={y(s[idx].b)} r={3.5} fill="var(--faint)" stroke="var(--bg)" strokeWidth={1.5} />
               <circle cx={x(idx)} cy={y(ys[idx])} r={5} fill={color} stroke="var(--bg)" strokeWidth={2} />
             </g>
           )}
         </svg>
       )}
       {idx != null && (
-        <div className="date" style={{ left: Math.min(Math.max(x(idx), 64), width - 64) }}>
+        <div className="date" style={{ left: Math.min(Math.max(x(idx), 110), width - 110) }}>
           {md(points[idx].date)}
           {points[idx].live && ' · 지금'}
-          {fillAt && ` · ${fillAt.side === 'BUY' ? '샀어요' : '팔았어요'} ${fillAt.qty}주`}
+          {fillsAt.map((o) => ` · ${o.side === 'BUY' ? '샀어요' : '팔았어요'} ${o.qty}주`)}
+          {` · 그냥 보유 ${money(points[idx].benchmark)}`}
         </div>
       )}
     </div>
@@ -221,20 +247,26 @@ function Overview({ bot }: { bot: Bot }) {
   const lev = leverageOf(useInstruments().data, bot.symbol)
   const equity = useEquity(bot.id)
   const orders = useOrders(bot.id)
-  const [range, setRange] = useState<Range>(RANGES[2])
-  const [hover, setHover] = useState<Hover>(null)
+  const [rangeKey, setRangeKey] = useState<string | null>(null)
+  const [hover, setHover] = useState<number | null>(null)
   const [sent, setSent] = useState<string | null>(null)
 
   const all = equity.data ?? []
-  const points = range.days === Infinity ? all : all.slice(-(range.days + 1))
-  const base = range.days === Infinity || points.length < 2 ? Number(bot.account.initial_cash) : Number(points[0].equity)
-  const now = Number(currentEquity(bot) ?? bot.account.initial_cash)
-  const value = hover?.value ?? now
-  const diff = value - base
-  const rising = (points.length ? Number(points.at(-1)!.equity) : now) >= base
-  const when = hover ? md(hover.date) : range.days === Infinity ? '시작 이후' : `지난 ${range.label}`
+  // 기본 기간: 3개월이 안 된 봇은 "전체" (며칠 된 봇에 "지난 3개월"이라고 쓰지 않게)
+  const range = RANGES.find((r) => r.key === rangeKey) ?? (all.length <= RANGES[2].days + 1 ? RANGES[4] : RANGES[2])
+  const whole = range.days === Infinity
+  const points = whole ? all : all.slice(-(range.days + 1))
   const a = bot.account
+  const nowEq = Number(currentEquity(bot) ?? a.contributed)
+  const latest: Snap = { eq: nowEq, c: Number(a.contributed), b: points.length ? Number(points.at(-1)!.benchmark) : nowEq }
+  const start = points.length ? snap(points[0]) : latest
+  const end = hover != null && points[hover] ? snap(points[hover]) : latest
+  const mine = gainOf(start.eq, end.eq, start, end, whole)
+  const hold = gainOf(start.b, end.b, start, end, whole)
+  const rising = gainOf(start.eq, latest.eq, start, latest, whole).gain >= 0
+  const when = hover != null && points[hover] ? md(points[hover].date) : whole ? '시작 이후' : `지난 ${range.label}`
   const state = STATE[bot.state]
+  const near = 0.005 * (mine.base || 1)
 
   return (
     <>
@@ -248,10 +280,10 @@ function Overview({ bot }: { bot: Bot }) {
             <span className={`dot ${state.dot}`}>{state.label}</span>
             <span>· {byName[bot.strategy]?.nickname ?? bot.strategy}</span>
           </div>
-          <div className="hero-value">{money(String(value))}</div>
+          <div className="hero-value">{money(String(end.eq))}</div>
           <div className="hero-delta">
-            <span className={tone(String(diff))}>
-              {signedMoney(String(diff))} ({percent(base ? String(diff / base) : null)})
+            <span className={tone(String(mine.gain))}>
+              {signedMoney(String(mine.gain))} ({percent(ratio(mine))})
             </span>
             <span className="when">{when}</span>
           </div>
@@ -268,7 +300,6 @@ function Overview({ bot }: { bot: Bot }) {
       {points.length > 1 ? (
         <EquityChart
           points={points}
-          base={base}
           fills={(orders.data ?? []).filter((o) => o.status === 'FILLED')}
           rising={rising}
           onHover={setHover}
@@ -281,7 +312,7 @@ function Overview({ bot }: { bot: Bot }) {
       <div className="eq-foot">
         <div className={`ranges ${rising ? 'up' : 'down'}`} role="group" aria-label="기간">
           {RANGES.map((r) => (
-            <button key={r.key} className={r.key === range.key ? 'active' : ''} aria-pressed={r.key === range.key} onClick={() => setRange(r)}>
+            <button key={r.key} className={r.key === range.key ? 'active' : ''} aria-pressed={r.key === range.key} onClick={() => setRangeKey(r.key)}>
               {r.label}
             </button>
           ))}
@@ -290,6 +321,28 @@ function Overview({ bot }: { bot: Bot }) {
           <Term k="모의 투자" /> · {a.live_at ? `실시간 ${ago(a.live_at)}` : `${md(a.last_close_date)} 장 마감 기준`}
         </span>
       </div>
+      {points.length > 1 && (
+        <div className="eq-compare">
+          <span className="legend">
+            <i className={rising ? 'mine up' : 'mine down'} />이 봇 {percent(ratio(mine))}
+          </span>
+          <span className="legend">
+            <i className="bench" />
+            <Term k="그냥 들고 있었다면">그냥 보유</Term> {money(String(end.b))} ({percent(ratio(hold))})
+          </span>
+          <span className="legend">
+            <i className="paid" />
+            <Term k="넣은 돈" /> {money(String(end.c))}
+          </span>
+          <span className="compare-verdict">
+            {mine.gain - hold.gain > near
+              ? '그냥 들고 있을 때보다 나아요'
+              : hold.gain - mine.gain > near
+                ? '그냥 들고 있는 게 더 나았어요'
+                : '그냥 들고 있을 때와 비슷해요'}
+          </span>
+        </div>
+      )}
       {lev > 1 && <LeverageNotice symbol={bot.symbol} factor={lev} />}
       <Facts bot={bot} />
     </>
@@ -298,6 +351,7 @@ function Overview({ bot }: { bot: Bot }) {
 
 function Facts({ bot }: { bot: Bot }) {
   const a = bot.account
+  const accumulates = useStrategies().byName[bot.strategy]?.accumulates
   const run = bot.last_run
   const unrealized = a.live_unrealized_pnl ?? a.unrealized_pnl
   const runText = !run ? '—' : run.status === 'OK' ? '정상' : run.status === 'ERROR' ? '실패' : run.status === 'RUNNING' ? '판단 중' : '미룸'
@@ -331,13 +385,26 @@ function Facts({ bot }: { bot: Bot }) {
         <div className={`value ${tone(unrealized)}`}>{a.qty ? signedMoney(unrealized) : '—'}</div>
         <div className="sub">{a.qty ? '팔기 전 손익' : '들고 있는 주식 없음'}</div>
       </div>
-      <div className="fact">
-        <div className="label">
-          <Term k="확정 손익" />
+      {accumulates ? (
+        // 모으기 봇은 팔지 않으므로 확정 손익 대신 넣은 돈과 입금 일정을 보여준다.
+        <div className="fact">
+          <div className="label">
+            <Term k="넣은 돈" />
+          </div>
+          <div className="value">{money(a.contributed)}</div>
+          <div className="sub">
+            매달 {bot.params.day}일 ${bot.params.deposit?.toLocaleString('en-US')}
+          </div>
         </div>
-        <div className={`value ${tone(a.realized_pnl)}`}>{signedMoney(a.realized_pnl)}</div>
-        <div className="sub">판 주식에서</div>
-      </div>
+      ) : (
+        <div className="fact">
+          <div className="label">
+            <Term k="확정 손익" />
+          </div>
+          <div className={`value ${tone(a.realized_pnl)}`}>{signedMoney(a.realized_pnl)}</div>
+          <div className="sub">판 주식에서</div>
+        </div>
+      )}
     </div>
   )
 }
@@ -567,7 +634,8 @@ function Spark({ values, rising }: { values: number[]; rising: boolean }) {
 
 function BotItem({ bot, active, onPick }: { bot: Bot; active: boolean; onPick: () => void }) {
   const lev = leverageOf(useInstruments().data, bot.symbol)
-  const values = (useEquity(bot.id).data ?? []).slice(-63).map((p) => Number(p.equity))
+  // 입금으로 늘어난 몫은 빼고 손익의 흐름만 그린다.
+  const values = (useEquity(bot.id).data ?? []).slice(-63).map((p) => Number(p.equity) - Number(p.contributed))
   const ret = botReturn(bot)
   const state = STATE[bot.state]
   return (
