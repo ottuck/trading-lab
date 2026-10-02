@@ -5,6 +5,7 @@ import { ago, money } from '../format'
 import { presetOf, SLIPPAGE_CHOICES, strategyTitle, useStrategies } from '../strategies'
 import { StrategyPicker } from './BacktestView'
 import { Term } from './Help'
+import { selectBot } from '../selectedBot'
 import { SymbolPicker } from './SymbolPicker'
 
 type Draft = {
@@ -162,12 +163,20 @@ function NewBot() {
   const [symbol, setSymbol] = useState('VOO')
   const [cash, setCash] = useState('10000')
   const [draft, setDraft] = useState(() => toDraft())
+  const [startNow, setStartNow] = useState(true)
   const create = useMutation({
-    mutationFn: () => botApi.create({ ...toConfig(draft), name, symbol, initial_cash: cash }),
-    onSuccess: () => {
+    mutationFn: async () => {
+      const bot = await botApi.create({ ...toConfig(draft), name, symbol, initial_cash: cash })
+      if (startNow) await api.command(bot.id, 'START')
+      return bot
+    },
+    onSuccess: (bot) => {
       setName('')
       setOpen(false)
       void qc.invalidateQueries({ queryKey: ['bots'] })
+      // 만든 봇을 홈에서 바로 보여준다.
+      selectBot(bot.id)
+      location.hash = 'dashboard'
     },
   })
   if (!open) {
@@ -194,9 +203,13 @@ function NewBot() {
       </div>
       <SymbolPicker label="종목" value={symbol} onChange={setSymbol} />
       <ConfigFields draft={draft} onChange={setDraft} />
+      <label className="toggle">
+        <input type="checkbox" checked={startNow} onChange={(e) => setStartNow(e.target.checked)} />
+        만들면 바로 모의 투자 시작
+      </label>
       <div className="controls">
         <button className="primary" disabled={create.isPending || !name} onClick={() => create.mutate()}>
-          만들기
+          {startNow ? '만들고 시작하기' : '만들기'}
         </button>
         <button className="ghost" onClick={() => setOpen(false)}>
           취소
