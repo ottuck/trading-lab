@@ -51,6 +51,7 @@ class BacktestRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     code_version: Mapped[str] = mapped_column(String(50))
     symbol: Mapped[str] = mapped_column(String(20))
+    symbols: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)  # 여러 종목이면 종목·비율
     strategy: Mapped[str] = mapped_column(String(50))
     params: Mapped[dict[str, Any]] = mapped_column(JSONB)
     data_start: Mapped[date] = mapped_column(Date)
@@ -82,7 +83,9 @@ class DailyBarRow(Base):
 
 
 class BotRow(Base):
-    """DRY RUN 봇 1개 = 종목 1개 + 전략 1개.
+    """DRY RUN 봇 1개 = 전략 1개 + 종목 1~10개 (여러 종목은 모으기 전략만, 2026-10-02~).
+
+    symbol은 첫 종목(목록·알림 표시용), symbols는 [{"symbol", "weight"}] (비율 합 100).
 
     판단 기록(decisions.strategy)에 당시 전략·파라미터 스냅샷을 남긴다.
     """
@@ -92,6 +95,7 @@ class BotRow(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(50), unique=True)
     symbol: Mapped[str] = mapped_column(String(20))
+    symbols: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
     strategy: Mapped[str] = mapped_column(String(50))
     params: Mapped[dict[str, Any]] = mapped_column(JSONB)
     state: Mapped[str] = mapped_column(String(20))
@@ -106,18 +110,27 @@ class BotRow(Base):
 
 
 class BotAccountRow(Base):
-    """봇의 모의 현금·포지션. 실제 토스 계좌와 무관하다."""
+    """봇의 모의 현금. 종목별 보유는 bot_positions. 실제 토스 계좌와 무관하다."""
 
     __tablename__ = "bot_accounts"
 
     bot_id: Mapped[int] = mapped_column(ForeignKey("bots.id"), primary_key=True)
     cash: Mapped[Decimal] = mapped_column(PRICE)
-    qty: Mapped[int] = mapped_column(Integer)
-    avg_cost: Mapped[Decimal] = mapped_column(PRICE)
     realized_pnl: Mapped[Decimal] = mapped_column(PRICE)
     contributed: Mapped[Decimal] = mapped_column(PRICE)  # 넣은 돈 (시작 금액 + 입금)
     reserve: Mapped[Decimal] = mapped_column(PRICE, server_default="0")  # 고점 때 모아 둔 돈
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class BotPositionRow(Base):
+    """봇의 종목별 보유 수량(소수점 6자리까지)과 평균 단가(수수료 포함)."""
+
+    __tablename__ = "bot_positions"
+
+    bot_id: Mapped[int] = mapped_column(ForeignKey("bots.id"), primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(20), primary_key=True)
+    qty: Mapped[Decimal] = mapped_column(PRICE)
+    avg_cost: Mapped[Decimal] = mapped_column(PRICE)
 
 
 class BotDepositRow(Base):
@@ -197,6 +210,7 @@ class SimOrderRow(Base):
         Index(
             "uq_sim_orders_pending",
             "bot_id",
+            "symbol",
             unique=True,
             postgresql_where=text("status = 'PENDING'"),
         ),
@@ -204,13 +218,14 @@ class SimOrderRow(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     bot_id: Mapped[int] = mapped_column(ForeignKey("bots.id"))
+    symbol: Mapped[str] = mapped_column(String(20))
     decision_id: Mapped[int] = mapped_column(ForeignKey("decisions.id"), unique=True)
     side: Mapped[str] = mapped_column(String(10))
     status: Mapped[str] = mapped_column(String(20))
     signal_date: Mapped[date] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     fill_date: Mapped[date | None] = mapped_column(Date)
-    qty: Mapped[int | None] = mapped_column(Integer)
+    qty: Mapped[Decimal | None] = mapped_column(PRICE)
     price: Mapped[Decimal | None] = mapped_column(PRICE)
     commission: Mapped[Decimal | None] = mapped_column(PRICE)
     realized_pnl: Mapped[Decimal | None] = mapped_column(PRICE)

@@ -88,14 +88,19 @@ CATALOG: dict[str, StrategyInfo] = {
         trades="한 달에 한 번 안팎",
         presets=[
             Preset(
-                "half",
-                "월 $675 (VOO·QQQ 반반)",
+                "small",
+                "월 $675",
                 {"deposit": 675, "day": 25, "dip": 10, "hot": 10, "high": 252, "sma": 200},
             ),
             Preset(
-                "full",
-                "월 $1,350",
+                "base",
+                "월 $1,350 (기본)",
                 {"deposit": 1350, "day": 25, "dip": 10, "hot": 10, "high": 252, "sma": 200},
+            ),
+            Preset(
+                "large",
+                "월 $2,700",
+                {"deposit": 2700, "day": 25, "dip": 10, "hot": 10, "high": 252, "sma": 200},
             ),
         ],
         preset_label="매달 넣는 돈",
@@ -131,6 +136,13 @@ def nickname(strategy: str) -> str:
 
 def _usd(value: Any) -> str:
     return f"${Decimal(str(value)):,.2f}"
+
+
+def _shares(value: Any) -> str:
+    """주식 수량. 소수점 6자리까지, 끝자리 0은 지운다 ('0.962140' → '0.96214', '20.000000' → '20')."""
+    q = Decimal(str(value or 0)).quantize(Decimal("0.000001"))
+    text = f"{q:,f}"
+    return text.rstrip("0").rstrip(".") if "." in text else text
 
 
 def _ind(indicators: dict[str, Any], key: str) -> str:
@@ -287,7 +299,7 @@ def event_message(
         return Message("💵", f"월급 입금 · {sym}", body, "INFO", False)
 
     if kind == "sim_fill":
-        qty, price = d.get("qty"), d.get("price")
+        qty, price = _shares(d.get("qty")), d.get("price")
         fee = _usd(d.get("commission", 0))
         if d.get("side") == "BUY":
             return Message(

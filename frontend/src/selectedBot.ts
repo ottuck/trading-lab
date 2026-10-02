@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import type { SymbolWeight } from './api'
 
 /** 홈과 설정이 같이 쓰는 "지금 보고 있는 봇". 이 브라우저에만 기억한다. */
 const KEY = 'quant-lab:bot'
@@ -36,7 +37,7 @@ export function useSelectedBot<T extends { id: number }>(bots: T[]): T {
 }
 
 /** "새 봇 만들기" 요청. 시험해 보기 결과에서 오면 종목·전략이 미리 채워진다. */
-export type NewBotSeed = { symbol?: string; strategy?: string; params?: Record<string, number> }
+export type NewBotSeed = { symbol?: string; symbols?: SymbolWeight[]; strategy?: string; params?: Record<string, number> }
 let seed: NewBotSeed | null = null
 const seedListeners = new Set<() => void>()
 

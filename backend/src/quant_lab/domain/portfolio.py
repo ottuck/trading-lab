@@ -1,10 +1,17 @@
-"""모의 체결 비용, 포지션, 주문 수량 규칙."""
+"""모의 체결 비용, 포지션, 주문 수량 규칙.
 
-from dataclasses import dataclass
+수량은 토스 금액 주문(소수점 매수)처럼 소수점 6자리까지 다룬다 (tossApi.md 9절, 2026-10-02).
+"""
+
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
 
 CENT = Decimal("0.01")
 BPS = Decimal(10_000)
+QTY_STEP = Decimal("0.000001")  # 토스 소수점 수량 최소 단위 (6자리)
+MIN_ORDER = Decimal(1)  # 이보다 작은 금액은 사지 않는다 (몇 센트 잔돈 매수 방지)
+FREE_UNDER = Decimal(10)  # 체결금액 $10 이하는 위탁수수료 무료 (토스증권, 8절)
 
 
 def money(value: Decimal) -> Decimal:
@@ -35,7 +42,9 @@ class CostModel:
         return reference * (1 - self.slippage_bps / BPS)
 
     def commission(self, notional: Decimal) -> Decimal:
-        """매수 비용: 위탁수수료 ($0.01 미만 절사)."""
+        """위탁수수료 ($0.01 미만 절사). 체결금액 $10 이하는 무료."""
+        if notional <= FREE_UNDER:
+            return Decimal(0)
         return (notional * self.commission_rate).quantize(CENT, rounding=ROUND_DOWN)
 
     def sell_fees(self, notional: Decimal) -> Decimal:
@@ -53,12 +62,22 @@ class RiskLimits:
 
 
 @dataclass
+class Position:
+    """종목 하나의 보유 수량과 평균 단가(수수료 포함)."""
+
+    qty: Decimal = Decimal(0)
+    avg_cost: Decimal = Decimal(0)
+
+
+@dataclass
 class Portfolio:
-    """모의 계좌. contributed는 지금까지 넣은 돈(시작 금액 + 입금)으로, 수익률의 기준이다."""
+    """모의 계좌 하나. 여러 종목을 담을 수 있고 현금은 함께 쓴다 (2026-10-02~).
+
+    contributed는 지금까지 넣은 돈(시작 금액 + 입금)으로, 수익률의 기준이다.
+    """
 
     cash: Decimal
-    qty: int = 0
-    avg_cost: Decimal = Decimal(0)
+    positions: dict[str, Position] = field(default_factory=dict)
     realized_pnl: Decimal = Decimal(0)
     contributed: Decimal | None = None
     reserve: Decimal = Decimal(0)  # 모으기 전략이 고점 때 모아 둔 돈. 하락장에만 쓴다
@@ -67,8 +86,23 @@ class Portfolio:
         if self.contributed is None:
             self.contributed = self.cash
 
-    def equity(self, mark: Decimal) -> Decimal:
-        return self.cash + self.qty * mark
+    def qty(self, symbol: str) -> Decimal:
+        pos = self.positions.get(symbol)
+        return pos.qty if pos else Decimal(0)
+
+    def avg_cost(self, symbol: str) -> Decimal:
+        pos = self.positions.get(symbol)
+        return pos.avg_cost if pos else Decimal(0)
+
+    def holding(self) -> bool:
+        return any(p.qty > 0 for p in self.positions.values())
+
+    def invested(self, marks: Mapping[str, Decimal]) -> Decimal:
+        """보유 주식의 평가금액."""
+        return sum((p.qty * marks[s] for s, p in self.positions.items() if p.qty), Decimal(0))
+
+    def equity(self, marks: Mapping[str, Decimal]) -> Decimal:
+        return self.cash + self.invested(marks)
 
     def deposit(self, amount: Decimal) -> None:
         """정기 입금(월급). 현금과 넣은 돈이 함께 늘어난다."""
@@ -77,39 +111,48 @@ class Portfolio:
         self.cash += amount
         self.contributed = (self.contributed or Decimal(0)) + amount
 
-    def buy(self, qty: int, price: Decimal, commission: Decimal) -> None:
+    def buy(self, symbol: str, qty: Decimal, price: Decimal, commission: Decimal) -> None:
         cost = qty * price + commission
         if qty <= 0 or cost > self.cash:
             raise ValueError("매수 수량이 0 이하이거나 현금이 부족합니다")
-        self.avg_cost = (self.avg_cost * self.qty + qty * price + commission) / (self.qty + qty)
-        self.qty += qty
+        pos = self.positions.setdefault(symbol, Position())
+        pos.avg_cost = (pos.avg_cost * pos.qty + qty * price + commission) / (pos.qty + qty)
+        pos.qty += qty
         self.cash -= cost
 
-    def sell(self, qty: int, price: Decimal, commission: Decimal) -> Decimal:
-        if qty <= 0 or qty > self.qty:
+    def sell(self, symbol: str, qty: Decimal, price: Decimal, commission: Decimal) -> Decimal:
+        pos = self.positions.get(symbol)
+        if pos is None or qty <= 0 or qty > pos.qty:
             raise ValueError("매도 수량이 보유 수량을 넘습니다")
         proceeds = qty * price - commission
-        pnl = proceeds - qty * self.avg_cost
-        self.qty -= qty
+        pnl = proceeds - qty * pos.avg_cost
+        pos.qty -= qty
         self.cash += proceeds
         self.realized_pnl += pnl
-        if self.qty == 0:
-            self.avg_cost = Decimal(0)
+        if pos.qty == 0:
+            pos.avg_cost = Decimal(0)
         return pnl
 
 
 def affordable_qty(
     budget: Decimal, price: Decimal, costs: CostModel, limits: RiskLimits, position_value: Decimal
-) -> int:
-    """budget 안에서 수수료까지 감당할 수 있고 위험 한도를 넘지 않는 최대 정수 수량."""
+) -> Decimal:
+    """budget 안에서 수수료까지 감당할 수 있고 위험 한도를 넘지 않는 최대 수량 (소수점 6자리).
+
+    토스 금액 주문처럼 "이 금액만큼 산다"에 해당한다. 살 금액이 MIN_ORDER보다 작으면 0.
+    """
     if limits.max_position_value is not None:
         budget = min(budget, limits.max_position_value - position_value)
     if limits.max_order_value is not None:
         budget = min(budget, limits.max_order_value)
-    if budget <= 0 or price <= 0:
-        return 0
-    qty = int((budget / (price * (1 + costs.commission_rate))).to_integral_value(ROUND_DOWN))
-    # 수수료 반올림으로 1주 초과하는 경우를 보정한다.
+    if budget < MIN_ORDER or price <= 0:
+        return Decimal(0)
+    qty = (budget / price).quantize(QTY_STEP, rounding=ROUND_DOWN)
+    # 수수료까지 예산 안에 들어오도록 줄인다 ($10 이하는 수수료가 없어 그대로).
+    if qty * price + costs.commission(qty * price) > budget:
+        qty = (budget / (price * (1 + costs.commission_rate))).quantize(
+            QTY_STEP, rounding=ROUND_DOWN
+        )
     while qty > 0 and qty * price + costs.commission(qty * price) > budget:
-        qty -= 1
-    return qty
+        qty -= QTY_STEP
+    return qty if qty * price >= MIN_ORDER else Decimal(0)

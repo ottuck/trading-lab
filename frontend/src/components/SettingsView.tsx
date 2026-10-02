@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
-import { api, botApi, type Bot } from '../api'
-import { ago, money } from '../format'
+import { api, botApi, type Bot, type SymbolWeight } from '../api'
+import { ago, money, shares } from '../format'
 import { closeNewBot, selectBot, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
 import { sameParams, useStrategies } from '../strategies'
 import { toConfig, toDraft, type Draft } from '../botConfig'
 import { useDismiss } from '../useDismiss'
 import { StrategyFields, TradeFields } from './BotConfigFields'
-import { SymbolPicker } from './SymbolPicker'
+import { basketLabel } from '../basket'
+import { BasketPicker, SymbolPicker } from './SymbolPicker'
 
 /* Vercel식 설정: 왼쪽에 섹션 제목·설명, 오른쪽에 입력. 섹션은 가는 선으로 나누고 저장은 맨 아래 하나,
    되돌릴 수 없는 동작은 맨 아래 빨간 테두리 영역에 따로 둔다. */
@@ -184,9 +185,9 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
     <>
       <Section title="전략" desc="언제 사고팔지 정해요. 돌아가는 중에도 바꿀 수 있고, 다음 판단부터 적용돼요.">
         <StrategyFields draft={draft} onChange={setDraft} />
-        {changing && bot.account.qty > 0 && (
+        {changing && Number(bot.account.qty) > 0 && (
           <div className="notice">
-            지금 {bot.symbol} {bot.account.qty}주를 들고 있어요. 저장하면 다음 판단부터 새 전략으로 봐요. 새 전략이 &quot;팔
+            지금 {bot.symbol} {shares(bot.account.qty)}주를 들고 있어요. 저장하면 다음 판단부터 새 전략으로 봐요. 새 전략이 &quot;팔
             때&quot;라고 보면 그다음 장이 열릴 때 바로 팔아요.
           </div>
         )}
@@ -211,8 +212,8 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
 
 const SHORT: Record<string, string> = { sma_cross: 'sma', trend_filter: '200', rsi2: 'rsi', donchian: 'high', dip_saver: 'me' }
 
-function suggestName(symbol: string, strategy: string, taken: string[]) {
-  const base = `${symbol.toLowerCase()}-${SHORT[strategy] ?? strategy}`
+function suggestName(symbols: string[], strategy: string, taken: string[]) {
+  const base = `${symbols.join('-').toLowerCase()}-${SHORT[strategy] ?? strategy}`
   let name = base
   for (let i = 2; taken.includes(name); i++) name = `${base}-${i}`
   return name
@@ -220,21 +221,31 @@ function suggestName(symbol: string, strategy: string, taken: string[]) {
 
 function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
   const qc = useQueryClient()
-  const [symbol, setSymbol] = useState(seed.symbol ?? 'QQQ')
+  // 종목과 비율. 모으기 전략은 여러 종목(최대 10개), 그 밖의 전략은 첫 종목 하나만 쓴다.
+  const [basket, setBasket] = useState<SymbolWeight[]>(seed.symbols ?? [{ symbol: seed.symbol ?? 'QQQ', weight: 100 }])
   const [draft, setDraft] = useState(() =>
     toDraft(seed.strategy ? { strategy: seed.strategy, params: seed.params ?? {} } : undefined),
   )
+  const { byName } = useStrategies()
+  const accumulates = !!byName[draft.strategy]?.accumulates
+  const chosen = accumulates ? basket : basket.slice(0, 1)
+  const total = chosen.reduce((sum, b) => sum + b.weight, 0)
   // 이름은 직접 고치기 전까지 종목·전략에 맞춰 자동으로 제안한다.
   const [customName, setCustomName] = useState<string | null>(null)
-  const name = customName ?? suggestName(symbol, draft.strategy, taken)
+  const name = customName ?? suggestName(chosen.map((b) => b.symbol), draft.strategy, taken)
   // 시작 금액은 직접 고치기 전까지 전략에 맞춘다 (모으기 전략은 한 달 입금액).
-  const { byName } = useStrategies()
   const [customCash, setCustomCash] = useState<string | null>(null)
-  const cash = customCash ?? (byName[draft.strategy]?.accumulates ? String(draft.params.deposit ?? 675) : '10000')
+  const cash = customCash ?? (accumulates ? String(draft.params.deposit ?? 675) : '10000')
   const [startNow, setStartNow] = useState(true)
   const create = useMutation({
     mutationFn: async () => {
-      const bot = await botApi.create({ ...toConfig(draft), name, symbol, initial_cash: cash })
+      const bot = await botApi.create({
+        ...toConfig(draft),
+        name,
+        symbol: chosen[0].symbol,
+        symbols: chosen.length > 1 ? chosen : undefined,
+        initial_cash: cash,
+      })
       if (startNow) await api.command(bot.id, 'START')
       return bot
     },
@@ -248,12 +259,18 @@ function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
   })
   return (
     <>
-      <Section title="종목" desc="이 봇이 사고팔 미국 주식이나 ETF예요.">
-        <SymbolPicker label="" value={symbol} onChange={setSymbol} />
-      </Section>
       <Section title="전략" desc="언제 사고팔지 정해요. 나중에 설정에서 바꿀 수 있어요.">
         <StrategyFields draft={draft} onChange={setDraft} />
       </Section>
+      {accumulates ? (
+        <Section title="종목과 비율" desc="매달 넣는 돈을 이 비율대로 나눠 사요. 현금은 함께 써요.">
+          <BasketPicker value={basket} onChange={setBasket} />
+        </Section>
+      ) : (
+        <Section title="종목" desc="이 봇이 사고팔 미국 주식이나 ETF예요.">
+          <SymbolPicker label="" value={basket[0].symbol} onChange={(symbol) => setBasket([{ symbol, weight: 100 }])} />
+        </Section>
+      )}
       <Section title="체결과 투자 금액" desc="모의 체결을 얼마나 보수적으로 볼지, 한 번에 얼마까지 넣을지 정해요.">
         <TradeFields draft={draft} onChange={setDraft} />
       </Section>
@@ -280,7 +297,11 @@ function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
           <input id="start-now" type="checkbox" checked={startNow} onChange={(e) => setStartNow(e.target.checked)} />
           만들면 바로 모의 투자 시작
         </label>
-        <button className="primary" disabled={create.isPending || !name.trim() || !cash} onClick={() => create.mutate()}>
+        <button
+          className="primary"
+          disabled={create.isPending || !name.trim() || !cash || (chosen.length > 1 && total !== 100)}
+          onClick={() => create.mutate()}
+        >
           {startNow ? '만들고 시작하기' : '만들기'}
         </button>
         {taken.length > 0 && (
@@ -309,7 +330,7 @@ export function SettingsView({ bots }: { bots: Bot[] }) {
             ? seed?.strategy
               ? '시험해 본 전략과 종목으로 채워 뒀어요.'
               : '새 모의 투자 봇을 만들어요.'
-            : `${selected.symbol} · ${byName[selected.strategy]?.nickname ?? selected.strategy} · 시작 금액 ${money(selected.account.initial_cash)}`}
+            : `${basketLabel(selected.symbols, selected.symbol)} · ${byName[selected.strategy]?.nickname ?? selected.strategy} · 시작 금액 ${money(selected.account.initial_cash)}`}
         </p>
       </div>
       {creating ? (

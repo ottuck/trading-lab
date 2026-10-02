@@ -62,7 +62,7 @@ def bot_id(session: Session) -> int:
 def test_bot_view_shows_position_and_reason(client: TestClient, bot_id: int) -> None:
     body = client.get(f"/api/bots/{bot_id}").json()
     assert body["state"] == "RUNNING"
-    assert body["account"]["qty"] > 0
+    assert Decimal(body["account"]["qty"]) > 0
     assert Decimal(body["account"]["equity"]) > 0
     assert body["account"]["last_close_date"] == BARS[-1].session_date.isoformat()
     assert body["last_decision"]["session_date"] == BARS[12].session_date.isoformat()
@@ -141,10 +141,34 @@ def test_bot_management(client: TestClient, session: Session, bot_id: int) -> No
 
     # 처음부터 다시 시작: 잔고·기록 초기화, 설정·상태 유지
     reset = client.post(f"/api/bots/{bot_id}/reset").json()
-    assert reset["account"]["qty"] == 0 and reset["account"]["cash"] == "10000"
+    assert Decimal(reset["account"]["qty"]) == 0 and reset["account"]["cash"] == "10000"
     assert reset["last_decision"] is None and reset["state"] == "RUNNING"
     assert reset["strategy"] == "trend_filter"
 
     voo = created.json()["id"]
     assert client.delete(f"/api/bots/{voo}").status_code == 204
     assert client.get(f"/api/bots/{voo}").status_code == 404
+
+
+def test_multi_symbol_bot_rules(client: TestClient, bot_id: int) -> None:
+    body = {
+        "name": "me",
+        "symbol": "VOO",
+        "strategy": "dip_saver",
+        "params": {"deposit": 675},
+        "symbols": [{"symbol": "voo", "weight": 50}, {"symbol": "QQQ", "weight": 50}],
+        "initial_cash": "675",
+    }
+    created = client.post("/api/bots", json=body).json()
+    assert created["symbols"] == [{"symbol": "VOO", "weight": 50}, {"symbol": "QQQ", "weight": 50}]
+    assert created["symbol"] == "VOO" and created["account"]["contributed"] == "675"
+    # 비율 합이 100이 아니거나, 사고팔기 전략에 여러 종목이거나, 10개를 넘으면 막는다
+    bad_sum = {
+        **body,
+        "name": "x",
+        "symbols": [{"symbol": "VOO", "weight": 60}, {"symbol": "QQQ", "weight": 60}],
+    }
+    classic = {**body, "name": "y", "strategy": "sma_cross", "params": {}}
+    many = {**body, "name": "z", "symbols": [{"symbol": f"S{i}", "weight": 9} for i in range(11)]}
+    for bad in (bad_sum, classic, many):
+        assert client.post("/api/bots", json=bad).status_code == 400

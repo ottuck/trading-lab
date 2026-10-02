@@ -1535,3 +1535,34 @@ button.switcher-btn:hover:not(:disabled) {
     flex-wrap: wrap;
   }
 }
+
+/* ---------- 여러 종목 (나처럼 모으기) ---------- */
+.weights {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+.weight {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.weight input {
+  width: 64px;
+  padding: 5px 8px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.decision-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.line .title .sub {
+  font-weight: 400;
+  color: var(--faint);
+  font-size: 12px;
+}

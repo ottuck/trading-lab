@@ -21,20 +21,27 @@ from quant_lab.adapters.toss.client import TossAuthError, TossError, TossForbidd
 from quant_lab.application.bar_sync import DEFAULT_SETTLE
 from quant_lab.application.market import MarketData
 from quant_lab.application.weekly import is_week_end, weekly_summary
-from quant_lab.domain.bars import TradingCalendar, check_daily_bars, is_completed, outlier_limit
+from quant_lab.domain.bars import (
+    DailyBar,
+    TradingCalendar,
+    check_daily_bars,
+    is_completed,
+    outlier_limit,
+)
 from quant_lab.domain.bot import BotState
 from quant_lab.domain.portfolio import Portfolio, money
 from quant_lab.domain.strategy import STRATEGIES, Strategy, deposit_plan, month_key
-from quant_lab.domain.trading import Action, DecisionRecord, Fill, decide, execute
+from quant_lab.domain.trading import Action, DecisionRecord, Fill, decide_basket, execute
 from quant_lab.persistence.backtests import to_jsonable
 from quant_lab.persistence.bars import load_daily_bars
 from quant_lab.persistence.bots import (
     add_event,
     bot_costs,
     bot_limits,
+    bot_weights,
     get_bot,
     load_account,
-    pending_order,
+    pending_orders,
     save_account,
     set_bot_state,
 )
@@ -64,8 +71,8 @@ class EvaluationOutcome:
     status: RunStatus
     session_date: date | None
     detail: str
-    decision: DecisionRecord | None = None
-    fill: Fill | None = None
+    decisions: tuple[DecisionRecord, ...] = ()  # 종목별 판단 (여러 종목 봇은 여러 개)
+    fills: tuple[Fill, ...] = ()
 
 
 class _Skip(Exception):
@@ -208,27 +215,42 @@ def _evaluate(
     if confirmed is False:
         raise _Skip(f"{target}: XNYS는 거래일이지만 토스 캘린더는 아닙니다")
 
-    # 2) 완료 봉 수집·검증
+    # 2) 완료 봉 수집·검증 (모든 종목). 한 종목이라도 그날 봉이 없거나 문제가 있으면 전체를 미룬다
+    #    (원칙 5: 현금을 함께 쓰므로 일부 종목만 먼저 판단하면 백테스트와 순서가 달라진다).
     # 동기화 결과의 품질 문제는 판단에 쓰는 구간(아래 window)만 막는다.
     # 전체 이력에 섞인 오래된 이상치 때문에 봇이 영원히 멈추지 않게 한다.
-    market.refresh(session, bot.symbol, now)
-    bars = load_daily_bars(session, bot.symbol, end=target)
-    if not bars or bars[-1].session_date != target:
-        last = bars[-1].session_date if bars else None
-        raise _Skip(f"{target} 일봉이 아직 없습니다 (마지막 {last})")
-    window = bars[-(strategy.warmup + 2) :]
-    issues = check_daily_bars(window, calendar, outlier_limit(leverage_of(session, bot.symbol)))
-    if issues:
-        raise _Skip(f"판단 구간 일봉 문제: {issues[0].kind} {issues[0].session_date}")
+    weights = bot_weights(bot)
+    series: dict[str, list[DailyBar]] = {}
+    for symbol in weights:
+        who = f"{symbol} " if len(weights) > 1 else ""
+        market.refresh(session, symbol, now)
+        bars = load_daily_bars(session, symbol, end=target)
+        if not bars or bars[-1].session_date != target:
+            last = bars[-1].session_date if bars else None
+            raise _Skip(f"{who}{target} 일봉이 아직 없습니다 (마지막 {last})")
+        window = bars[-(strategy.warmup + 2) :]
+        issues = check_daily_bars(window, calendar, outlier_limit(leverage_of(session, symbol)))
+        if issues:
+            raise _Skip(f"{who}판단 구간 일봉 문제: {issues[0].kind} {issues[0].session_date}")
+        series[symbol] = bars
 
-    # 3) 이전 대기 주문을 T+1 시가로 체결
+    # 3) 이전 대기 주문(종목별)을 T+1 시가로 체결
     pf = load_account(session, bot.id)
-    fill: Fill | None = None
-    order = pending_order(session, bot.id)
-    if order is not None and order.signal_date < target:
+    fills: list[Fill] = []
+    for order in pending_orders(session, bot.id):
+        if order.signal_date >= target:
+            continue
+        bars = series.get(order.symbol) or load_daily_bars(session, order.symbol, end=target)
         fill_bar = next(b for b in bars if b.session_date > order.signal_date)
         intent = DecisionRecord(
-            order.signal_date, Action(order.side), True, False, "", {}, budget=order.budget
+            order.signal_date,
+            Action(order.side),
+            True,
+            False,
+            "",
+            {},
+            budget=order.budget,
+            symbol=order.symbol,
         )
         fill = execute(pf, intent, fill_bar, costs, limits)
         order.fill_date = fill_bar.session_date
@@ -239,13 +261,14 @@ def _evaluate(
             order.status = "FILLED"
             order.qty, order.price, order.commission = fill.qty, fill.price, fill.commission
             order.realized_pnl = fill.realized_pnl
-        session.flush()
+            fills.append(fill)
+    session.flush()
+    closes = {s: b[-1].close for s, b in series.items()}
 
-    # 4) 이미 판단한 봉이면 아무것도 하지 않는다 (수동 실행 반복 등)
+    # 4) 이미 판단한 날이면 아무것도 하지 않는다 (수동 실행 반복 등)
     existing = session.scalars(
         select(DecisionRow).where(
             DecisionRow.bot_id == bot.id,
-            DecisionRow.symbol == bot.symbol,
             DecisionRow.session_date == target,
             DecisionRow.mode == MODE,
         )
@@ -253,9 +276,9 @@ def _evaluate(
     if existing is not None:
         save_account(session, bot.id, pf, now)
         outcome = EvaluationOutcome(
-            run_id, RunStatus.OK, target, f"{target} 판단은 이미 있음", fill=fill
+            run_id, RunStatus.OK, target, f"{target} 판단은 이미 있음", fills=tuple(fills)
         )
-        return _commit_ok(session, bot, outcome, calendar, now, _summary(bot, pf, bars[-1].close))
+        return _commit_ok(session, bot, outcome, calendar, now, _summary(bot, pf, closes))
 
     # Worker가 멈춰 있던 동안의 거래일은 소급 판단하지 않고 기록만 남긴다.
     last_decided = session.scalar(
@@ -307,71 +330,85 @@ def _evaluate(
                 data={"amount": deposit, "contributed": pf.contributed, "symbol": bot.symbol},
             )
 
-    # 6) 전략 판단·위험 검사·모의 주문
+    # 6) 전략 판단·위험 검사·모의 주문 (종목별, 비율 순서대로)
     # 첫 판단(시작·처음부터 다시 시작)은 시작 금액도 새로 들어온 돈으로 본다 (백테스트와 같음).
     fresh = deposit + (bot.initial_cash if last_decided is None else Decimal(0))
-    decision = decide(strategy, bars, pf, costs, limits, fresh)
-    if decision is None:
-        raise _Skip(f"봉이 부족합니다 ({len(bars)}개, 필요 {strategy.warmup}개)")
-    row = DecisionRow(
-        bot_id=bot.id,
-        symbol=bot.symbol,
-        session_date=target,
-        mode=MODE,
-        run_id=run_id,
-        strategy={
-            "name": bot.strategy,
-            "params": bot.params,
-            "risk": bot.risk,
-            "commission_rate": str(costs.commission_rate),
-            "slippage_bps": str(costs.slippage_bps),
-        },
-        action=decision.action,
-        target_long=decision.target_long,
-        holding=decision.holding,
-        reason=decision.reason,
-        indicators=to_jsonable(decision.indicators),
-        blocked=decision.blocked,
-        created_at=now,
-    )
-    session.add(row)
+    decisions = decide_basket(strategy, series, weights, pf, costs, limits, fresh)
+    if not decisions:
+        raise _Skip(f"봉이 부족합니다 (필요 {strategy.warmup}개)")
+    snapshot = {
+        "name": bot.strategy,
+        "params": bot.params,
+        "symbols": bot.symbols,
+        "risk": bot.risk,
+        "commission_rate": str(costs.commission_rate),
+        "slippage_bps": str(costs.slippage_bps),
+    }
     try:
-        session.flush()
-        if decision.action is not Action.HOLD:
-            session.add(
-                SimOrderRow(
-                    bot_id=bot.id,
-                    decision_id=row.id,
-                    side=decision.action,
-                    status="PENDING",
-                    signal_date=target,
-                    created_at=now,
-                    budget=decision.budget,
-                )
+        for decision in decisions:
+            row = DecisionRow(
+                bot_id=bot.id,
+                symbol=decision.symbol,
+                session_date=target,
+                mode=MODE,
+                run_id=run_id,
+                strategy=snapshot,
+                action=decision.action,
+                target_long=decision.target_long,
+                holding=decision.holding,
+                reason=decision.reason,
+                indicators=to_jsonable(decision.indicators),
+                blocked=decision.blocked,
+                created_at=now,
             )
+            session.add(row)
             session.flush()
+            if decision.action is not Action.HOLD:
+                session.add(
+                    SimOrderRow(
+                        bot_id=bot.id,
+                        symbol=decision.symbol,
+                        decision_id=row.id,
+                        side=decision.action,
+                        status="PENDING",
+                        signal_date=target,
+                        created_at=now,
+                        budget=decision.budget,
+                    )
+                )
+                session.flush()
     except IntegrityError as exc:
         # 다른 Worker가 같은 봉을 먼저 판단했다. 이 실행의 변경은 모두 버린다.
         raise _Skip(f"{target} 판단 중복 차단 (DB 유일 제약)") from exc
 
     save_account(session, bot.id, pf, now)
-    detail = f"{target} {decision.action}: {decision.reason}"
-    if decision.blocked:
-        detail += f" (차단: {decision.blocked})"
-    outcome = EvaluationOutcome(run_id, RunStatus.OK, target, detail, decision=decision, fill=fill)
-    return _commit_ok(session, bot, outcome, calendar, now, _summary(bot, pf, bars[-1].close))
+    if len(decisions) == 1:
+        d = decisions[0]
+        detail = f"{target} {d.action}: {d.reason}"
+        if d.blocked:
+            detail += f" (차단: {d.blocked})"
+    else:
+        detail = f"{target} " + ", ".join(f"{d.symbol} {d.action}" for d in decisions)
+    outcome = EvaluationOutcome(
+        run_id, RunStatus.OK, target, detail, decisions=tuple(decisions), fills=tuple(fills)
+    )
+    return _commit_ok(session, bot, outcome, calendar, now, _summary(bot, pf, closes))
 
 
-def _summary(bot: BotRow, pf: Portfolio, close: Decimal) -> dict[str, str | int]:
-    """알림·로그용 잔고 요약 (판단일 종가 기준 평가). 수익률은 넣은 돈 대비."""
-    equity = pf.equity(close)
+def _summary(bot: BotRow, pf: Portfolio, closes: dict[str, Decimal]) -> dict[str, Any]:
+    """알림·로그용 잔고 요약 (판단일 종가 기준 평가). 수익률은 넣은 돈 대비.
+
+    close·qty는 대표 종목(첫 종목) 값, closes는 종목별 종가 (주간 정리의 그냥 보유 비교용).
+    """
+    equity = pf.equity(closes)
     contributed = pf.contributed or bot.initial_cash
     return {
         "equity": str(money(equity)),
         "contributed": str(contributed),
         "total_return": str(round(equity / contributed - 1, 6)),
-        "qty": pf.qty,
-        "close": str(close),
+        "qty": str(pf.qty(bot.symbol)),
+        "close": str(closes[bot.symbol]),
+        "closes": {s: str(c) for s, c in closes.items()},
     }
 
 
@@ -381,7 +418,7 @@ def _commit_ok(
     outcome: EvaluationOutcome,
     calendar: TradingCalendar,
     now: datetime,
-    summary: dict[str, str | int],
+    summary: dict[str, Any],
 ) -> EvaluationOutcome:
     assert outcome.session_date is not None
     bot.next_evaluation_at = next_evaluation_time(calendar, outcome.session_date)
@@ -393,41 +430,51 @@ def _commit_ok(
         outcome.session_date,
         now,
     )
-    if outcome.fill is not None:
-        f = outcome.fill
+    for f in outcome.fills:
         add_event(
             session,
             now,
             "INFO",
             "sim_fill",
-            f"{f.side} {f.qty}주 @ {f.price:.2f} ({f.fill_date} 시가, {f.signal_date} 판단)",
+            f"{f.side} {f.qty.normalize():f}주 @ {f.price:.2f} "
+            f"({f.fill_date} 시가, {f.signal_date} 판단)",
             bot_id=bot.id,
             run_id=outcome.run_id,
-            data={**to_jsonable(f), "symbol": bot.symbol},
+            data=to_jsonable(f),
         )
-    d = outcome.decision
     # 같은 봉을 다시 평가한 경우(재시작·수동 실행)는 내부 기록만 남긴다 (알림·활동 표시 안 함).
-    data: dict[str, Any] = {**summary, "symbol": bot.symbol}
-    if d is not None:
-        data |= {
-            "action": d.action,
-            "target_long": d.target_long,
-            "holding": d.holding,
-            "indicators": to_jsonable(d.indicators),
-            "strategy": bot.strategy,
-            "params": bot.params,
-        }
-    add_event(
-        session,
-        now,
-        "INFO",
-        "decision" if d is not None else "decision_repeat",
-        outcome.detail,
-        bot_id=bot.id,
-        run_id=outcome.run_id,
-        data=data,
-    )
-    if d is not None and is_week_end(calendar, outcome.session_date):
+    for d in outcome.decisions:
+        add_event(
+            session,
+            now,
+            "INFO",
+            "decision",
+            outcome.detail,
+            bot_id=bot.id,
+            run_id=outcome.run_id,
+            data={
+                **summary,
+                "symbol": d.symbol,
+                "action": d.action,
+                "target_long": d.target_long,
+                "holding": d.holding,
+                "indicators": to_jsonable(d.indicators),
+                "strategy": bot.strategy,
+                "params": bot.params,
+            },
+        )
+    if not outcome.decisions:
+        add_event(
+            session,
+            now,
+            "INFO",
+            "decision_repeat",
+            outcome.detail,
+            bot_id=bot.id,
+            run_id=outcome.run_id,
+            data={**summary, "symbol": bot.symbol},
+        )
+    if outcome.decisions and is_week_end(calendar, outcome.session_date):
         add_event(
             session,
             now,

@@ -1,7 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLayoutEffect, useRef, useState } from 'react'
-import { api, type ActivityItem, type Bot, type BotState, type CommandKind, type EquityPoint, type Order } from '../api'
-import { ago, isPast, kstTime, money, percent, signedMoney, tone } from '../format'
+import {
+  api,
+  type ActivityItem,
+  type Bot,
+  type BotState,
+  type CommandKind,
+  type Decision as DecisionT,
+  type EquityPoint,
+  type Order,
+} from '../api'
+import { ago, isPast, kstTime, money, percent, shares, signedMoney, tone } from '../format'
 import { leverageOf, useInstruments } from '../instruments'
 import { sourceLabel } from '../source'
 import { useStrategies } from '../strategies'
@@ -9,6 +18,7 @@ import { Term } from './Help'
 import { selectBot, startNewBot, useSelectedBot } from '../selectedBot'
 import { PriceChart } from './PriceChart'
 import { useDismiss } from '../useDismiss'
+import { basketLabel } from '../basket'
 import { LeverageNotice } from './SymbolPicker'
 
 const STATE: Record<BotState, { label: string; dot: string }> = {
@@ -234,7 +244,7 @@ function EquityChart({
         <div className="date" style={{ left: Math.min(Math.max(x(idx), 110), width - 110) }}>
           {md(points[idx].date)}
           {points[idx].live && ' · 지금'}
-          {fillsAt.map((o) => ` · ${o.side === 'BUY' ? '샀어요' : '팔았어요'} ${o.qty}주`)}
+          {fillsAt.map((o) => ` · ${o.side === 'BUY' ? '샀어요' : '팔았어요'} ${shares(o.qty)}주`)}
           {` · 그냥 보유 ${money(points[idx].benchmark)}`}
         </div>
       )}
@@ -244,7 +254,9 @@ function EquityChart({
 
 function Overview({ bot }: { bot: Bot }) {
   const { byName } = useStrategies()
-  const lev = leverageOf(useInstruments().data, bot.symbol)
+  const instruments = useInstruments().data
+  const lev = leverageOf(instruments, bot.symbol)
+  const leveraged = bot.symbols.map((s) => [s.symbol, leverageOf(instruments, s.symbol)] as const).filter(([, x]) => x > 1)
   const equity = useEquity(bot.id)
   const orders = useOrders(bot.id)
   const [rangeKey, setRangeKey] = useState<string | null>(null)
@@ -278,7 +290,10 @@ function Overview({ bot }: { bot: Bot }) {
               {lev > 1 && <span className="lev">{lev}×</span>}
             </span>
             <span className={`dot ${state.dot}`}>{state.label}</span>
-            <span>· {byName[bot.strategy]?.nickname ?? bot.strategy}</span>
+            <span>
+              · {byName[bot.strategy]?.nickname ?? bot.strategy}
+              {bot.symbols.length > 1 && ` · ${basketLabel(bot.symbols, bot.symbol)}`}
+            </span>
           </div>
           <div className="hero-value">{money(String(end.eq))}</div>
           <div className="hero-delta">
@@ -343,7 +358,9 @@ function Overview({ bot }: { bot: Bot }) {
           </span>
         </div>
       )}
-      {lev > 1 && <LeverageNotice symbol={bot.symbol} factor={lev} />}
+      {leveraged.map(([symbol, factor]) => (
+        <LeverageNotice key={symbol} symbol={symbol} factor={factor} />
+      ))}
       <Facts bot={bot} />
     </>
   )
@@ -352,6 +369,7 @@ function Overview({ bot }: { bot: Bot }) {
 function Facts({ bot }: { bot: Bot }) {
   const a = bot.account
   const accumulates = useStrategies().byName[bot.strategy]?.accumulates
+  const holding = a.positions.some((p) => Number(p.qty) > 0)
   const run = bot.last_run
   const unrealized = a.live_unrealized_pnl ?? a.unrealized_pnl
   const runText = !run ? '—' : run.status === 'OK' ? '정상' : run.status === 'ERROR' ? '실패' : run.status === 'RUNNING' ? '판단 중' : '미룸'
@@ -382,8 +400,8 @@ function Facts({ bot }: { bot: Bot }) {
         <div className="label">
           <Term k="평가 손익" />
         </div>
-        <div className={`value ${tone(unrealized)}`}>{a.qty ? signedMoney(unrealized) : '—'}</div>
-        <div className="sub">{a.qty ? '팔기 전 손익' : '들고 있는 주식 없음'}</div>
+        <div className={`value ${tone(unrealized)}`}>{holding ? signedMoney(unrealized) : '—'}</div>
+        <div className="sub">{holding ? '팔기 전 손익' : '들고 있는 주식 없음'}</div>
       </div>
       {accumulates ? (
         // 모으기 봇은 팔지 않으므로 확정 손익 대신 넣은 돈과 입금 일정을 보여준다.
@@ -411,12 +429,26 @@ function Facts({ bot }: { bot: Bot }) {
 
 /* ---------- 세부 ---------- */
 
+const markOf = (d: DecisionT) => (d.action === 'BUY' ? 'rise' : d.action === 'SELL' ? 'fall' : '')
+const headOf = (d: DecisionT) =>
+  d.action === 'BUY' ? '매수 신호' : d.action === 'SELL' ? '매도 신호' : d.holding ? '그대로 들고 있기' : '기다리기'
+
+function Numbers({ d }: { d: DecisionT }) {
+  return (
+    <div className="decision-nums">
+      {d.reason} ·{' '}
+      {Object.entries(d.indicators)
+        .map(([k, v]) => `${k} ${Number(v).toFixed(2)}`)
+        .join(' · ')}
+    </div>
+  )
+}
+
 function Decision({ bot }: { bot: Bot }) {
-  const d = bot.last_decision
+  const list = bot.last_decisions.length ? bot.last_decisions : bot.last_decision ? [bot.last_decision] : []
+  const d = list[0]
   const [more, setMore] = useState(false)
-  const mark = d?.action === 'BUY' ? 'rise' : d?.action === 'SELL' ? 'fall' : ''
-  const head = d?.action === 'BUY' ? '매수 신호' : d?.action === 'SELL' ? '매도 신호' : d?.holding ? '그대로 들고 있기' : '기다리기'
-  const pending = bot.pending_order
+  const pending = bot.pending_orders
   return (
     <section className="block">
       <div className="block-head">
@@ -430,30 +462,40 @@ function Decision({ bot }: { bot: Bot }) {
           </button>
         )}
       </div>
-      {d ? (
+      {!d ? (
+        <p className="decision-why">아직 판단이 없어요. [매매 시작]을 누르면 가장 최근 가격으로 바로 판단해요.</p>
+      ) : list.length === 1 ? (
         <>
           <div className="decision-head">
-            <span className={`mark ${mark}`} />
-            {d.plain_action || head}
+            <span className={`mark ${markOf(d)}`} />
+            {d.plain_action || headOf(d)}
           </div>
           {d.plain_reason && <p className="decision-why">{d.plain_reason}</p>}
-          {pending && (
+          {pending.length > 0 && (
             <p className="decision-why">
-              다음 장이 열리면 {pending.side === 'BUY' ? '사요' : '팔아요'}. 지금은 예정만 잡혀 있어요.
+              다음 장이 열리면 {pending[0].side === 'BUY' ? '사요' : '팔아요'}. 지금은 예정만 잡혀 있어요.
             </p>
           )}
           {d.blocked && <div className="alert">사지 못했어요: {d.blocked}</div>}
-          {more && (
-            <div className="decision-nums">
-              {d.reason} ·{' '}
-              {Object.entries(d.indicators)
-                .map(([k, v]) => `${k} ${Number(v).toFixed(2)}`)
-                .join(' · ')}
-            </div>
-          )}
+          {more && <Numbers d={d} />}
         </>
       ) : (
-        <p className="decision-why">아직 판단이 없어요. [매매 시작]을 누르면 가장 최근 가격으로 바로 판단해요.</p>
+        // 여러 종목: 종목마다 한 줄 (같은 날 함께 판단한다)
+        <div className="lines">
+          {list.map((x) => (
+            <div key={x.id} className="line">
+              <div>
+                <div className="title decision-line">
+                  <span className={`mark ${markOf(x)}`} />
+                  {x.plain_action || `${x.symbol} ${headOf(x)}`}
+                </div>
+                {x.plain_reason && <div className="muted small">{x.plain_reason}</div>}
+                {x.blocked && <div className="bad small">사지 못했어요: {x.blocked}</div>}
+                {more && <Numbers d={x} />}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </section>
   )
@@ -461,33 +503,45 @@ function Decision({ bot }: { bot: Bot }) {
 
 function Holding({ bot }: { bot: Bot }) {
   const a = bot.account
-  const price = a.live_price ?? a.last_close
-  const value = a.qty && price ? String(a.qty * Number(price)) : a.market_value
-  const pnl = a.live_unrealized_pnl ?? a.unrealized_pnl
-  const ret = a.qty && Number(a.avg_cost) ? String(Number(price) / Number(a.avg_cost) - 1) : null
+  const multi = bot.symbols.length > 1
+  const held = a.positions.filter((p) => Number(p.qty) > 0)
   return (
     <section className="block">
       <div className="block-head">
         <h2>들고 있는 주식</h2>
-        <span className="sub">남은 현금 {money(a.cash)}</span>
+        <span className="sub">
+          남은 현금 {money(a.cash)}
+          {Number(a.reserve) > 0 && ` · 그중 모아 둔 돈 ${money(a.reserve)}`}
+        </span>
       </div>
-      {a.qty ? (
+      {held.length ? (
         <div className="lines">
-          <div className="line">
-            <div>
-              <div className="title">{bot.symbol}</div>
-              <div className="muted small tnum">
-                {a.qty}주 · 산 가격 {money(a.avg_cost)} · 지금 {money(price)}
-                {a.live_change != null && <span className={tone(a.live_change)}> ({percent(a.live_change)})</span>}
+          {held.map((p) => {
+            const price = p.live_price ?? p.last_close
+            const value = Number(p.qty) * Number(price)
+            const pnl = String(value - Number(p.qty) * Number(p.avg_cost))
+            const ret = Number(p.avg_cost) ? String(Number(price) / Number(p.avg_cost) - 1) : null
+            return (
+              <div key={p.symbol} className="line">
+                <div>
+                  <div className="title">
+                    {p.symbol}
+                    {multi && <span className="sub"> · 비율 {p.weight}%</span>}
+                  </div>
+                  <div className="muted small tnum">
+                    {shares(p.qty)}주 · 산 가격 {money(p.avg_cost)} · 지금 {money(price)}
+                    {p.live_change != null && <span className={tone(p.live_change)}> ({percent(p.live_change)})</span>}
+                  </div>
+                </div>
+                <div className="r">
+                  <div className="value md">{money(String(value))}</div>
+                  <div className={`small ${tone(pnl)}`} style={{ fontWeight: 500 }}>
+                    {signedMoney(pnl)} ({percent(ret)})
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="r">
-              <div className="value md">{money(value)}</div>
-              <div className={`small ${tone(pnl)}`} style={{ fontWeight: 500 }}>
-                {signedMoney(pnl)} ({percent(ret)})
-              </div>
-            </div>
-          </div>
+            )
+          })}
         </div>
       ) : (
         <div className="line-empty">들고 있는 주식이 없어요. 현금으로 기다리는 중이에요.</div>
@@ -501,6 +555,7 @@ const ORDER_STATUS: Record<Order['status'], string> = { PENDING: '다음 장에 
 function Trades({ bot, onOpenLog }: { bot: Bot; onOpenLog: () => void }) {
   const { data } = useOrders(bot.id)
   const rows = (data ?? []).slice(0, 5)
+  const multi = bot.symbols.length > 1
   return (
     <section className="block">
       <div className="block-head">
@@ -515,6 +570,7 @@ function Trades({ bot, onOpenLog }: { bot: Bot; onOpenLog: () => void }) {
             <thead>
               <tr>
                 <th>날짜</th>
+                {multi && <th>종목</th>}
                 <th>내용</th>
                 <th className="qty">수량</th>
                 <th className="num">한 주 가격</th>
@@ -528,13 +584,14 @@ function Trades({ bot, onOpenLog }: { bot: Bot; onOpenLog: () => void }) {
                 return (
                   <tr key={o.id}>
                     <td className="d">{md(o.fill_date ?? o.signal_date)}</td>
+                    {multi && <td>{o.symbol}</td>}
                     <td>
                       <span className={`side-tag ${buy ? 'rise' : 'fall'}`}>
                         {buy ? '샀어요' : '팔았어요'}
                         {status && <span className="faint small">{status}</span>}
                       </span>
                     </td>
-                    <td className="qty">{o.qty ? `${o.qty}주` : '—'}</td>
+                    <td className="qty">{Number(o.qty) > 0 ? `${shares(o.qty)}주` : '—'}</td>
                     <td className="num">{money(o.price)}</td>
                     <td className={`num ${tone(o.realized_pnl)}`}>{o.realized_pnl != null ? signedMoney(o.realized_pnl) : <span className="faint">—</span>}</td>
                   </tr>

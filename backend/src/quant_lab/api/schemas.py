@@ -10,10 +10,29 @@ from pydantic import BaseModel
 from quant_lab.domain.bot import CommandKind
 
 
+class PositionView(BaseModel):
+    """종목 하나의 보유와 평가 (장 마감 기준 + 있으면 실시간)."""
+
+    symbol: str
+    weight: int  # 봇의 종목 비율 (봇에서 빠진 종목이면 0)
+    qty: Decimal
+    avg_cost: Decimal
+    last_close: Decimal | None
+    last_close_date: date | None
+    market_value: Decimal | None
+    unrealized_pnl: Decimal | None
+    live_price: Decimal | None = None
+    live_at: datetime | None = None
+    live_change: Decimal | None = None
+
+
 class AccountView(BaseModel):
+    """봇 계좌. qty·avg_cost·last_close·live_price·live_change는 대표 종목(첫 종목) 값이고,
+    market_value·unrealized_pnl·equity·live_equity·live_unrealized_pnl은 모든 종목 합계다."""
+
     initial_cash: Decimal
     cash: Decimal
-    qty: int
+    qty: Decimal
     avg_cost: Decimal
     realized_pnl: Decimal
     last_close: Decimal | None
@@ -29,6 +48,8 @@ class AccountView(BaseModel):
     live_change: Decimal | None = None  # 마지막 장 마감 가격 대비
     live_equity: Decimal | None = None
     live_unrealized_pnl: Decimal | None = None
+    reserve: Decimal = Decimal(0)  # 모으기 전략이 고점 때 모아 둔 돈
+    positions: list[PositionView] = []
 
 
 class InstrumentView(BaseModel):
@@ -41,6 +62,7 @@ class InstrumentView(BaseModel):
 
 class DecisionView(BaseModel):
     id: int
+    symbol: str
     session_date: date
     action: str
     target_long: bool
@@ -55,11 +77,12 @@ class DecisionView(BaseModel):
 
 class OrderView(BaseModel):
     id: int
+    symbol: str
     side: str
     status: str
     signal_date: date
     fill_date: date | None
-    qty: int | None
+    qty: Decimal | None
     price: Decimal | None
     commission: Decimal | None
     realized_pnl: Decimal | None
@@ -76,10 +99,16 @@ class RunView(BaseModel):
     detail: str | None
 
 
+class SymbolWeight(BaseModel):
+    symbol: str
+    weight: int  # 비율(%) — 봇의 종목 비율 합은 100
+
+
 class BotView(BaseModel):
     id: int
     name: str
-    symbol: str
+    symbol: str  # 대표 종목 (첫 종목)
+    symbols: list[SymbolWeight]
     strategy: str
     params: dict[str, Any]
     state: str
@@ -89,8 +118,10 @@ class BotView(BaseModel):
     risk: dict[str, Any]
     next_evaluation_at: datetime | None
     account: AccountView
-    last_decision: DecisionView | None
+    last_decision: DecisionView | None  # 대표 종목의 마지막 판단
+    last_decisions: list[DecisionView] = []  # 마지막 판단일의 종목별 판단
     pending_order: OrderView | None
+    pending_orders: list[OrderView] = []
     last_run: RunView | None
     data_latest_date: date | None
     data_fetched_at: datetime | None
@@ -141,6 +172,7 @@ class BacktestSummary(BaseModel):
     id: uuid.UUID
     created_at: datetime
     symbol: str
+    symbols: list[dict[str, Any]] | None = None  # 여러 종목이면 [{"symbol", "weight"}]
     strategy: str
     params: dict[str, Any]
     metrics: dict[str, Any]
@@ -204,6 +236,7 @@ class ActivityItem(BaseModel):
 
 class BacktestRequest(BaseModel):
     symbol: str
+    symbols: list[SymbolWeight] | None = None  # 여러 종목(모으기 전략만, 비율 합 100)
     strategy: str
     params: dict[str, int] = {}
     start: date | None = None
@@ -230,5 +263,6 @@ class BotRename(BaseModel):
 
 class BotCreate(BotConfig):
     name: str
-    symbol: str
+    symbol: str  # 종목 하나. symbols가 있으면 그 첫 종목과 같아야 한다
+    symbols: list[SymbolWeight] | None = None  # 여러 종목(최대 10개, 비율 합 100, 모으기 전략만)
     initial_cash: Decimal = Decimal(10_000)

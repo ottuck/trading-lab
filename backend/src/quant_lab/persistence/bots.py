@@ -9,11 +9,12 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from quant_lab.domain.bot import BotState, CommandKind
-from quant_lab.domain.portfolio import CostModel, Portfolio, RiskLimits
+from quant_lab.domain.portfolio import CostModel, Portfolio, Position, RiskLimits
 from quant_lab.persistence.backtests import to_jsonable
 from quant_lab.persistence.models import (
     BotAccountRow,
     BotDepositRow,
+    BotPositionRow,
     BotRow,
     CommandRow,
     DecisionRow,
@@ -34,10 +35,14 @@ def create_bot(
     costs: CostModel,
     limits: RiskLimits,
     now: datetime,
+    weights: dict[str, int] | None = None,
 ) -> BotRow:
+    """weights는 종목별 비율(합 100). 없으면 symbol 하나에 100. 첫 종목이 symbol이 된다."""
+    weights = weights or {symbol: 100}
     bot = BotRow(
         name=name,
-        symbol=symbol,
+        symbol=next(iter(weights)),
+        symbols=[{"symbol": s, "weight": w} for s, w in weights.items()],
         strategy=strategy,
         params=params,
         state=BotState.STOPPED,
@@ -54,8 +59,6 @@ def create_bot(
         BotAccountRow(
             bot_id=bot.id,
             cash=initial_cash,
-            qty=0,
-            avg_cost=Decimal(0),
             realized_pnl=Decimal(0),
             contributed=initial_cash,
             reserve=Decimal(0),
@@ -63,6 +66,11 @@ def create_bot(
         )
     )
     return bot
+
+
+def bot_weights(bot: BotRow) -> dict[str, int]:
+    """종목별 비율 (합 100). 첫 종목이 목록·알림에 보이는 대표 종목이다."""
+    return {str(item["symbol"]): int(item["weight"]) for item in bot.symbols}
 
 
 def bot_costs(bot: BotRow) -> CostModel:
@@ -100,10 +108,10 @@ def set_bot_state(
 
 def load_account(session: Session, bot_id: int) -> Portfolio:
     row = session.get_one(BotAccountRow, bot_id)
+    positions = session.scalars(select(BotPositionRow).where(BotPositionRow.bot_id == bot_id))
     return Portfolio(
         cash=row.cash,
-        qty=row.qty,
-        avg_cost=row.avg_cost,
+        positions={p.symbol: Position(p.qty, p.avg_cost) for p in positions},
         realized_pnl=row.realized_pnl,
         contributed=row.contributed,
         reserve=row.reserve,
@@ -116,19 +124,28 @@ def save_account(session: Session, bot_id: int, pf: Portfolio, now: datetime) ->
         .where(BotAccountRow.bot_id == bot_id)
         .values(
             cash=pf.cash,
-            qty=pf.qty,
-            avg_cost=pf.avg_cost,
             realized_pnl=pf.realized_pnl,
             contributed=pf.contributed,
             reserve=pf.reserve,
             updated_at=now,
         )
     )
+    session.execute(delete(BotPositionRow).where(BotPositionRow.bot_id == bot_id))
+    session.add_all(
+        BotPositionRow(bot_id=bot_id, symbol=s, qty=p.qty, avg_cost=p.avg_cost)
+        for s, p in pf.positions.items()
+        if p.qty > 0
+    )
 
 
-def pending_order(session: Session, bot_id: int) -> SimOrderRow | None:
-    stmt = select(SimOrderRow).where(SimOrderRow.bot_id == bot_id, SimOrderRow.status == "PENDING")
-    return session.scalars(stmt).first()
+def pending_orders(session: Session, bot_id: int) -> list[SimOrderRow]:
+    """체결을 기다리는 모의 주문 (봇·종목당 최대 1개)."""
+    stmt = (
+        select(SimOrderRow)
+        .where(SimOrderRow.bot_id == bot_id, SimOrderRow.status == "PENDING")
+        .order_by(SimOrderRow.id)
+    )
+    return list(session.scalars(stmt))
 
 
 def add_event(
@@ -181,6 +198,7 @@ def delete_bot(session: Session, bot_id: int) -> None:
         RunRow,
         CommandRow,
         BotDepositRow,
+        BotPositionRow,
         BotAccountRow,
     ):
         session.execute(delete(model).where(model.bot_id == bot_id))
@@ -189,7 +207,15 @@ def delete_bot(session: Session, bot_id: int) -> None:
 
 def reset_bot_history(session: Session, bot: BotRow, now: datetime) -> None:
     """판단·주문·실행·명령·기록을 지우고 잔고를 시작 금액으로. 다음 tick에 바로 다시 판단한다."""
-    for model in (EventRow, SimOrderRow, DecisionRow, RunRow, CommandRow, BotDepositRow):
+    for model in (
+        EventRow,
+        SimOrderRow,
+        DecisionRow,
+        RunRow,
+        CommandRow,
+        BotDepositRow,
+        BotPositionRow,
+    ):
         session.execute(delete(model).where(model.bot_id == bot.id))
     save_account(session, bot.id, Portfolio(cash=bot.initial_cash), now)
     bot.next_evaluation_at = None
