@@ -113,7 +113,7 @@ export function PriceChart({ bot }: { bot: Bot }) {
         position: o.side === 'BUY' ? 'belowBar' : 'aboveBar',
         shape: o.side === 'BUY' ? 'arrowUp' : 'arrowDown',
         color: o.side === 'BUY' ? up : down,
-        text: `${o.side === 'BUY' ? '삼' : '팜'} ${o.qty}주`,
+        text: `${o.side === 'BUY' ? '산' : '판'} ${o.qty}주`,
       })
     }
     markers.sort((a, b) => String(a.time).localeCompare(String(b.time)))

@@ -1,0 +1,69 @@
+"""주간 리포트: 한 주의 마지막 거래일 판단과 함께 그 주를 요약한다.
+
+판단은 거래일마다 한 번만 생기므로(유일 제약) 리포트도 주마다 한 번만 생긴다.
+금요일이 휴장이면 그 주의 마지막 거래일(목요일 등)에 만든다.
+"""
+
+from datetime import date, timedelta
+from decimal import Decimal
+from typing import Any
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from quant_lab.domain.bars import TradingCalendar
+from quant_lab.persistence.models import BotRow, EventRow, RunRow, SimOrderRow
+
+
+def is_week_end(calendar: TradingCalendar, session_date: date) -> bool:
+    """다음 거래일이 다른 주(월요일 시작)에 있으면 이번 주 마지막 거래일이다."""
+    upcoming = calendar.sessions(
+        session_date + timedelta(days=1), session_date + timedelta(days=14)
+    )
+    week_start = session_date - timedelta(days=session_date.weekday())
+    return not upcoming or upcoming[0] >= week_start + timedelta(days=7)
+
+
+def weekly_summary(
+    session: Session, bot: BotRow, session_date: date, end: dict[str, Any]
+) -> dict[str, Any]:
+    """이번 주 자산·그냥 보유 대비·거래 횟수. end는 이번 판단의 잔고 요약(equity, close)."""
+    week_start = session_date - timedelta(days=session_date.weekday())
+    base_q = (
+        select(EventRow.data)
+        .join(RunRow, EventRow.run_id == RunRow.id)
+        .where(EventRow.bot_id == bot.id, EventRow.kind == "decision")
+    )
+    # 기준점: 지난주 마지막 판단. 이번 주에 처음 시작했으면 이번 주 첫 판단.
+    base = session.scalar(
+        base_q.where(RunRow.session_date < week_start).order_by(RunRow.session_date.desc())
+    ) or session.scalar(
+        base_q.where(RunRow.session_date >= week_start).order_by(RunRow.session_date)
+    )
+    start = base if base and "equity" in base and "close" in base else end
+    fills = session.execute(
+        select(SimOrderRow.side, func.count())
+        .where(
+            SimOrderRow.bot_id == bot.id,
+            SimOrderRow.status == "FILLED",
+            SimOrderRow.fill_date >= week_start,
+            SimOrderRow.fill_date <= session_date,
+        )
+        .group_by(SimOrderRow.side)
+    ).all()
+    counts = {side: n for side, n in fills}
+
+    def change(a: Any, b: Any) -> str:
+        return str(round(Decimal(str(b)) / Decimal(str(a)) - 1, 6))
+
+    return {
+        "symbol": bot.symbol,
+        "week_start": week_start.isoformat(),
+        "week_end": session_date.isoformat(),
+        "equity": end["equity"],
+        "total_return": end["total_return"],
+        "week_return": change(start["equity"], end["equity"]),
+        "hold_return": change(start["close"], end["close"]),
+        "buys": counts.get("BUY", 0),
+        "sells": counts.get("SELL", 0),
+    }

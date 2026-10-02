@@ -152,7 +152,17 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | 배포 (MWP) | 서버에서 `bash deploy/deploy.sh`: `main` pull → 이미지 빌드(프론트 포함 단일 이미지) → `compose up -d`. 저장소는 읽기 전용 deploy key로 받음. Compose 프로젝트 이름은 `quant-lab-prod` |
 | 마이그레이션 | `migrate` 일회성 서비스가 성공해야 api·worker가 시작 (`depends_on: service_completed_successfully`) |
 | 백업 | `deploy/backup.sh`를 cron이 매일 03:00 UTC(12:00 KST, 평가 시각과 겹치지 않음)에 실행, `pg_dump` 7일 보관 + Lightsail 자동 스냅샷. 파괴적 마이그레이션 전에는 수동 덤프 |
-| 모니터링 | 화면의 heartbeat·마지막 실행 표시, `docker compose logs`, **텔레그램 알림**: Worker가 `events` 테이블을 따라가며 경고·오류, 모의 체결, 설정 변경, Worker 재시작 후 이어서 실행, 그리고 **매일 판단(HOLD 포함)을 평가 자산과 함께 일일 점검**으로 보낸다. 알림 실패는 판단에 영향이 없다. **외부 heartbeat**: `HEARTBEAT_PING_URL`(Healthchecks.io 등)에 5분마다 신호를 보내 Worker·PC·서버가 멈추면 외부 서비스가 알린다 |
+| 모니터링 | 화면의 heartbeat·마지막 실행 표시, `docker compose logs`, **텔레그램 알림**: Worker가 `events` 테이블을 따라가며 경고·오류, 모의 체결, 설정 변경, Worker 재시작 후 이어서 실행, **매일 판단(HOLD 포함)을 평가 자산과 함께 일일 점검**으로, 매주 마지막 거래일 판단 뒤에는 **주간 리포트**(이번 주 자산 변화, 그냥 보유 대비, 거래 횟수)를 보낸다. 알림 실패는 판단에 영향이 없다. **외부 heartbeat**: `HEARTBEAT_PING_URL`(Healthchecks.io 등)에 5분마다 신호를 보내 Worker·PC·서버가 멈추면 외부 서비스가 알린다 |
+
+**Healthchecks 알림을 한국어로** (선택, 사용자가 Healthchecks 화면에서 설정): 기본 HealthchecksBot 메시지는 영어라, Integrations → Webhook으로 우리 텔레그램 봇이 직접 보내게 할 수 있다. 대가로 텔레그램 봇 토큰을 Healthchecks에 저장하게 된다 (이 봇은 내 채팅에 메시지만 보낼 수 있어 유출 영향은 작다). 설정 후 HealthchecksBot 연동은 지운다.
+
+| 항목 | 값 |
+| --- | --- |
+| URL (down·up 공통) | `https://api.telegram.org/bot<봇 토큰>/sendMessage`, 방식 `POST` |
+| 헤더 | `Content-Type: application/json` |
+| down 본문 | `{"chat_id": "<채팅 ID>", "text": "⚠️ Quant Lab 프로그램이 응답하지 않아요
+20분 넘게 신호가 없어요. PC나 서버가 꺼졌는지 확인해 주세요."}` |
+| up 본문 | `{"chat_id": "<채팅 ID>", "text": "✅ Quant Lab 프로그램이 다시 응답해요"}` |
 
 배포 자동화(GitHub Actions에서 Tailscale로 SSH 배포)는 수동 배포가 번거로워지면 도입한다. 서버 리소스는 처음부터 Terraform으로 관리한다.
 

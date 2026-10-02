@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from quant_lab.adapters.toss.client import TossAuthError, TossError, TossForbiddenError
 from quant_lab.application.bar_sync import DEFAULT_SETTLE
 from quant_lab.application.market import MarketData
+from quant_lab.application.weekly import is_week_end, weekly_summary
 from quant_lab.domain.bars import TradingCalendar, check_daily_bars, is_completed
 from quant_lab.domain.bot import BotState
 from quant_lab.domain.portfolio import Portfolio, money
@@ -384,5 +385,16 @@ def _commit_ok(
         run_id=outcome.run_id,
         data=data,
     )
+    if d is not None and is_week_end(calendar, outcome.session_date):
+        add_event(
+            session,
+            now,
+            "INFO",
+            "weekly_report",
+            f"{outcome.session_date} 주간 리포트",
+            bot_id=bot.id,
+            run_id=outcome.run_id,
+            data=weekly_summary(session, bot, outcome.session_date, summary),
+        )
     session.commit()
     return outcome
