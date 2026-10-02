@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLayoutEffect, useRef, useState } from 'react'
 import { api, type ActivityItem, type Bot, type BotState, type CommandKind, type EquityPoint, type Order } from '../api'
-import { ago, kstTime, money, percent, signedMoney, tone } from '../format'
+import { ago, isPast, kstTime, money, percent, signedMoney, tone } from '../format'
 import { leverageOf, useInstruments } from '../instruments'
 import { sourceLabel } from '../source'
 import { useStrategies } from '../strategies'
@@ -309,7 +309,13 @@ function Facts({ bot }: { bot: Bot }) {
         <div className="value">
           {bot.state === 'RUNNING' && bot.next_evaluation_at ? kstShort.format(new Date(bot.next_evaluation_at)) : '멈춰 있어요'}
         </div>
-        <div className="sub">{bot.state === 'RUNNING' ? ago(bot.next_evaluation_at) : '시작하면 바로 판단해요'}</div>
+        <div className="sub">
+          {bot.state !== 'RUNNING'
+            ? '시작하면 바로 판단해요'
+            : isPast(bot.next_evaluation_at)
+              ? '곧 판단해요' // 예정 시각이 지났으면 Worker가 처리하는 중이다
+              : ago(bot.next_evaluation_at)}
+        </div>
       </div>
       <div className="fact">
         <div className="label">마지막 판단</div>
