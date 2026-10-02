@@ -45,6 +45,9 @@ def build_market(settings: Settings) -> MarketData:
 
 
 def build_notifier(settings: Settings, make_session: Callable[[], Session]) -> EventNotifier | None:
+    if not settings.telegram_enabled:
+        log.info("텔레그램 알림 꺼짐 (TELEGRAM_ENABLED가 false)")
+        return None
     if settings.telegram_bot_token is None or not settings.telegram_chat_id:
         log.info("텔레그램 알림 꺼짐 (TELEGRAM_BOT_TOKEN/CHAT_ID 없음)")
         return None
