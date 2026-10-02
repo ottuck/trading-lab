@@ -295,7 +295,7 @@ export function BacktestView() {
   const [selected, setSelected] = useState<string | null>(null)
   const current = selected ?? list?.[0]?.id ?? null
   const currentInfo = list?.find((b) => b.id === current)
-  // 위쪽 선택(전략·종목)은 아래에 보이는 결과와 맞춘다. 직접 바꾸면 그 선택을 따른다.
+  // 양식의 선택(전략·종목)은 아래에 보이는 결과와 맞춘다. 직접 바꾸면 그 선택을 따른다.
   const [picked, setPicked] = useState<Choice | null>(null)
   const choice = picked ?? (currentInfo ? { symbol: currentInfo.symbol, strategy: currentInfo.strategy } : { symbol: 'QQQ', strategy: 'sma_cross' })
   const show = (id: string) => {
@@ -305,12 +305,12 @@ export function BacktestView() {
   return (
     <div className="home bt">
       <div className="home-main">
+        <RunForm choice={choice} onChoice={setPicked} onDone={show} />
         {current ? (
           <Result key={current} id={current} info={currentInfo ? byName[currentInfo.strategy] : undefined} />
         ) : (
-          <div className="line-empty">아직 시험한 결과가 없어요. 아래에서 전략과 종목을 골라 시험해 보세요.</div>
+          <div className="bt-result line-empty">아직 시험한 결과가 없어요. 위에서 전략과 종목을 골라 시험해 보세요.</div>
         )}
-        <RunForm choice={choice} onChoice={setPicked} onDone={show} />
       </div>
       {list && list.length > 0 && (
         <aside className="home-side">

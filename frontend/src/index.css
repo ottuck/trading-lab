@@ -1369,7 +1369,7 @@ button.bot-item.active {
 }
 
 /* ---------- 시험해 보기 ---------- */
-/* 홈과 같은 2단: 왼쪽 결과(큰 숫자·그래프·지표) 다음 새 시험 양식, 오른쪽 지난 시험 목록 */
+/* 홈과 같은 2단: 왼쪽 시험 양식 다음 결과(큰 숫자·그래프·지표), 오른쪽 지난 시험 목록 */
 .bt-verdict {
   display: flex;
   align-items: baseline;
@@ -1404,9 +1404,9 @@ button.bot-item.active {
 .bt-facts {
   grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
 }
-.bt-form {
-  margin-top: 56px;
-  padding-top: 28px;
+.bt-result {
+  margin-top: 40px;
+  padding-top: 32px;
   border-top: 1px solid var(--border);
 }
 .bt-form .block-head {
