@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { backtestApi, type BacktestDetail, type StrategyInfo } from '../api'
 import { kstTime, money, percent, signedMoney, tone } from '../format'
 import { strategyTitle, useStrategies } from '../strategies'
+import { cssVar, useTheme } from '../theme'
 import { Term } from './Help'
 
 // 관심 종목 (Worker가 매일 가격을 갱신하는 목록과 같다)
@@ -20,10 +21,6 @@ function startDate(years: number): string | undefined {
   const d = new Date()
   d.setFullYear(d.getFullYear() - years)
   return d.toISOString().slice(0, 10)
-}
-
-function cssVar(name: string) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
 export function StrategyPicker({
@@ -104,13 +101,20 @@ function RunForm({ onDone }: { onDone: (id: string) => void }) {
 
 function EquityChart({ detail }: { detail: BacktestDetail }) {
   const el = useRef<HTMLDivElement>(null)
+  const { theme } = useTheme()
   useEffect(() => {
     if (!el.current) return
+    const grid = cssVar('--chart-grid')
     const chart = createChart(el.current, {
       autoSize: true,
-      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: cssVar('--muted') },
-      grid: { vertLines: { color: 'rgba(255,255,255,0.05)' }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
-      rightPriceScale: { mode: 1 }, // 로그 눈금: 긴 기간의 오르내림을 비교하기 쉽다
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor: cssVar('--muted'),
+        fontFamily: 'Pretendard Variable, system-ui, sans-serif',
+      },
+      grid: { vertLines: { color: grid }, horzLines: { color: grid } },
+      timeScale: { borderColor: grid },
+      rightPriceScale: { mode: 1, borderColor: grid }, // 로그 눈금: 긴 기간의 오르내림을 비교하기 쉽다
     })
     const strat = chart.addSeries(LineSeries, { color: cssVar('--accent'), lineWidth: 2, title: '전략' })
     const bench = chart.addSeries(LineSeries, { color: cssVar('--muted'), lineWidth: 1, title: '그냥 보유' })
@@ -118,7 +122,7 @@ function EquityChart({ detail }: { detail: BacktestDetail }) {
     bench.setData(detail.equity.map((p) => ({ time: p.session_date as Time, value: Number(p.benchmark) })))
     chart.timeScale().fitContent()
     return () => chart.remove()
-  }, [detail])
+  }, [detail, theme])
   return <div ref={el} className="chart" />
 }
 
