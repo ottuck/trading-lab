@@ -4,6 +4,7 @@ import {
   api,
   botApi,
   type ActivityItem,
+  type World,
   type Bot,
   type BotState,
   type CommandKind,
@@ -14,9 +15,9 @@ import {
 import { ago, isPast, kstTime, money, percent, shares, signedMoney, tone } from '../format'
 import { leverageOf, useInstruments } from '../instruments'
 import { sourceLabel } from '../source'
-import { useStrategies } from '../strategies'
+import { isMeBot, useStrategies } from '../strategies'
 import { Term } from './Help'
-import { selectBot, startNewBot, useSelectedBot } from '../selectedBot'
+import { goTo, selectBot, startNewBot, useSelectedBot } from '../selectedBot'
 import { PriceChart } from './PriceChart'
 import { useDismiss } from '../useDismiss'
 import { activeOf, basketLabel } from '../basket'
@@ -713,13 +714,14 @@ function BotItem({ bot, active, onPick }: { bot: Bot; active: boolean; onPick: (
   )
 }
 
-/** 홈: 왼쪽에 고른 봇의 자산·판단·거래, 오른쪽에 봇 목록. 고른 봇은 이 브라우저에 기억한다. */
+const parallelKey = (bot: Bot) => ['parallel', bot.id, JSON.stringify(bot.params), JSON.stringify(bot.symbols)]
+
 /** 나처럼 모으기 봇: 시작한 뒤로 규칙을 하나씩 바꿨다면 (고르면 다음 판단부터 그 규칙으로). */
 function BotParallel({ bot }: { bot: Bot }) {
   const qc = useQueryClient()
   return (
     <ParallelWorlds
-      queryKey={['parallel', bot.id, JSON.stringify(bot.params), JSON.stringify(bot.symbols)]}
+      queryKey={parallelKey(bot)}
       fetch={() => botApi.parallel(bot.id)}
       sub={(p) => (p.start ? `${md(p.start)}에 시작한 뒤로, 규칙을 하나씩 바꿨다면` : '')}
       chooseLabel="로 바꾸기"
@@ -732,39 +734,166 @@ function BotParallel({ bot }: { bot: Bot }) {
   )
 }
 
+/** 오른쪽 봇 목록. 나 카피 봇이 없으면 만들기를 권한다. */
+function BotSide({ bots, current, onPick }: { bots: Bot[]; current: Bot; onPick: (b: Bot) => void }) {
+  return (
+    <aside className="home-side">
+      <div className="bot-list">
+        <div className="bot-list-head">
+          내 봇
+          <button className="link" onClick={() => goTo('me')}>
+            나 만들기
+          </button>
+          <button className="link" onClick={() => startNewBot()}>
+            + 새 봇
+          </button>
+        </div>
+        {bots.map((b) => (
+          <BotItem key={b.id} bot={b} active={b.id === current.id} onPick={() => onPick(b)} />
+        ))}
+      </div>
+      {!bots.some(isMeBot) && (
+        <div className="me-invite">
+          <b>나 카피 봇이 아직 없어요</b>
+          <p>내 투자 습관을 복사한 봇을 만들면 홈이 &quot;나 vs 매달 그냥 사기&quot;와 평행세계의 나로 바뀌어요.</p>
+          <button onClick={() => goTo('me')}>질문으로 나 만들기</button>
+        </div>
+      )}
+      <div className="side-note">10초마다 새로 불러와요.</div>
+    </aside>
+  )
+}
+
+/** 봇 하나 자세히 보기 (#bot, 나 카피 봇이 없으면 홈). 고른 봇은 이 브라우저에 기억한다. */
 export function Home({ bots }: { bots: Bot[] }) {
   const [logOpen, setLogOpen] = useState(false)
   const bot = useSelectedBot(bots)
-  const pick = selectBot
   return (
     <div className="home">
       <div className="home-main" key={bot.id}>
+        {isMeBot(bot) && (
+          <button className="link back" onClick={() => goTo('dashboard')}>
+            ← 나 카피 봇 홈
+          </button>
+        )}
         <Overview bot={bot} />
         <Decision bot={bot} />
         <Holding bot={bot} />
-        {bot.strategy === 'dip_saver' && <BotParallel bot={bot} />}
         <PriceChart bot={bot} />
         <Trades bot={bot} onOpenLog={() => setLogOpen(true)} />
         <Strategy bot={bot} />
       </div>
-      <aside className="home-side">
-        <div className="bot-list">
-          <div className="bot-list-head">
-            내 봇
-            <button className="link" onClick={() => (location.hash = 'me')}>
-              나 만들기
-            </button>
-            <button className="link" onClick={() => startNewBot()}>
-              + 새 봇
-            </button>
-          </div>
-          {bots.map((b) => (
-            <BotItem key={b.id} bot={b} active={b.id === bot.id} onPick={() => pick(b.id)} />
-          ))}
-        </div>
-        <div className="side-note">10초마다 새로 불러와요.</div>
-      </aside>
+      <BotSide bots={bots} current={bot} onPick={(b) => selectBot(b.id)} />
       {logOpen && <LogDrawer bot={bot} onClose={() => setLogOpen(false)} />}
+    </div>
+  )
+}
+
+/* ── 나 카피 봇 홈 (N5): 첫 화면은 "나 vs 매달 그냥 사기"와 평행세계의 나. 점수·판정 문장은 붙이지 않는다. ── */
+
+function MeHero({ bot }: { bot: Bot }) {
+  const equity = useEquity(bot.id)
+  const a = bot.account
+  const paid = Number(a.contributed)
+  const now = Number(currentEquity(bot) ?? a.contributed)
+  const points = equity.data ?? []
+  const bench = points.length ? Number(points.at(-1)!.benchmark) : paid
+  const vsPaid = (v: number) => (paid ? String(v / paid - 1) : null)
+  const state = STATE[bot.state]
+  return (
+    <section className="me-hero">
+      <div className="bot-line">
+        <span className="name">나 카피 봇</span>
+        <span className={`dot ${state.dot}`}>{state.label}</span>
+        <span>
+          · {bot.name} · {basketLabel(bot.symbols, bot.symbol)}
+        </span>
+      </div>
+      <div className="me-vs">
+        <div>
+          <div className="label legend">
+            <i className="pw-mine" />
+            나처럼 했을 때
+          </div>
+          <div className="hero-value">{money(String(now))}</div>
+          <div className={`hero-delta ${tone(vsPaid(now))}`}>넣은 돈보다 {percent(vsPaid(now))}</div>
+        </div>
+        <div className="vs-other">
+          <div className="label legend">
+            <i className="bench" />
+            매달 그냥 샀다면
+          </div>
+          <div className="value tnum">{money(String(bench))}</div>
+          <div className={`small ${tone(vsPaid(bench))}`}>넣은 돈보다 {percent(vsPaid(bench))}</div>
+        </div>
+      </div>
+      <div className="faint small">
+        넣은 돈 {money(a.contributed)}
+        {points.length > 0 && ` · ${md(points[0].date)}부터`} · <Term k="모의 투자" /> ·{' '}
+        {a.live_at ? `실시간 ${ago(a.live_at)}` : `${md(a.last_close_date)} 장 마감 기준`}
+      </div>
+    </section>
+  )
+}
+
+/** 월간 정리: "9월에 나 카피 봇은 사지 않고 모아 뒀어요. 고점에도 안 쉬는 나는 $1,350어치 샀어요." */
+function MonthDigest({ bot }: { bot: Bot }) {
+  const { data } = useQuery({ queryKey: parallelKey(bot), queryFn: () => botApi.parallel(bot.id), staleTime: 10 * 60_000, retry: false })
+  const worlds = data?.worlds ?? []
+  const me = worlds.find((w) => w.key === 'me')
+  if (!me || me.recent.length < 2) return null
+  // 이번 달에 아직 아무도 안 샀으면(입금일 전) 지난달을 정리한다.
+  const at = worlds.some((w) => Number(w.recent[1].bought) > 0) ? 1 : 0
+  const amount = (w: World) => Number(w.recent[at].bought)
+  const did = (w: World) => (amount(w) > 0 ? `$${Math.round(amount(w)).toLocaleString('en-US')}어치 샀어요` : '사지 않고 모아 뒀어요')
+  const others = worlds.filter((w) => w.key !== 'me')
+  // 나와 다르게 한 나: 사고 안 사고가 다른 나, 없으면 금액이 다른 나
+  const other =
+    others.find((w) => amount(w) > 0 !== amount(me) > 0) ?? others.find((w) => Math.abs(amount(w) - amount(me)) >= 1)
+  const month = `${Number(me.recent[at].month.slice(5))}월`
+  return (
+    <section className="block me-digest">
+      <div className="block-head">
+        <h2>{month} 정리</h2>
+      </div>
+      <p>
+        {month}에 나 카피 봇은 {did(me)}. {other ? `${other.title}는 ${did(other)}.` : '다른 나들도 모두 같았어요.'}
+      </p>
+    </section>
+  )
+}
+
+/** 홈 첫 화면 (나 카피 봇이 있을 때). 고른 봇이 나 카피 봇이 아니면 첫 나 카피 봇을 보여준다. */
+export function MeHome({ bots }: { bots: Bot[] }) {
+  const selected = useSelectedBot(bots)
+  const bot = isMeBot(selected) ? selected : bots.find(isMeBot)!
+  return (
+    <div className="home me-home">
+      <div className="home-main" key={bot.id}>
+        <MeHero bot={bot} />
+        <MonthDigest bot={bot} />
+        <BotParallel bot={bot} />
+        <Decision bot={bot} />
+        <div className="me-more">
+          <button
+            onClick={() => {
+              selectBot(bot.id)
+              goTo('bot')
+            }}
+          >
+            자세히 보기
+          </button>
+          <span className="faint small">들고 있는 주식, 거래, 가격 그래프, 매매 시작·멈춤</span>
+        </div>
+      </div>
+      <BotSide
+        bots={bots}
+        current={bot}
+        onPick={(b) => {
+          selectBot(b.id)
+          if (!isMeBot(b)) goTo('bot')
+        }}
+      />
     </div>
   )
 }

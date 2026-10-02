@@ -3,11 +3,12 @@ import { useEffect, useState } from 'react'
 import { api } from './api'
 import { BacktestView } from './components/BacktestView'
 import { Brand, ThemeMenu } from './components/Brand'
-import { Home } from './components/Dashboard'
+import { Home, MeHome } from './components/Dashboard'
 import { HelpButton } from './components/Help'
 import { MeView } from './components/MeView'
 import { SettingsView } from './components/SettingsView'
 import { ago } from './format'
+import { isMeBot } from './strategies'
 
 const TABS = {
   dashboard: '홈',
@@ -16,13 +17,13 @@ const TABS = {
 } as const
 type Tab = keyof typeof TABS
 
-// 탭 밖의 화면: 질문으로 나 만들기 (#me)
-type Page = Tab | 'me'
+// 탭 밖의 화면: 질문으로 나 만들기 (#me), 봇 하나 자세히 보기 (#bot, 홈 탭)
+type Page = Tab | 'me' | 'bot'
 
 function useHashTab(): [Page, (t: Tab) => void] {
   const read = (): Page => {
     const h = location.hash.slice(1)
-    return h === 'me' || h in TABS ? (h as Page) : 'dashboard'
+    return h === 'me' || h === 'bot' || h in TABS ? (h as Page) : 'dashboard'
   }
   const [tab, setTab] = useState<Page>(read)
   useEffect(() => {
@@ -73,16 +74,20 @@ export default function App() {
         <header className="topbar">
           <Brand />
           <nav className="tabs">
-            {(Object.keys(TABS) as Tab[]).map((t) => (
+            {(Object.keys(TABS) as Tab[]).map((t) => {
+              // 봇 자세히 보기(#bot)는 홈 탭 안의 화면이다.
+              const on = t === tab || (t === 'dashboard' && tab === 'bot')
+              return (
               <button
                 key={t}
-                className={`tab ${t === tab ? 'active' : ''}`}
-                aria-current={t === tab ? 'page' : undefined}
+                className={`tab ${on ? 'active' : ''}`}
+                aria-current={on ? 'page' : undefined}
                 onClick={() => setTab(t)}
               >
                 {TABS[t]}
               </button>
-            ))}
+              )
+            })}
           </nav>
           <div className="topbar-right">
             <NewYorkClock />
@@ -105,7 +110,8 @@ export default function App() {
             </button>
           </section>
         )}
-        {tab === 'dashboard' && !!bots.data?.length && <Home bots={bots.data} />}
+        {tab === 'dashboard' && !!bots.data?.length && (bots.data.some(isMeBot) ? <MeHome bots={bots.data} /> : <Home bots={bots.data} />)}
+        {tab === 'bot' && !!bots.data?.length && <Home bots={bots.data} />}
         {tab === 'backtest' && <BacktestView />}
         {tab === 'me' && <MeView />}
         {tab === 'settings' && bots.data && <SettingsView bots={bots.data} />}
