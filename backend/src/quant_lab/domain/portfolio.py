@@ -61,6 +61,7 @@ class Portfolio:
     avg_cost: Decimal = Decimal(0)
     realized_pnl: Decimal = Decimal(0)
     contributed: Decimal | None = None
+    reserve: Decimal = Decimal(0)  # 모으기 전략이 고점 때 모아 둔 돈. 하락장에만 쓴다
 
     def __post_init__(self) -> None:
         if self.contributed is None:

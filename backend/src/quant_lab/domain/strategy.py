@@ -18,9 +18,9 @@ from quant_lab.domain.bars import DailyBar
 class Spend(StrEnum):
     """모으기 전략이 이번 판단에 쓸 돈. 보통 전략(전부 사거나 전부 팔기)은 None을 쓴다."""
 
-    DEPOSIT = "DEPOSIT"  # 오늘 들어온 입금액만큼 산다 (입금일이 아니면 사지 않는다)
-    ALL = "ALL"  # 모아 둔 현금까지 모두 산다
-    NONE = "NONE"  # 사지 않고 현금으로 모아 둔다
+    DEPOSIT = "DEPOSIT"  # 입금일에 모아 둔 돈(reserve)을 뺀 현금으로 산다 (그달 입금 + 잔돈)
+    ALL = "ALL"  # 모아 둔 돈까지 현금을 모두 산다
+    NONE = "NONE"  # 사지 않는다. 오늘 들어온 돈은 모아 둔 돈이 된다
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,7 +257,7 @@ class DipSaver:
 
     - 1년(high일) 종가 최고보다 dip% 이상 낮으면: 모아 둔 현금까지 모두 산다 (입금일이 아니어도)
     - SMA(sma) 보다 hot% 이상 높으면: 사지 않고 현금으로 모아 둔다
-    - 그 밖에는: 입금일에 그달 입금액만큼 산다
+    - 그 밖에는: 입금일에 그달 입금액만큼 산다 (지난달 잔돈 포함, 고점 때 모아 둔 돈은 빼고)
     """
 
     deposit: int = 675  # 매달 넣는 돈 (달러)

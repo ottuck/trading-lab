@@ -308,7 +308,9 @@ def _evaluate(
             )
 
     # 6) 전략 판단·위험 검사·모의 주문
-    decision = decide(strategy, bars, pf, costs, limits, deposit)
+    # 첫 판단(시작·처음부터 다시 시작)은 시작 금액도 새로 들어온 돈으로 본다 (백테스트와 같음).
+    fresh = deposit + (bot.initial_cash if last_decided is None else Decimal(0))
+    decision = decide(strategy, bars, pf, costs, limits, fresh)
     if decision is None:
         raise _Skip(f"봉이 부족합니다 ({len(bars)}개, 필요 {strategy.warmup}개)")
     row = DecisionRow(

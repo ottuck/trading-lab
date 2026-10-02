@@ -58,6 +58,7 @@ def create_bot(
             avg_cost=Decimal(0),
             realized_pnl=Decimal(0),
             contributed=initial_cash,
+            reserve=Decimal(0),
             updated_at=now,
         )
     )
@@ -105,6 +106,7 @@ def load_account(session: Session, bot_id: int) -> Portfolio:
         avg_cost=row.avg_cost,
         realized_pnl=row.realized_pnl,
         contributed=row.contributed,
+        reserve=row.reserve,
     )
 
 
@@ -118,6 +120,7 @@ def save_account(session: Session, bot_id: int, pf: Portfolio, now: datetime) ->
             avg_cost=pf.avg_cost,
             realized_pnl=pf.realized_pnl,
             contributed=pf.contributed,
+            reserve=pf.reserve,
             updated_at=now,
         )
     )

@@ -209,7 +209,7 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
   )
 }
 
-const SHORT: Record<string, string> = { sma_cross: 'sma', trend_filter: '200', rsi2: 'rsi', donchian: 'high' }
+const SHORT: Record<string, string> = { sma_cross: 'sma', trend_filter: '200', rsi2: 'rsi', donchian: 'high', dip_saver: 'me' }
 
 function suggestName(symbol: string, strategy: string, taken: string[]) {
   const base = `${symbol.toLowerCase()}-${SHORT[strategy] ?? strategy}`

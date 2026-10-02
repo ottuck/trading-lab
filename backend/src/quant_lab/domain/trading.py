@@ -54,7 +54,9 @@ def decide(
 ) -> DecisionRecord | None:
     """history의 마지막 봉(완료된 T일)까지 보고 판단한다. 봉이 부족하면 None.
 
-    deposit은 오늘 들어온 입금액이다 (모으기 전략의 Spend.DEPOSIT이 쓴다).
+    deposit은 오늘 새로 들어온 돈이다: 정기 입금, 그리고 첫 판단일의 시작 금액.
+    모으기 전략은 pf.reserve(고점 때 모아 둔 돈)를 여기서 갱신한다: 쉬는 날 들어온 돈은 모아 두고,
+    하락장에 모두 사면 비운다. 평소 입금일에는 모아 둔 돈을 뺀 현금(그달 입금 + 잔돈)으로 산다.
     """
     holding = pf.qty > 0
     signal = strategy.signal(history, holding)
@@ -68,14 +70,17 @@ def decide(
         # 모으기: 정한 만큼만, 들고 있어도 더 산다. 팔지 않는다.
         if signal.spend is Spend.ALL:
             budget = pf.cash
-        elif signal.spend is Spend.DEPOSIT:
-            budget = min(pf.cash, deposit)
+            pf.reserve = Decimal(0)
+        elif signal.spend is Spend.DEPOSIT and deposit > 0:
+            budget = max(Decimal(0), pf.cash - pf.reserve)
+        elif signal.spend is Spend.NONE and deposit > 0:
+            pf.reserve = min(pf.cash, pf.reserve + deposit)
         if budget is not None and budget > 0:
             est = costs.buy_price(today.close)
             if affordable_qty(budget, est, costs, limits, pf.qty * est) > 0:
                 action = Action.BUY
             elif signal.spend is Spend.DEPOSIT:
-                blocked = "이번 입금액이 한 주 가격보다 적어 현금으로 모아 둠"
+                blocked = "한 주 가격보다 돈이 적어 다음 입금일까지 모아 둠"
         if action is not Action.BUY:
             budget = None
     elif signal.long and not holding:
