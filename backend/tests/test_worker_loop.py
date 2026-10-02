@@ -6,12 +6,13 @@ import pytest
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from quant_lab.adapters.toss.client import Quote, StockInfo
 from quant_lab.application.market import StoredMarket
 from quant_lab.domain.bot import BotState, CommandKind
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.persistence.bars import upsert_daily_bars
 from quant_lab.persistence.bots import create_bot, enqueue_command, get_bot
-from quant_lab.persistence.models import CommandRow, DecisionRow, EventRow
+from quant_lab.persistence.models import CommandRow, DecisionRow, EventRow, InstrumentRow, QuoteRow
 from quant_lab.worker.loop import Worker, release_worker_lock, try_acquire_worker_lock
 from tests.fakes import WeekdayCalendar, make_bars
 
@@ -95,3 +96,33 @@ def test_watchlist_sync_refreshes_only_stale_symbols(make_session: Callable[[], 
     worker.sync_watchlist()
     worker.sync_watchlist()  # 30분 안에는 다시 확인하지 않는다
     assert refreshed == ["VOO"]  # QQQ는 이미 최신 거래일까지 있음
+
+
+class FakeLive:
+    def __init__(self) -> None:
+        self.quote_calls = 0
+
+    def instruments(self, symbols: list[str]) -> list[StockInfo]:
+        return [StockInfo(s, s, "NASDAQ", "ETF", "ACTIVE", "USD", Decimal(3)) for s in symbols]
+
+    def quotes(self, symbols: list[str]) -> list[Quote]:
+        self.quote_calls += 1
+        return [Quote(s, Decimal("123.45"), NOW) for s in symbols]
+
+
+def test_live_quotes_only_for_bot_symbols_in_trading_hours(
+    make_session: Callable[[], Session], session: Session
+) -> None:
+    new_bot(session, BotState.RUNNING)
+    live = FakeLive()
+    clock = [datetime(2026, 10, 2, 14, 0, tzinfo=UTC)]  # 금요일 10:00 뉴욕
+    worker = Worker(make_session, StoredMarket(), CAL, now=lambda: clock[0], live=live)
+
+    worker.refresh_live()
+    worker.refresh_live()  # 30초가 지나지 않았다
+    clock[0] = datetime(2026, 10, 3, 14, 0, tzinfo=UTC)  # 토요일: 거래 시간 아님
+    worker.refresh_live()
+
+    assert live.quote_calls == 1
+    assert session.get_one(QuoteRow, "QQQ").price == Decimal("123.45")
+    assert session.get_one(InstrumentRow, "QQQ").leverage_factor == 3

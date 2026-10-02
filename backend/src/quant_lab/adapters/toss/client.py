@@ -55,6 +55,13 @@ class StockInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class Quote:
+    symbol: str
+    price: Decimal
+    quoted_at: datetime  # 마지막 체결 시각 (데이마켓·프리·정규·애프터 모두 포함)
+
+
+@dataclass(frozen=True, slots=True)
 class CandlePage:
     bars: list[DailyBar]  # 거래일 오름차순
     next_before: str | None
@@ -222,6 +229,19 @@ class TossClient:
             if since is not None and page.bars[0].session_date <= since:
                 return
             before = page.next_before
+
+    def prices(self, symbols: list[str]) -> list[Quote]:
+        """현재가. 응답은 symbol·timestamp·lastPrice뿐이다 (tossApi.md 7절)."""
+        result = self._get("/api/v1/prices", {"symbols": ",".join(symbols)})
+        return [
+            Quote(
+                symbol=p["symbol"],
+                price=Decimal(p["lastPrice"]),
+                quoted_at=datetime.fromisoformat(p["timestamp"]),
+            )
+            for p in result
+            if p.get("lastPrice") is not None
+        ]
 
     def us_market_calendar(self, day: date | None = None) -> dict[str, Any]:
         params = {"date": day.isoformat()} if day else {}

@@ -865,3 +865,43 @@ button.pick.active {
   background: var(--surface);
   border: 1px solid var(--border);
 }
+
+/* 레버리지 배수 표시와 실시간 표시 */
+.lev {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1.6;
+  color: var(--warn);
+  background: var(--warn-soft);
+  vertical-align: 1px;
+}
+button.seg.active .lev {
+  color: var(--on-accent);
+  background: color-mix(in srgb, var(--on-accent) 22%, transparent);
+}
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.live::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--rise);
+  animation: live-pulse 2s ease-in-out infinite;
+}
+@keyframes live-pulse {
+  50% {
+    opacity: 0.25;
+  }
+}

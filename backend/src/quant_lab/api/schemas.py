@@ -22,6 +22,20 @@ class AccountView(BaseModel):
     unrealized_pnl: Decimal | None
     equity: Decimal | None
     total_return: Decimal | None
+    # 실시간(화면 표시용). 판단·주간 리포트는 위의 장 마감 기준 값을 쓴다.
+    live_price: Decimal | None = None
+    live_at: datetime | None = None
+    live_change: Decimal | None = None  # 마지막 장 마감 가격 대비
+    live_equity: Decimal | None = None
+    live_unrealized_pnl: Decimal | None = None
+
+
+class InstrumentView(BaseModel):
+    symbol: str
+    name: str | None
+    leverage_factor: Decimal | None
+    live_price: Decimal | None
+    live_at: datetime | None
 
 
 class DecisionView(BaseModel):
