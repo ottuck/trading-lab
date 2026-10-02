@@ -111,7 +111,7 @@ function RunForm({
   )
 }
 
-function EquityChart({ detail }: { detail: BacktestDetail }) {
+export function EquityChart({ detail }: { detail: BacktestDetail }) {
   const el = useRef<HTMLDivElement>(null)
   const { theme } = useTheme()
   useEffect(() => {
@@ -126,8 +126,10 @@ function EquityChart({ detail }: { detail: BacktestDetail }) {
       },
       crosshair: { vertLine: { color: cssVar('--chart-cross') }, horzLine: { color: cssVar('--chart-cross') } },
       grid: { vertLines: { visible: false }, horzLines: { color: grid } },
-      timeScale: { borderVisible: false },
+      // 10년 일봉(약 2,500개)이 좁은 화면에도 다 들어오게 막대 간격 하한을 낮춘다 (기본 0.5px).
+      timeScale: { borderVisible: false, minBarSpacing: 0.01 },
       rightPriceScale: { mode: 1, borderVisible: false }, // 로그 눈금: 긴 기간의 오르내림을 비교하기 쉽다
+      localization: { priceFormatter: (v: number) => `$${Math.round(v).toLocaleString('en-US')}` },
     })
     const strat = chart.addSeries(LineSeries, { color: cssVar('--text'), lineWidth: 2, priceLineVisible: false })
     const bench = chart.addSeries(LineSeries, { color: cssVar('--faint'), lineWidth: 1, priceLineVisible: false })
