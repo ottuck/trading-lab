@@ -93,7 +93,7 @@ function RunForm({ onDone }: { onDone: (id: string) => void }) {
         <button className="primary" disabled={run.isPending || !list.length} onClick={() => run.mutate()}>
           {run.isPending ? '계산 중…' : '$10,000로 시험해 보기'}
         </button>
-        {run.error && <span className="down small">{run.error.message}</span>}
+        {run.error && <span className="bad small">{run.error.message}</span>}
       </div>
     </div>
   )
@@ -161,7 +161,7 @@ function Detail({ id, info }: { id: string; info?: StrategyInfo }) {
         <div className="muted" style={{ marginTop: 8 }}>
           <Term k="그냥 들고 있었다면" /> {money(m.benchmark_final_equity)} ({percent(m.benchmark_total_return)})
         </div>
-        <div className={won ? 'up' : 'warn'} style={{ marginTop: 6, fontWeight: 600 }}>
+        <div className={won ? 'ok' : 'warn'} style={{ marginTop: 6, fontWeight: 600 }}>
           {won ? '👍 그냥 들고 있는 것보다 결과가 좋았어요.' : '그냥 들고 있는 게 더 많이 벌었어요.'}{' '}
           {Number(m.max_drawdown) > Number(m.benchmark_max_drawdown)
             ? `${won ? '게다가' : '대신'} 가장 크게 떨어진 폭은 ${abs(m.max_drawdown)}로, 그냥 보유(${abs(m.benchmark_max_drawdown)})보다 작았어요.`
@@ -223,7 +223,7 @@ function Detail({ id, info }: { id: string; info?: StrategyInfo }) {
         <ul className="trades">
           {[...data.fills].reverse().map((f) => (
             <li key={`${f.fill_date}-${f.side}`}>
-              <span className={`side ${f.side === 'BUY' ? 'up' : 'down'}`}>{f.side === 'BUY' ? '샀어요' : '팔았어요'}</span>
+              <span className={`side ${f.side === 'BUY' ? 'rise' : 'fall'}`}>{f.side === 'BUY' ? '샀어요' : '팔았어요'}</span>
               <div>
                 <div>
                   {f.qty}주 · 한 주 {money(f.price)}
