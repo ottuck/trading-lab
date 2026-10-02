@@ -268,12 +268,13 @@ def event_message(
             if buys + sells
             else "이번 주 거래는 없었어요"
         )
-        if week > hold:
+        gap = week - hold  # 0.1%p 안쪽은 비슷하다고 본다 (현금 조금·수수료 차이)
+        if gap > Decimal("0.001"):
             verdict = "이번 주는 그냥 들고 있을 때보다 나았어요."
-        elif week < hold:
+        elif gap < Decimal("-0.001"):
             verdict = "이번 주는 그냥 들고 있는 게 더 나았어요."
         else:
-            verdict = "이번 주는 그냥 들고 있을 때와 같았어요."
+            verdict = "이번 주는 그냥 들고 있을 때와 비슷했어요."
         return Message(
             "📊",
             f"이번 주 정리 · {sym}",
