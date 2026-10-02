@@ -5,6 +5,7 @@ import { BacktestView } from './components/BacktestView'
 import { Brand, ThemeMenu } from './components/Brand'
 import { Home } from './components/Dashboard'
 import { HelpButton } from './components/Help'
+import { MeView } from './components/MeView'
 import { SettingsView } from './components/SettingsView'
 import { ago } from './format'
 
@@ -15,9 +16,15 @@ const TABS = {
 } as const
 type Tab = keyof typeof TABS
 
-function useHashTab(): [Tab, (t: Tab) => void] {
-  const read = () => (location.hash.slice(1) in TABS ? (location.hash.slice(1) as Tab) : 'dashboard')
-  const [tab, setTab] = useState<Tab>(read)
+// 탭 밖의 화면: 질문으로 나 만들기 (#me)
+type Page = Tab | 'me'
+
+function useHashTab(): [Page, (t: Tab) => void] {
+  const read = (): Page => {
+    const h = location.hash.slice(1)
+    return h === 'me' || h in TABS ? (h as Page) : 'dashboard'
+  }
+  const [tab, setTab] = useState<Page>(read)
   useEffect(() => {
     const onHash = () => setTab(read())
     window.addEventListener('hashchange', onHash)
@@ -88,10 +95,19 @@ export default function App() {
       <main>
         {bots.error && <div className="alert">봇 정보를 불러오지 못했습니다: {bots.error.message}</div>}
         {tab === 'dashboard' && bots.data && !bots.data.length && (
-          <section className="card muted">아직 봇이 없어요. 설정 탭에서 만들어 주세요.</section>
+          <section className="card me-empty">
+            <div>
+              <b>나처럼 투자하는 봇을 만들어 볼까요?</b>
+              <p className="muted">질문 5개에 답하면 지난 10년을 &quot;매달 그냥 사기&quot;와 나란히 보여드려요.</p>
+            </div>
+            <button className="primary" onClick={() => (location.hash = 'me')}>
+              질문으로 나 만들기
+            </button>
+          </section>
         )}
         {tab === 'dashboard' && !!bots.data?.length && <Home bots={bots.data} />}
         {tab === 'backtest' && <BacktestView />}
+        {tab === 'me' && <MeView />}
         {tab === 'settings' && bots.data && <SettingsView bots={bots.data} />}
       </main>
     </>
