@@ -1359,3 +1359,16 @@ button.bot-item.active {
     display: none;
   }
 }
+
+/* 체크박스 한 줄 (예: 만들면 바로 시작) */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.toggle input {
+  accent-color: var(--accent);
+}
