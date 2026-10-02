@@ -21,7 +21,7 @@ from quant_lab.adapters.toss.client import TossAuthError, TossError, TossForbidd
 from quant_lab.application.bar_sync import DEFAULT_SETTLE
 from quant_lab.application.market import MarketData
 from quant_lab.application.weekly import is_week_end, weekly_summary
-from quant_lab.domain.bars import TradingCalendar, check_daily_bars, is_completed
+from quant_lab.domain.bars import TradingCalendar, check_daily_bars, is_completed, outlier_limit
 from quant_lab.domain.bot import BotState
 from quant_lab.domain.portfolio import Portfolio, money
 from quant_lab.domain.strategy import STRATEGIES, Strategy
@@ -38,6 +38,7 @@ from quant_lab.persistence.bots import (
     save_account,
     set_bot_state,
 )
+from quant_lab.persistence.market_info import leverage_of
 from quant_lab.persistence.models import BotRow, DecisionRow, RunRow, SimOrderRow
 
 MODE = "DRY_RUN"
@@ -213,7 +214,7 @@ def _evaluate(
         last = bars[-1].session_date if bars else None
         raise _Skip(f"{target} 일봉이 아직 없습니다 (마지막 {last})")
     window = bars[-(strategy.warmup + 2) :]
-    issues = check_daily_bars(window, calendar)
+    issues = check_daily_bars(window, calendar, outlier_limit(leverage_of(session, bot.symbol)))
     if issues:
         raise _Skip(f"판단 구간 일봉 문제: {issues[0].kind} {issues[0].session_date}")
 

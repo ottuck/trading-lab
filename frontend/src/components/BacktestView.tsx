@@ -6,9 +6,8 @@ import { kstTime, money, percent, signedMoney, tone } from '../format'
 import { strategyTitle, useStrategies } from '../strategies'
 import { cssVar, useTheme } from '../theme'
 import { Term } from './Help'
+import { SymbolPicker } from './SymbolPicker'
 
-// 관심 종목 (Worker가 매일 가격을 갱신하는 목록과 같다)
-const SYMBOLS = ['QQQ', 'VOO', 'QLD', 'TQQQ', 'SOXL', 'NVDA', 'GLD', 'MAGS', 'EWY', 'EWJ']
 const PERIODS = [
   { label: '최근 3년', years: 3 },
   { label: '최근 5년', years: 5 },
@@ -73,14 +72,7 @@ function RunForm({ onDone }: { onDone: (id: string) => void }) {
         </div>
         <StrategyPicker list={list} value={strategy} onChange={setStrategy} />
       </div>
-      <div className="controls">
-        <span className="label">어떤 종목을?</span>
-        {SYMBOLS.map((s) => (
-          <button key={s} className={`seg ${s === symbol ? 'active' : ''}`} onClick={() => setSymbol(s)}>
-            {s}
-          </button>
-        ))}
-      </div>
+      <SymbolPicker label="어떤 종목을?" value={symbol} onChange={setSymbol} />
       <div className="controls">
         <span className="label">언제부터?</span>
         {PERIODS.map((p) => (
