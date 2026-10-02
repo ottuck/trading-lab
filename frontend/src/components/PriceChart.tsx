@@ -12,6 +12,7 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { api, type Bar, type Bot } from '../api'
 import { sourceLabel } from '../source'
+import { cssVar, useTheme } from '../theme'
 
 function sma(bars: Bar[], n: number) {
   const out: { time: Time; value: number }[] = []
@@ -24,10 +25,6 @@ function sma(bars: Bar[], n: number) {
   return out
 }
 
-function cssVar(name: string) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-}
-
 const RANGES = [
   { label: '3개월', days: 63 },
   { label: '6개월', days: 126 },
@@ -38,6 +35,7 @@ const RANGES = [
 export function PriceChart({ bot }: { bot: Bot }) {
   const el = useRef<HTMLDivElement>(null)
   const [days, setDays] = useState(252)
+  const { theme } = useTheme()
   const bars = useQuery({ queryKey: ['bars', bot.symbol], queryFn: () => api.bars(bot.symbol) })
   const decisions = useQuery({ queryKey: ['decisions', bot.id], queryFn: () => api.decisions(bot.id) })
   const orders = useQuery({ queryKey: ['orders', bot.id], queryFn: () => api.orders(bot.id) })
@@ -48,7 +46,7 @@ export function PriceChart({ bot }: { bot: Bot }) {
     const shown = bars.data.slice(-days)
     const from = shown[0].date
     const text = cssVar('--muted')
-    const grid = 'rgba(255,255,255,0.05)'
+    const grid = cssVar('--chart-grid')
     const up = cssVar('--ok')
     const down = cssVar('--bad')
     const chart = createChart(el.current, {
@@ -58,7 +56,7 @@ export function PriceChart({ bot }: { bot: Bot }) {
         textColor: text,
         fontFamily: 'Pretendard Variable, system-ui, sans-serif',
       },
-      crosshair: { vertLine: { color: '#4ea1ff55' }, horzLine: { color: '#4ea1ff55' } },
+      crosshair: { vertLine: { color: cssVar('--chart-cross') }, horzLine: { color: cssVar('--chart-cross') } },
       grid: { vertLines: { color: grid }, horzLines: { color: grid } },
       timeScale: { borderColor: grid },
       rightPriceScale: { borderColor: grid },
@@ -122,7 +120,7 @@ export function PriceChart({ bot }: { bot: Bot }) {
     createSeriesMarkers(candles, markers)
     chart.timeScale().fitContent()
     return () => chart.remove()
-  }, [bars.data, decisions.data, orders.data, bot.strategy, bot.params, days])
+  }, [bars.data, decisions.data, orders.data, bot.strategy, bot.params, days, theme])
 
   const last = bars.data?.at(-1)
   return (
