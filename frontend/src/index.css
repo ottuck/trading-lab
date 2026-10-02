@@ -584,13 +584,6 @@ table.compact td {
   font-size: 12px;
   color: var(--faint);
 }
-.bt-summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 8px 32px;
-  margin-top: 12px;
-}
 
 /* ---------- 쉬운 UX 구성 요소 ---------- */
 button.ghost {
@@ -706,7 +699,7 @@ fieldset.plain:disabled {
 /* 전략 고르기 카드 */
 .pick-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;
 }
 button.pick {
@@ -735,78 +728,6 @@ button.pick.active {
 .pick-meta {
   color: var(--faint);
   font-size: 12px;
-}
-
-/* 시험 결과 */
-.verdict {
-  padding: 16px;
-  border-radius: 10px;
-  background: var(--surface);
-}
-.metric-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 14px 18px;
-}
-.metric {
-  display: grid;
-  gap: 2px;
-}
-
-/* 목록형 (모바일에서도 가로로 넘치지 않음) */
-.activity,
-.trades,
-.history {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-}
-.activity li,
-.trades li,
-.history li {
-  display: grid;
-  gap: 10px;
-  align-items: start;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
-}
-.activity li:last-child,
-.trades li:last-child,
-.history li:last-child {
-  border-bottom: 0;
-}
-.activity li {
-  grid-template-columns: 24px 1fr;
-}
-.activity .icon {
-  font-size: 16px;
-}
-.activity .title {
-  font-weight: 500;
-}
-.activity .body {
-  white-space: pre-line;
-}
-.trades li {
-  grid-template-columns: 64px 1fr auto;
-}
-.trades .side {
-  font-weight: 600;
-}
-.trades .pnl {
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.history li {
-  grid-template-columns: 1fr auto;
-  cursor: pointer;
-  padding: 10px 8px;
-  border-radius: 8px;
-}
-.history li:hover,
-.history li.selected {
-  background: var(--hover);
 }
 
 /* 레버리지 배수 표시 */
@@ -1370,23 +1291,125 @@ button.bot-item.active {
   cursor: pointer;
 }
 .toggle input {
-  accent-color: var(--accent);
+  accent-color: var(--ink);
 }
 
-/* 설정: 봇 고르기·이름·봇 관리 */
-.bot-chips .chip-sub {
-  margin-left: 4px;
-  font-weight: 500;
-  opacity: 0.6;
+/* ---------- 설정 ---------- */
+/* Vercel식: 제목 자리의 봇 바꾸기 메뉴, 왼쪽 섹션 설명·오른쪽 입력, 저장 하나, 맨 아래 위험 영역 */
+.settings {
+  max-width: 960px;
 }
-.name-row {
+.settings-head {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 20px;
+}
+.settings-head p {
+  margin: 0;
+}
+.switcher {
+  position: relative;
+  justify-self: start;
+}
+button.switcher-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px 2px 0;
+  border: 0;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+button.switcher-btn:hover:not(:disabled) {
+  background: none;
+  color: var(--muted);
+}
+.switcher-btn svg {
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+}
+.switcher .menu {
+  left: 0;
+  right: auto;
+  min-width: 220px;
+}
+.switcher .menu button {
+  justify-content: space-between;
+}
+.set-section {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 12px 40px;
+  padding-block: 28px;
+  border-top: 1px solid var(--border);
+}
+.set-label h2 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.set-label p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.set-body {
+  min-width: 0;
+}
+.save-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 12px;
-}
-.danger-zone {
-  margin-top: 8px;
-  padding-top: 16px;
+  gap: 8px 16px;
+  padding-block: 20px 28px;
   border-top: 1px solid var(--border);
+}
+.save-bar .toggle {
+  flex-basis: 100%;
+}
+.set-log .log-item:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.danger-title {
+  margin-top: 40px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--bad);
+}
+.danger-box {
+  border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent);
+  border-radius: 10px;
+  background: var(--card);
+}
+.danger-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+}
+.danger-row + .danger-row {
+  border-top: 1px solid color-mix(in srgb, var(--bad) 20%, transparent);
+}
+.danger-row .title {
+  font-weight: 600;
+}
+.danger-row p {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.danger-row button {
+  flex: none;
+}
+@media (max-width: 760px) {
+  .set-section {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .danger-row {
+    flex-wrap: wrap;
+  }
 }

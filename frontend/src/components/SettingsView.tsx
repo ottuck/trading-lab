@@ -1,78 +1,119 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { api, botApi, type Bot } from '../api'
 import { ago, money } from '../format'
 import { closeNewBot, selectBot, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
-import { strategyTitle, useStrategies } from '../strategies'
+import { useStrategies } from '../strategies'
 import { toConfig, toDraft, type Draft } from '../botConfig'
-import { ConfigFields } from './BotConfigFields'
+import { useDismiss } from '../useDismiss'
+import { StrategyFields, TradeFields } from './BotConfigFields'
 import { SymbolPicker } from './SymbolPicker'
+
+/* Vercel식 설정: 왼쪽에 섹션 제목·설명, 오른쪽에 입력. 섹션은 가는 선으로 나누고 저장은 맨 아래 하나,
+   되돌릴 수 없는 동작은 맨 아래 빨간 테두리 영역에 따로 둔다. */
+
+function Section({ title, desc, children }: { title: string; desc?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section className="set-section">
+      <div className="set-label">
+        <h2>{title}</h2>
+        {desc && <p>{desc}</p>}
+      </div>
+      <div className="set-body">{children}</div>
+    </section>
+  )
+}
+
+/** 제목 자리의 봇 바꾸기 메뉴: "qqq-sma 설정 ▾" */
+function Switcher({ bots, current, creating }: { bots: Bot[]; current?: Bot; creating: boolean }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useDismiss(open, () => setOpen(false), ref)
+  return (
+    <div className="switcher" ref={ref}>
+      <button className="switcher-btn" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen(!open)} disabled={!bots.length}>
+        {creating ? '새 봇 만들기' : `${current?.name} 설정`}
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M7 10l5 5 5-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && (
+        <div className="menu" role="menu">
+          {bots.map((b) => (
+            <button
+              key={b.id}
+              role="menuitemradio"
+              aria-checked={!creating && b.id === current?.id}
+              className={!creating && b.id === current?.id ? 'active' : ''}
+              onClick={() => {
+                setOpen(false)
+                closeNewBot()
+                selectBot(b.id)
+              }}
+            >
+              {b.name}
+              <span className="faint small">{b.symbol}</span>
+            </button>
+          ))}
+          <hr />
+          <button
+            role="menuitem"
+            onClick={() => {
+              setOpen(false)
+              startNewBot()
+            }}
+          >
+            + 새 봇 만들기
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function History({ botId }: { botId: number }) {
   const { data } = useQuery({ queryKey: ['history', botId], queryFn: () => api.activity(botId, 'config_change') })
   if (!data?.length) return null
   return (
-    <>
-      <h3>바꾼 기록</h3>
-      <ul className="activity">
+    <Section title="바꾼 기록" desc="설정을 언제 어떻게 바꿨는지 남겨 둬요.">
+      <div className="set-log">
         {data.map((a) => (
-          <li key={a.id}>
-            <span className="icon">{a.icon}</span>
+          <div key={a.id} className="log-item">
+            <span className="pip" />
             <div>
               <div className="title">{a.title}</div>
-              {a.body && <div className="muted small body">{a.body}</div>}
-              <div className="faint small">{ago(a.at)}</div>
+              {a.body && <div className="body">{a.body}</div>}
             </div>
-          </li>
+            <time dateTime={a.at}>{ago(a.at)}</time>
+          </div>
         ))}
-      </ul>
-    </>
+      </div>
+    </Section>
   )
 }
 
-function sameStrategy(d: Draft, bot: Bot) {
-  return d.strategy === bot.strategy && JSON.stringify(d.params) === JSON.stringify(bot.params)
-}
-
-function NameEditor({ bot }: { bot: Bot }) {
+function NameField({ bot }: { bot: Bot }) {
   const qc = useQueryClient()
-  const [editing, setEditing] = useState(false)
   const [name, setName] = useState(bot.name)
   const rename = useMutation({
-    mutationFn: () => botApi.rename(bot.id, name),
+    mutationFn: () => botApi.rename(bot.id, name.trim()),
     onSuccess: () => {
-      setEditing(false)
       void qc.invalidateQueries({ queryKey: ['bots'] })
       void qc.invalidateQueries({ queryKey: ['history', bot.id] })
     },
   })
-  if (!editing) {
-    return (
-      <div className="name-row">
-        <h2>{bot.name}</h2>
-        <button className="link" onClick={() => setEditing(true)}>
+  const changed = name.trim() !== bot.name
+  return (
+    <Section title="이름" desc="봇 목록과 텔레그램 알림에 보이는 이름이에요.">
+      <div className="controls">
+        <input id="bot-name" value={name} onChange={(e) => setName(e.target.value)} size={18} aria-label="봇 이름" />
+        <button disabled={!changed || !name.trim() || rename.isPending} onClick={() => rename.mutate()}>
           이름 바꾸기
         </button>
+        {rename.isSuccess && !changed && <span className="ok small">바꿨어요.</span>}
+        {rename.error && <span className="bad small">{rename.error.message}</span>}
       </div>
-    )
-  }
-  return (
-    <div className="name-row">
-      <input value={name} onChange={(e) => setName(e.target.value)} size={14} autoFocus />
-      <button className="primary" disabled={rename.isPending || !name.trim()} onClick={() => rename.mutate()}>
-        저장
-      </button>
-      <button
-        className="ghost"
-        onClick={() => {
-          setName(bot.name)
-          setEditing(false)
-        }}
-      >
-        취소
-      </button>
-      {rename.error && <span className="bad small">{rename.error.message}</span>}
-    </div>
+    </Section>
   )
 }
 
@@ -96,12 +137,21 @@ function DangerZone({ bot, others }: { bot: Bot; others: Bot[] }) {
         '설정과 실행 상태는 그대로예요. 되돌릴 수 없어요.',
     )
   return (
-    <div className="danger-zone">
-      <h3>봇 관리</h3>
-      <div className="controls">
+    <div className="danger-box">
+      <div className="danger-row">
+        <div>
+          <div className="title">처음부터 다시 시작</div>
+          <p>모의 잔고를 시작 금액 {money(bot.account.initial_cash)}로 되돌리고 판단·거래 기록을 지워요. 설정은 그대로예요.</p>
+        </div>
         <button disabled={reset.isPending} onClick={() => confirmReset() && reset.mutate()}>
-          처음부터 다시 시작
+          다시 시작
         </button>
+      </div>
+      <div className="danger-row">
+        <div>
+          <div className="title">봇 삭제</div>
+          <p>이 봇과 모든 기록을 지워요. 되돌릴 수 없어요.</p>
+        </div>
         <button
           className="danger"
           disabled={remove.isPending}
@@ -109,15 +159,18 @@ function DangerZone({ bot, others }: { bot: Bot; others: Bot[] }) {
         >
           봇 삭제
         </button>
-        {error && <span className="bad small">{error.message}</span>}
       </div>
+      {error && <div className="danger-row bad small">{error.message}</div>}
     </div>
   )
 }
 
+function sameStrategy(d: Draft, bot: Bot) {
+  return d.strategy === bot.strategy && JSON.stringify(d.params) === JSON.stringify(bot.params)
+}
+
 function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
   const qc = useQueryClient()
-  const { byName } = useStrategies()
   const [draft, setDraft] = useState(() => toDraft(bot))
   const save = useMutation({
     mutationFn: () => botApi.updateConfig(bot.id, toConfig(draft, bot)),
@@ -128,31 +181,31 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
   })
   const changing = !sameStrategy(draft, bot)
   return (
-    <section className="card stack">
-      <div className="panel-head">
-        <NameEditor key={bot.name} bot={bot} />
-        <span className="muted small">
-          {bot.symbol} · {strategyTitle(byName[bot.strategy], bot.strategy)} · 시작 금액 {money(bot.account.initial_cash)}
-        </span>
-      </div>
-      <ConfigFields draft={draft} onChange={setDraft} />
-      {changing && bot.account.qty > 0 && (
-        <div className="notice">
-          지금 {bot.symbol} {bot.account.qty}주를 들고 있어요. 저장하면 다음 판단부터 새 전략으로 봐요. 새 전략이 &quot;팔
-          때&quot;라고 보면 그다음 장이 열릴 때 바로 팔아요.
-        </div>
-      )}
-      <div className="controls">
+    <>
+      <Section title="전략" desc="언제 사고팔지 정해요. 돌아가는 중에도 바꿀 수 있고, 다음 판단부터 적용돼요.">
+        <StrategyFields draft={draft} onChange={setDraft} />
+        {changing && bot.account.qty > 0 && (
+          <div className="notice">
+            지금 {bot.symbol} {bot.account.qty}주를 들고 있어요. 저장하면 다음 판단부터 새 전략으로 봐요. 새 전략이 &quot;팔
+            때&quot;라고 보면 그다음 장이 열릴 때 바로 팔아요.
+          </div>
+        )}
+      </Section>
+      <Section title="체결과 투자 금액" desc="모의 체결을 얼마나 보수적으로 볼지, 한 번에 얼마까지 넣을지 정해요.">
+        <TradeFields draft={draft} onChange={setDraft} />
+      </Section>
+      <div className="save-bar">
         <button className="primary" disabled={save.isPending} onClick={() => save.mutate()}>
           저장
         </button>
         {save.isSuccess && <span className="ok small">저장했어요. 다음 판단부터 적용돼요.</span>}
         {save.error && <span className="bad small">{save.error.message}</span>}
-        {save.isIdle && <span className="faint small">돌아가는 중에도 바꿀 수 있어요. 다음 판단부터 적용돼요.</span>}
       </div>
+      <NameField key={bot.name} bot={bot} />
       <History botId={bot.id} />
+      <h2 className="danger-title">되돌릴 수 없는 동작</h2>
       <DangerZone bot={bot} others={others} />
-    </section>
+    </>
   )
 }
 
@@ -191,27 +244,39 @@ function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
     },
   })
   return (
-    <section className="card stack">
-      <div className="card-title" style={{ marginBottom: 0 }}>
-        새 봇 만들기 {seed.strategy && <span className="sub">시험해 본 전략과 종목으로 채워 뒀어요</span>}
-      </div>
-      <div className="form">
-        <label>
-          이름
-          <input value={name} onChange={(e) => setCustomName(e.target.value)} size={14} />
+    <>
+      <Section title="종목" desc="이 봇이 사고팔 미국 주식이나 ETF예요.">
+        <SymbolPicker label="" value={symbol} onChange={setSymbol} />
+      </Section>
+      <Section title="전략" desc="언제 사고팔지 정해요. 나중에 설정에서 바꿀 수 있어요.">
+        <StrategyFields draft={draft} onChange={setDraft} />
+      </Section>
+      <Section title="체결과 투자 금액" desc="모의 체결을 얼마나 보수적으로 볼지, 한 번에 얼마까지 넣을지 정해요.">
+        <TradeFields draft={draft} onChange={setDraft} />
+      </Section>
+      <Section title="이름과 시작 금액" desc="모의 투자는 실제 계좌와 무관해요. 시작 금액은 나중에 바꿀 수 없어요.">
+        <div className="form" style={{ margin: 0 }}>
+          <label>
+            이름
+            <input id="new-bot-name" value={name} onChange={(e) => setCustomName(e.target.value)} size={16} />
+          </label>
+          <label>
+            시작 금액 ($)
+            <input
+              id="new-bot-cash"
+              value={cash}
+              inputMode="numeric"
+              onChange={(e) => setCash(e.target.value.replace(/[^0-9]/g, ''))}
+              size={8}
+            />
+          </label>
+        </div>
+      </Section>
+      <div className="save-bar">
+        <label className="toggle">
+          <input id="start-now" type="checkbox" checked={startNow} onChange={(e) => setStartNow(e.target.checked)} />
+          만들면 바로 모의 투자 시작
         </label>
-        <label>
-          시작 금액 $
-          <input value={cash} inputMode="numeric" onChange={(e) => setCash(e.target.value.replace(/[^0-9]/g, ''))} size={8} />
-        </label>
-      </div>
-      <SymbolPicker label="종목" value={symbol} onChange={setSymbol} />
-      <ConfigFields draft={draft} onChange={setDraft} />
-      <label className="toggle">
-        <input type="checkbox" checked={startNow} onChange={(e) => setStartNow(e.target.checked)} />
-        만들면 바로 모의 투자 시작
-      </label>
-      <div className="controls">
         <button className="primary" disabled={create.isPending || !name.trim() || !cash} onClick={() => create.mutate()}>
           {startNow ? '만들고 시작하기' : '만들기'}
         </button>
@@ -222,39 +287,33 @@ function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
         )}
         {create.error && <span className="bad small">{create.error.message}</span>}
       </div>
-    </section>
+    </>
   )
 }
 
-/** 설정: 홈에서 고른 봇 하나를 바꾼다. 위쪽에서 다른 봇을 고르거나 새 봇을 만든다. */
+/** 설정: 홈에서 고른 봇 하나를 바꾼다. 제목의 메뉴로 다른 봇을 고르거나 새 봇을 만든다. */
 export function SettingsView({ bots }: { bots: Bot[] }) {
   const seed = useNewBotSeed()
   const selected = useSelectedBot(bots)
+  const { byName } = useStrategies()
   const creating = seed !== null || !bots.length
   return (
-    <>
-      <div className="controls bot-chips">
-        {bots.map((b) => (
-          <button
-            key={b.id}
-            className={`seg ${!creating && b.id === selected?.id ? 'active' : ''}`}
-            onClick={() => {
-              closeNewBot()
-              selectBot(b.id)
-            }}
-          >
-            {b.name} <span className="chip-sub">{b.symbol}</span>
-          </button>
-        ))}
-        <button className={`seg ${creating ? 'active' : ''}`} onClick={() => startNewBot()}>
-          + 새 봇
-        </button>
+    <div className="settings">
+      <div className="settings-head">
+        <Switcher bots={bots} current={selected} creating={creating} />
+        <p className="muted small">
+          {creating
+            ? seed?.strategy
+              ? '시험해 본 전략과 종목으로 채워 뒀어요.'
+              : '새 모의 투자 봇을 만들어요.'
+            : `${selected.symbol} · ${byName[selected.strategy]?.nickname ?? selected.strategy} · 시작 금액 ${money(selected.account.initial_cash)}`}
+        </p>
       </div>
       {creating ? (
         <NewBotForm key={JSON.stringify(seed)} seed={seed ?? {}} taken={bots.map((b) => b.name)} />
       ) : (
-        selected && <BotSettings key={selected.id} bot={selected} others={bots.filter((b) => b.id !== selected.id)} />
+        <BotSettings key={selected.id} bot={selected} others={bots.filter((b) => b.id !== selected.id)} />
       )}
-    </>
+    </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { api, type ActivityItem, type Bot, type BotState, type CommandKind, type EquityPoint, type Order } from '../api'
 import { ago, kstTime, money, percent, signedMoney, tone } from '../format'
 import { leverageOf, useInstruments } from '../instruments'
@@ -8,6 +8,7 @@ import { useStrategies } from '../strategies'
 import { Term } from './Help'
 import { selectBot, startNewBot, useSelectedBot } from '../selectedBot'
 import { PriceChart } from './PriceChart'
+import { useDismiss } from '../useDismiss'
 import { LeverageNotice } from './SymbolPicker'
 
 const STATE: Record<BotState, { label: string; dot: string }> = {
@@ -62,21 +63,6 @@ function useEquity(botId: number) {
 
 function useOrders(botId: number) {
   return useQuery({ queryKey: ['orders', botId], queryFn: () => api.orders(botId) })
-}
-
-/** 바깥을 누르거나 Esc를 누르면 닫히는 메뉴·서랍. */
-function useDismiss(open: boolean, close: () => void, ref?: React.RefObject<HTMLElement | null>) {
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close()
-    const onDown = (e: MouseEvent) => ref?.current && !ref.current.contains(e.target as Node) && close()
-    document.addEventListener('keydown', onKey)
-    document.addEventListener('mousedown', onDown)
-    return () => {
-      document.removeEventListener('keydown', onKey)
-      document.removeEventListener('mousedown', onDown)
-    }
-  }, [open, close, ref])
 }
 
 /* ---------- 봇 제어: 멈추기·시작 하나 + 설정 ---------- */

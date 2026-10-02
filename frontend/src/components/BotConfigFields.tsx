@@ -3,35 +3,44 @@ import { presetOf, SLIPPAGE_CHOICES, useStrategies } from '../strategies'
 import { Term } from './Help'
 import { StrategyPicker } from './StrategyPicker'
 
-/** 봇 설정 입력칸(전략·반응 속도·체결 가격 가정·최대 투자 금액). 설정 화면과 새 봇 만들기에서 같이 쓴다. */
-export function ConfigFields({ draft, onChange }: { draft: Draft; onChange: (d: Draft) => void }) {
+type Props = { draft: Draft; onChange: (d: Draft) => void }
+
+/** 전략 카드와 반응 속도. 설정 화면과 새 봇 만들기에서 같이 쓴다. */
+export function StrategyFields({ draft, onChange }: Props) {
   const { list, byName } = useStrategies()
   const info = byName[draft.strategy]
   const current = presetOf(info, draft.params)
-  const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch })
   return (
     <div className="stack">
-      <div>
-        <div className="label" style={{ marginBottom: 6 }}>
-          어떤 전략으로 할까요?
-        </div>
-        <StrategyPicker
-          list={list}
-          value={draft.strategy}
-          onChange={(name) => set({ strategy: name, params: byName[name]?.default_params ?? {} })}
-        />
-      </div>
+      <StrategyPicker
+        list={list}
+        value={draft.strategy}
+        onChange={(name) => onChange({ ...draft, strategy: name, params: byName[name]?.default_params ?? {} })}
+      />
       {info && info.presets.length > 1 && (
         <div className="controls">
           <span className="label">반응 속도</span>
           {info.presets.map((p) => (
-            <button key={p.key} className={`seg ${current?.key === p.key ? 'active' : ''}`} onClick={() => set({ params: p.params })}>
+            <button
+              key={p.key}
+              className={`seg ${current?.key === p.key ? 'active' : ''}`}
+              onClick={() => onChange({ ...draft, params: p.params })}
+            >
               {p.label}
             </button>
           ))}
           {!current && <span className="faint small">직접 설정한 값 사용 중</span>}
         </div>
       )}
+    </div>
+  )
+}
+
+/** 체결 가격 가정과 최대 투자 금액. */
+export function TradeFields({ draft, onChange }: Props) {
+  const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch })
+  return (
+    <div className="stack">
       <div className="controls">
         <span className="label">
           <Term k="체결 가격 가정" />
