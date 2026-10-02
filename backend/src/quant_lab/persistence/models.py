@@ -116,6 +116,7 @@ class BotAccountRow(Base):
     avg_cost: Mapped[Decimal] = mapped_column(PRICE)
     realized_pnl: Mapped[Decimal] = mapped_column(PRICE)
     contributed: Mapped[Decimal] = mapped_column(PRICE)  # 넣은 돈 (시작 금액 + 입금)
+    reserve: Mapped[Decimal] = mapped_column(PRICE, server_default="0")  # 고점 때 모아 둔 돈
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
