@@ -30,7 +30,7 @@ from quant_lab.domain.bars import (
 )
 from quant_lab.domain.bot import BotState
 from quant_lab.domain.portfolio import Portfolio, money
-from quant_lab.domain.strategy import STRATEGIES, Strategy, deposit_plan, month_key
+from quant_lab.domain.strategy import STRATEGIES, Strategy, deposit_plan, min_bars, month_key
 from quant_lab.domain.trading import Action, DecisionRecord, Fill, decide_basket, execute
 from quant_lab.persistence.backtests import to_jsonable
 from quant_lab.persistence.bars import load_daily_bars
@@ -339,7 +339,7 @@ def _evaluate(
     histories = {s: series[s] for s in active}
     decisions = decide_basket(strategy, histories, active, pf, costs, limits, fresh)
     if not decisions:
-        raise _Skip(f"봉이 부족합니다 (필요 {strategy.warmup}개)")
+        raise _Skip(f"봉이 부족합니다 (필요 {min_bars(strategy)}개)")
     snapshot = {
         "name": bot.strategy,
         "params": bot.params,
