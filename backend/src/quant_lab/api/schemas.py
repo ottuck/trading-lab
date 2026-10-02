@@ -208,6 +208,20 @@ class PresetView(BaseModel):
     params: dict[str, int]
 
 
+class ChoiceOption(BaseModel):
+    value: int
+    label: str
+
+
+class ChoiceView(BaseModel):
+    """프리셋과 따로 고르는 규칙 (예: 고점에 쉬기)."""
+
+    key: str
+    label: str
+    options: list[ChoiceOption]
+    hint: str
+
+
 class StrategyInfo(BaseModel):
     """화면용 전략 소개 (별명·쉬운 설명·성격·프리셋)."""
 
@@ -221,6 +235,7 @@ class StrategyInfo(BaseModel):
     default_params: dict[str, int]
     accumulates: bool = False  # 매달 입금하고 사 모으는 전략 (팔지 않음)
     preset_label: str = "반응 속도"
+    choices: list[ChoiceView] = []
 
 
 class ActivityItem(BaseModel):

@@ -1,5 +1,5 @@
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import ROUND_DOWN, Decimal
 from typing import ClassVar
@@ -124,3 +124,7 @@ def test_dip_saver_deposits_monthly_buys_dips_and_never_sells() -> None:
     )  # 시작 금액은 첫날 바로
     # 비교 기준(매달 그냥 사기)도 같은 돈을 넣는다
     assert result.equity[-1].contributed == m.contributed
+
+    # 고점에 쉬지 않기(hot=0): 고점이어도 입금일에 산다
+    eager = run_backtest(bars, replace(s, hot=0), Decimal(500), NO_COST)
+    assert {d.session_date for d in hot} & {f.signal_date for f in eager.fills}

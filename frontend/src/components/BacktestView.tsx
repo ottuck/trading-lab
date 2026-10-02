@@ -3,11 +3,12 @@ import { ColorType, createChart, LineSeries, type Time } from 'lightweight-chart
 import { useEffect, useRef, useState } from 'react'
 import { backtestApi, type BacktestDetail, type StrategyInfo, type SymbolWeight } from '../api'
 import { money, percent, shares, signedMoney, tone } from '../format'
-import { presetOf, useStrategies } from '../strategies'
+import { useStrategies } from '../strategies'
 import { cssVar, useTheme } from '../theme'
 import { Term } from './Help'
 import { startNewBot } from '../selectedBot'
 import { StrategyPicker } from './StrategyPicker'
+import { PresetFields } from './PresetFields'
 import { basketLabel } from '../basket'
 import { BasketPicker, SymbolPicker } from './SymbolPicker'
 
@@ -81,20 +82,7 @@ function RunForm({
       </div>
       <div className="stack">
         <StrategyPicker list={list} value={strategy} onChange={setStrategy} />
-        {info && info.presets.length > 1 && (
-          <div className="controls">
-            <span className="label">{info.preset_label}</span>
-            {info.presets.map((p) => (
-              <button
-                key={p.key}
-                className={`seg ${presetOf(info, params)?.key === p.key ? 'active' : ''}`}
-                onClick={() => setPicked({ ...picked, [strategy]: p.params })}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        )}
+        {info && <PresetFields info={info} params={params} onChange={(p) => setPicked({ ...picked, [strategy]: p })} />}
         {info?.accumulates ? (
           <BasketPicker value={basket} onChange={setBasket} />
         ) : (

@@ -188,6 +188,8 @@ export type StrategyInfo = {
   default_params: Record<string, number>
   accumulates: boolean // 매달 입금하고 사 모으는 전략 (팔지 않음)
   preset_label: string
+  // 프리셋과 따로 고르는 규칙 (예: 고점에 쉬기). 프리셋을 바꿔도 유지된다.
+  choices: { key: string; label: string; options: { value: number; label: string }[]; hint: string }[]
 }
 
 export type ActivityItem = { id: number; at: string; icon: string; title: string; body: string; level: string }
