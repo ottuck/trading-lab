@@ -1712,3 +1712,54 @@ button.switcher-btn:hover:not(:disabled) {
 .bot-list-head .link + .link {
   margin-left: 14px;
 }
+.me-eyebrow {
+  margin: 8px 0 -8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+.me-points {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+.me-points li {
+  display: grid;
+  gap: 2px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+}
+.me-points b {
+  font-size: 15px;
+  font-weight: 600;
+}
+.me-points span {
+  font-size: 13px;
+  color: var(--muted);
+}
+.me-preview {
+  margin: 0;
+  color: var(--muted);
+}
+.me-preview b {
+  color: var(--text);
+  font-weight: 600;
+}
+.me-limit {
+  margin-top: 8px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.me-limit b {
+  color: var(--text);
+  font-weight: 600;
+}

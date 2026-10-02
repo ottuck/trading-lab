@@ -752,6 +752,7 @@ def strategies() -> list[StrategyInfo]:
                         label=c.label,
                         options=[ChoiceOption(value=v, label=t) for v, t in c.options],
                         hint=c.hint,
+                        requires=c.requires,
                     )
                     for c in info.choices
                 ],

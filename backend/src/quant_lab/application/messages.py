@@ -26,6 +26,9 @@ class Choice:
     label: str
     options: list[tuple[int, str]]
     hint: str = ""
+    requires: str = (
+        ""  # 이 규칙 값이 0이면 보이지 않는다 (예: 떨어졌을 때만 사면 고점에 쉬기는 의미 없음)
+    )
 
 
 @dataclass(frozen=True)
@@ -117,10 +120,17 @@ CATALOG: dict[str, StrategyInfo] = {
         preset_label="매달 넣는 돈",
         choices=[
             Choice(
+                "regular",
+                "사는 때",
+                [(1, "매달"), (0, "떨어졌을 때만")],
+                "떨어졌을 때만 사면 평소엔 넣은 돈을 모아 두기만 해요.",
+            ),
+            Choice(
                 "hot",
                 "고점에 쉬기",
                 [(10, "+10%"), (15, "+15%"), (20, "+20%"), (0, "안 쉼")],
                 "200일 평균보다 이만큼 높으면 그달엔 사지 않고 현금으로 모아 둬요.",
+                requires="regular",
             ),
             Choice(
                 "dip",
@@ -198,6 +208,8 @@ def decision_reason(
                 else "살 현금이 없어 다음 입금을 기다려요."
             )
             return f"{top}보다 {drop:.1f}% 낮아요. {tail}"
+        if not int(p.get("regular", 1)):
+            return "평소엔 사지 않고 모아 둬요. 크게 떨어지면 그때 몰아서 사요."
         hot = float(p.get("hot", 10))
         if hot and up >= hot:
             return f"{avg}보다 {up:.1f}% 높아요. 이번엔 사지 않고 현금으로 모아 둬요."

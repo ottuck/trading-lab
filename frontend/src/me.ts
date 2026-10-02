@@ -4,11 +4,24 @@ import type { SymbolWeight } from './api'
 
 export type Answers = {
   symbols: SymbolWeight[]
-  deposit: number
-  day: number
+  regular: number // 1: 매달 산다, 0: 떨어졌을 때만 산다
+  deposit: number // 투자에 쓰는 돈의 한 달 평균 (매달 사지 않아도)
+  day: number // 0이면 정해진 날 없음 (말일 무렵으로 계산)
   hot: number // 0이면 고점에도 쉬지 않음
   dip: number
 }
+
+export type Step = 'symbols' | 'style' | 'deposit' | 'day' | 'hot' | 'dip'
+
+/** 답에 따라 묻는 질문. 떨어졌을 때만 사면 넣는 날·고점 질문은 의미가 없어 건너뛴다. */
+export function stepsOf(a: Answers): Step[] {
+  return a.regular ? ['symbols', 'style', 'deposit', 'day', 'hot', 'dip'] : ['symbols', 'style', 'deposit', 'dip']
+}
+
+export const STYLES: Option[] = [
+  { value: 1, label: '매달 꾸준히 사요', sub: '월급날처럼 정해진 때에 넣은 만큼 사요' },
+  { value: 0, label: '떨어졌을 때만 몰아서 사요', sub: '평소엔 모아 두고 크게 떨어지면 한꺼번에 사요' },
+]
 
 export type Option = { value: number; label: string; sub?: string }
 
@@ -26,6 +39,7 @@ export const DAYS: Option[] = [
   { value: 21, label: '21일' },
   { value: 25, label: '25일' },
   { value: 28, label: '말일 무렵', sub: '28일' },
+  { value: 0, label: '정해진 날 없어요', sub: '매달 말일 무렵에 넣는 것으로 계산해요' },
 ]
 
 export const HOT: Option[] = [
@@ -41,25 +55,33 @@ export const DIP: Option[] = [
   { value: 20, label: '크게 떨어졌을 때만 사요', sub: '1년 최고가보다 20% 넘게 떨어지면' },
 ]
 
-export const START: Answers = { symbols: [], deposit: 1350, day: 25, hot: 15, dip: 10 }
+export const START: Answers = { symbols: [], regular: 1, deposit: 1350, day: 25, hot: 15, dip: 10 }
 
 /** 답 → dip_saver 파라미터 (high·sma는 고정) */
 export function toParams(a: Answers): Record<string, number> {
-  return { deposit: a.deposit, day: a.day, dip: a.dip, hot: a.hot, high: 252, sma: 200 }
+  return { deposit: a.deposit, day: a.day || 28, dip: a.dip, hot: a.hot, high: 252, sma: 200, regular: a.regular }
 }
 
 const usd = (n: number) => `$${n.toLocaleString('en-US')}`
 
 /** 답을 쉬운 말 몇 문장으로 */
 export function describe(a: Answers): string[] {
-  const day = a.day >= 28 ? '말일 무렵' : `${a.day}일`
+  const when = a.day === 0 ? '매달 한 번' : a.day >= 28 ? '매달 말일 무렵에' : `매달 ${a.day}일에`
   // 종목 이름 뒤 조사는 받침에 따라 달라지므로 받침과 상관없는 말(%로, 에)만 붙인다.
   const target =
     a.symbols.length > 1
       ? `${a.symbols.map((s) => `${s.symbol} ${s.weight}%`).join(' · ')}로 나눠 사요`
       : `모두 ${a.symbols[0]?.symbol ?? ''}에 써요`
+  if (!a.regular)
+    return [
+      `투자에 쓰는 돈을 한 달 평균 ${usd(a.deposit)}씩 모아 두기만 하고, 평소엔 사지 않아요.`,
+      `1년 최고가보다 ${a.dip}% 넘게 떨어지면 모아 둔 돈을 한꺼번에 ${
+        a.symbols.length > 1 ? target : `${a.symbols[0]?.symbol ?? ''}에 써요`
+      }.`,
+      '산 주식은 팔지 않고 계속 모아요.',
+    ]
   return [
-    `매달 ${day}에 ${usd(a.deposit)}씩 넣어 ${target}.`,
+    `${when} ${usd(a.deposit)}씩 넣어 ${target}.`,
     a.hot
       ? `200일 평균보다 ${a.hot}% 넘게 오르면 그달은 사지 않고 현금으로 모아 둬요.`
       : '많이 올라도 쉬지 않고 매달 똑같이 사요.',

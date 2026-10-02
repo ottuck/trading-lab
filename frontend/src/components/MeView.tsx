@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, backtestApi, botApi } from '../api'
 import { money, percent } from '../format'
-import { DAYS, DEPOSITS, DIP, HOT, START, describe, toParams, type Answers, type Option } from '../me'
+import { DAYS, DEPOSITS, DIP, HOT, START, STYLES, describe, stepsOf, toParams, type Answers, type Option } from '../me'
 import { suggestName } from '../basket'
 import { selectBot } from '../selectedBot'
 import { EquityChart } from './BacktestView'
@@ -11,7 +11,6 @@ import { BasketPicker } from './SymbolPicker'
 /* 질문으로 나 만들기: 한 화면에 질문 하나씩 (토스식). 답하면 바로 다음 질문으로 넘어가고,
    마지막에 쉬운 말 요약과 "나처럼 10년 했다면 vs 매달 그냥 사기"를 보여준 뒤 봇으로 시작한다. */
 
-const QUESTIONS = 5
 const YEARS = 10
 
 function tenYearsAgo() {
@@ -35,15 +34,15 @@ function Choices({ options, value, onPick }: { options: Option[]; value: number;
   )
 }
 
-function Question({ n, title, hint, children }: { n: number; title: string; hint?: string; children: React.ReactNode }) {
+function Question({ n, of, title, hint, children }: { n: number; of: number; title: string; hint?: string; children: React.ReactNode }) {
   return (
     <>
-      <div className="me-progress" aria-label={`질문 ${n} / ${QUESTIONS}`}>
+      <div className="me-progress" aria-label={`질문 ${n} / ${of}`}>
         <span className="tnum">
-          {n} / {QUESTIONS}
+          {n} / {of}
         </span>
         <div className="bar">
-          <i style={{ width: `${(n / QUESTIONS) * 100}%` }} />
+          <i style={{ width: `${(n / of) * 100}%` }} />
         </div>
       </div>
       <h1 className="me-q">{title}</h1>
@@ -139,6 +138,9 @@ function Result({ answers, onEdit }: { answers: Answers; onEdit: () => void }) {
               <div className="sub">해마다 평균 {percent(m.benchmark_cagr)}</div>
             </div>
           </div>
+          {m.final_equity === m.benchmark_final_equity && (
+            <p className="me-preview">결과가 매달 그냥 사기와 똑같은 나예요. 이 기간에는 규칙이 사는 때를 바꾸지 않았어요.</p>
+          )}
           <EquityChart detail={data} />
           <p className="faint small">
             둘 다 같은 날 같은 돈({money(m.contributed ?? m.initial_cash)})을 넣었어요. 실제 가격으로 계산했고, 재미로 보는
@@ -165,21 +167,32 @@ function Result({ answers, onEdit }: { answers: Answers; onEdit: () => void }) {
 }
 
 export function MeView() {
-  // 0: 소개, 1~5: 질문, 6: 결과
-  const [step, setStep] = useState(0)
+  // 0: 소개, 1~n: 질문(답에 따라 4~6개), n+1: 결과
+  const [at, setAt] = useState(0)
   const [a, setA] = useState<Answers>(START)
   const [customDeposit, setCustomDeposit] = useState('')
+  const steps = stepsOf(a)
+  const step = at >= 1 && at <= steps.length ? steps[at - 1] : null
   const set = (patch: Partial<Answers>) => setA({ ...a, ...patch })
   // 하나만 고르는 질문은 고르면 바로 다음으로 넘어간다.
   const pick = (patch: Partial<Answers>) => {
     set(patch)
-    setStep(step + 1)
+    setAt(at + 1)
   }
   const total = a.symbols.reduce((sum, s) => sum + s.weight, 0)
-  const back = (
-    <button onClick={() => setStep(step - 1)} disabled={step === 0}>
-      이전
-    </button>
+  const nav = (ready = true) => (
+    <div className="me-nav">
+      <button onClick={() => setAt(at - 1)}>이전</button>
+      <button className="primary" disabled={!ready} onClick={() => setAt(at + 1)}>
+        다음
+      </button>
+    </div>
+  )
+  const q = (title: string, hint: string, body: React.ReactNode, ready = true) => (
+    <Question n={at} of={steps.length} title={title} hint={hint}>
+      {body}
+      {nav(ready)}
+    </Question>
   )
 
   return (
@@ -190,106 +203,113 @@ export function MeView() {
         </button>
       </div>
 
-      {step === 0 && (
+      {at === 0 && (
         <>
-          <h1 className="me-q">나처럼 투자하는 봇을 만들어 볼까요?</h1>
-          <p className="me-hint">
-            질문 {QUESTIONS}개에 답하면 그대로 따라 하는 규칙이 만들어져요. 그 규칙으로 지난 {YEARS}년을 실제 가격으로 계산해 &quot;매달
-            그냥 사기&quot;와 나란히 보여드려요. 실제 계좌는 연결하지 않아요.
+          <p className="me-eyebrow">나 카피 봇</p>
+          <h1 className="me-q">지금부터 당신의 투자 습관을 복사할게요</h1>
+          <p className="me-hint">평소 어떻게 투자하는지 몇 가지만 물어볼게요. 답한 그대로 따라 하는 봇이 만들어져요.</p>
+          <ul className="me-points">
+            <li>
+              <b>1분이면 끝나요</b>
+              <span>질문 4~6개, 고르기만 하면 돼요.</span>
+            </li>
+            <li>
+              <b>정답은 없어요</b>
+              <span>잘하는 투자 말고, 평소 하던 그대로 골라 주세요.</span>
+            </li>
+            <li>
+              <b>계좌는 연결하지 않아요</b>
+              <span>어느 증권사를 쓰든 상관없어요.</span>
+            </li>
+          </ul>
+          <p className="me-preview">
+            다 답하면 지난 {YEARS}년을 실제 가격으로 계산해 <b>나처럼 했다면</b>과 <b>매달 그냥 샀다면</b>을 나란히
+            보여드려요.
           </p>
           <div className="me-nav">
-            <button className="primary" onClick={() => setStep(1)}>
+            <button className="primary" onClick={() => setAt(1)}>
               시작하기
             </button>
+          </div>
+          <div className="me-limit">
+            <b>아직 복사하기 어려운 투자도 있어요.</b> 그때그때 기분이나 뉴스를 보고 사고팔거나, 며칠·몇 주 단위로 자주 사고파는
+            투자는 규칙으로 옮길 수 없어요. &quot;매달 얼마, 많이 오르면 쉬고, 떨어지면 몰아 사기&quot;처럼 말로 정할 수 있는 습관만
+            따라 해요. 파는 습관도 아직 복사하지 않아요 (산 주식은 계속 들고 있어요).
           </div>
         </>
       )}
 
-      {step === 1 && (
-        <Question n={1} title="평소에 어떤 종목을 사나요?" hint="어느 증권사에서 사든 괜찮아요. 평소 사는 그대로 골라 주세요.">
-          <BasketPicker value={a.symbols} onChange={(symbols) => set({ symbols })} />
-          <div className="me-nav">
-            {back}
-            <button className="primary" disabled={!a.symbols.length || total !== 100} onClick={() => setStep(2)}>
-              다음
-            </button>
-          </div>
-        </Question>
-      )}
+      {step === 'symbols' &&
+        q(
+          '평소에 어떤 종목을 사나요?',
+          '어느 증권사에서 사든 괜찮아요. 평소 사는 그대로 골라 주세요.',
+          <BasketPicker value={a.symbols} onChange={(symbols) => set({ symbols })} />,
+          a.symbols.length > 0 && total === 100,
+        )}
 
-      {step === 2 && (
-        <Question n={2} title="한 달에 얼마 정도 넣나요?" hint="달러로 골라 주세요. 엔이나 원으로 넣는다면 비슷한 금액이면 돼요.">
-          <Choices
-            options={DEPOSITS}
-            value={customDeposit ? -1 : a.deposit}
-            onPick={(deposit) => {
-              setCustomDeposit('')
-              pick({ deposit })
-            }}
-          />
-          <div className="me-custom">
-            <span className="dollar">
-              $
-              <input
-                inputMode="numeric"
-                placeholder="직접 입력"
-                aria-label="한 달에 넣는 돈 직접 입력"
-                value={customDeposit}
-                onChange={(e) => {
-                  const v = e.target.value.replace(/[^0-9]/g, '')
-                  setCustomDeposit(v)
-                  if (Number(v) > 0) set({ deposit: Number(v) })
-                }}
-                size={8}
-              />
-            </span>
-          </div>
-          <div className="me-nav">
-            {back}
-            <button className="primary" disabled={!(a.deposit > 0)} onClick={() => setStep(3)}>
-              다음
-            </button>
-          </div>
-        </Question>
-      )}
+      {step === 'style' &&
+        q(
+          '주로 어떻게 사나요?',
+          '딱 맞지 않아도 더 가까운 쪽을 골라 주세요.',
+          <Choices options={STYLES} value={a.regular} onPick={(regular) => pick({ regular })} />,
+        )}
 
-      {step === 3 && (
-        <Question n={3} title="보통 언제 넣나요?" hint="월급날처럼 매달 돈이 들어오는 날이요. 쉬는 날이면 그다음 거래일에 넣어요.">
-          <Choices options={DAYS} value={a.day} onPick={(day) => pick({ day })} />
-          <div className="me-nav">
-            {back}
-            <button className="primary" onClick={() => setStep(4)}>
-              다음
-            </button>
-          </div>
-        </Question>
-      )}
+      {step === 'deposit' &&
+        q(
+          '투자에 쓰는 돈은 한 달 평균 얼마쯤이에요?',
+          '매달 사지 않아도 괜찮아요. 1년 동안 넣는 돈을 12로 나눈 정도로, 달러로 골라 주세요.',
+          <>
+            <Choices
+              options={DEPOSITS}
+              value={customDeposit ? -1 : a.deposit}
+              onPick={(deposit) => {
+                setCustomDeposit('')
+                pick({ deposit })
+              }}
+            />
+            <div className="me-custom">
+              <span className="dollar">
+                $
+                <input
+                  inputMode="numeric"
+                  placeholder="직접 입력"
+                  aria-label="한 달 평균 직접 입력"
+                  value={customDeposit}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/[^0-9]/g, '')
+                    setCustomDeposit(v)
+                    if (Number(v) > 0) set({ deposit: Number(v) })
+                  }}
+                  size={8}
+                />
+              </span>
+            </div>
+          </>,
+          a.deposit > 0,
+        )}
 
-      {step === 4 && (
-        <Question n={4} title="많이 오른 것 같을 때는 어떻게 하나요?" hint="쉬는 달에 넣은 돈은 쓰지 않고 모아 둬요.">
-          <Choices options={HOT} value={a.hot} onPick={(hot) => pick({ hot })} />
-          <div className="me-nav">
-            {back}
-            <button className="primary" onClick={() => setStep(5)}>
-              다음
-            </button>
-          </div>
-        </Question>
-      )}
+      {step === 'day' &&
+        q(
+          '보통 언제 넣나요?',
+          '월급날처럼 매달 돈이 들어오는 날이요. 정해진 날이 없어도 괜찮아요.',
+          <Choices options={DAYS} value={a.day} onPick={(day) => pick({ day })} />,
+        )}
 
-      {step === 5 && (
-        <Question n={5} title="많이 떨어지면 언제 몰아서 사나요?" hint="그때는 입금일이 아니어도 모아 둔 돈까지 다 사요.">
-          <Choices options={DIP} value={a.dip} onPick={(dip) => pick({ dip })} />
-          <div className="me-nav">
-            {back}
-            <button className="primary" onClick={() => setStep(6)}>
-              다음
-            </button>
-          </div>
-        </Question>
-      )}
+      {step === 'hot' &&
+        q(
+          '많이 오른 것 같을 때는 어떻게 하나요?',
+          '쉬는 달에 넣은 돈은 쓰지 않고 모아 둬요.',
+          <Choices options={HOT} value={a.hot} onPick={(hot) => pick({ hot })} />,
+        )}
 
-      {step === 6 && <Result answers={a} onEdit={() => setStep(1)} />}
+      {step === 'dip' &&
+        q(
+          a.regular ? '많이 떨어지면 언제 몰아서 사나요?' : '얼마나 떨어지면 사나요?',
+          a.regular ? '그때는 입금일이 아니어도 모아 둔 돈까지 다 사요.' : '그때 모아 둔 돈을 한꺼번에 사요.',
+          <Choices options={DIP} value={a.dip} onPick={(dip) => pick({ dip })} />,
+        )}
+
+      {at > steps.length && <Result answers={a} onEdit={() => setAt(1)} />}
     </div>
   )
 }
