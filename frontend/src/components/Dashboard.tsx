@@ -111,7 +111,7 @@ function StatusCard({ bot }: { bot: Bot }) {
             <span className="muted">멈춘 상태예요</span>
           )}
         </KV>
-        <KV label="마지막 판단" className={runOk ? 'up' : run?.status === 'ERROR' ? 'down' : run ? 'warn' : ''}>
+        <KV label="마지막 판단" className={runOk ? 'ok' : run?.status === 'ERROR' ? 'bad' : run ? 'warn' : ''}>
           {run ? (
             <>
               {runOk ? '정상' : run.status === 'ERROR' ? '실패' : '미룸'} <span className="muted small">{ago(run.started_at)}</span>
@@ -277,7 +277,7 @@ function OrdersCard({ botId }: { botId: number }) {
           const status = o.status === 'PENDING' ? '다음 장에 예정' : o.status === 'FILLED' ? '' : '사지 못함'
           return (
             <li key={o.id}>
-              <span className={`side ${buy ? 'up' : 'down'}`}>{buy ? '샀어요' : '팔았어요'}</span>
+              <span className={`side ${buy ? 'rise' : 'fall'}`}>{buy ? '샀어요' : '팔았어요'}</span>
               <div>
                 <div>
                   {o.qty ? `${o.qty}주 · 한 주 ${money(o.price)}` : status}

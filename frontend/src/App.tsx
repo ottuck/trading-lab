@@ -29,13 +29,13 @@ function useHashTab(): [Tab, (t: Tab) => void] {
 
 function SystemStatus() {
   const { data, error } = useQuery({ queryKey: ['health'], queryFn: api.health })
-  if (error) return <span className="dot down">API 연결 실패</span>
+  if (error) return <span className="dot bad">API 연결 실패</span>
   if (!data) return null
   const w = data.worker
   return (
     <>
       <span
-        className={`dot ${data.db === 'ok' && w?.alive ? 'up' : 'down'}`}
+        className={`dot ${data.db === 'ok' && w?.alive ? 'ok' : 'bad'}`}
         title={`DB ${data.db} · Worker ${w?.alive ? '정상' : '정지'} · v${data.version}`}
       >
         {data.db === 'ok' && w?.alive ? '정상 작동' : `프로그램 멈춤${w?.last_seen_at ? ` (${ago(w.last_seen_at)})` : ''}`}

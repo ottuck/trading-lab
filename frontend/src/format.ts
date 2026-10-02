@@ -18,10 +18,11 @@ export function percent(value: string | null | undefined): string {
   return `${n > 0 ? '+' : ''}${n.toFixed(2)}%`
 }
 
+/** 가격·수익 부호에 따른 색 클래스 (오르면 빨강, 내리면 파랑). */
 export function tone(value: string | null | undefined): string {
   if (value == null) return ''
   const n = Number(value)
-  return n > 0 ? 'up' : n < 0 ? 'down' : ''
+  return n > 0 ? 'rise' : n < 0 ? 'fall' : ''
 }
 
 // 시각은 모두 KST로 보여준다 (DB는 UTC).

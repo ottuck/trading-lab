@@ -1,3 +1,4 @@
+import mimetypes
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
@@ -40,6 +41,8 @@ def health(response: Response, session: Annotated[Session, Depends(get_session)]
 
 
 # 빌드된 화면이 있으면 같은 서버에서 제공한다 (운영 이미지). API 경로 뒤에 둔다.
+# PWA 매니페스트는 Python 기본 MIME 표에 없다.
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 _dist = get_settings().frontend_dist
 if _dist.is_dir():
     app.mount("/", StaticFiles(directory=_dist, html=True), name="frontend")

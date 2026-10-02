@@ -146,8 +146,8 @@ function BotSettings({ bot }: { bot: Bot }) {
         <button className="primary" disabled={running || save.isPending} onClick={() => save.mutate()}>
           저장
         </button>
-        {save.isSuccess && <span className="up small">저장했어요. 다음 판단부터 적용돼요.</span>}
-        {save.error && <span className="down small">{save.error.message}</span>}
+        {save.isSuccess && <span className="ok small">저장했어요. 다음 판단부터 적용돼요.</span>}
+        {save.error && <span className="bad small">{save.error.message}</span>}
       </div>
       <History botId={bot.id} />
     </section>
@@ -203,7 +203,7 @@ function NewBot() {
         <button className="ghost" onClick={() => setOpen(false)}>
           취소
         </button>
-        {create.error && <span className="down small">{create.error.message}</span>}
+        {create.error && <span className="bad small">{create.error.message}</span>}
       </div>
     </section>
   )
