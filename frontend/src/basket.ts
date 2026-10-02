@@ -20,3 +20,13 @@ export function basketLabel(all: SymbolWeight[] | null | undefined, fallback: st
   if (!symbols || symbols.length <= 1) return symbols?.[0]?.symbol ?? fallback
   return symbols.map((s) => `${s.symbol} ${s.weight}%`).join(' · ')
 }
+
+const SHORT: Record<string, string> = { sma_cross: 'sma', trend_filter: '200', rsi2: 'rsi', donchian: 'high', dip_saver: 'me' }
+
+/** 봇 이름 제안: 'qqq-voo-me' (겹치면 -2, -3) */
+export function suggestName(symbols: string[], strategy: string, taken: string[]) {
+  const base = `${symbols.join('-').toLowerCase()}-${SHORT[strategy] ?? strategy}`
+  let name = base
+  for (let i = 2; taken.includes(name); i++) name = `${base}-${i}`
+  return name
+}

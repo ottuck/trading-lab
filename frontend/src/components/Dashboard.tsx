@@ -729,6 +729,9 @@ export function Home({ bots }: { bots: Bot[] }) {
         <div className="bot-list">
           <div className="bot-list-head">
             내 봇
+            <button className="link" onClick={() => (location.hash = 'me')}>
+              나 만들기
+            </button>
             <button className="link" onClick={() => startNewBot()}>
               + 새 봇
             </button>

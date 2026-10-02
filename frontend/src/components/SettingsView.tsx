@@ -7,7 +7,7 @@ import { sameParams, useStrategies } from '../strategies'
 import { toConfig, toDraft, type Draft } from '../botConfig'
 import { useDismiss } from '../useDismiss'
 import { StrategyFields, TradeFields } from './BotConfigFields'
-import { activeOf, basketLabel } from '../basket'
+import { activeOf, basketLabel, suggestName } from '../basket'
 import { BasketPicker, SymbolPicker } from './SymbolPicker'
 
 /* Vercel식 설정: 왼쪽에 섹션 제목·설명, 오른쪽에 입력. 섹션은 가는 선으로 나누고 저장은 맨 아래 하나,
@@ -65,6 +65,15 @@ function Switcher({ bots, current, creating }: { bots: Bot[]; current?: Bot; cre
             }}
           >
             + 새 봇 만들기
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => {
+              setOpen(false)
+              location.hash = 'me'
+            }}
+          >
+            질문으로 나 만들기
           </button>
         </div>
       )}
@@ -258,15 +267,6 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
       <DangerZone bot={bot} others={others} />
     </>
   )
-}
-
-const SHORT: Record<string, string> = { sma_cross: 'sma', trend_filter: '200', rsi2: 'rsi', donchian: 'high', dip_saver: 'me' }
-
-function suggestName(symbols: string[], strategy: string, taken: string[]) {
-  const base = `${symbols.join('-').toLowerCase()}-${SHORT[strategy] ?? strategy}`
-  let name = base
-  for (let i = 2; taken.includes(name); i++) name = `${base}-${i}`
-  return name
 }
 
 function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
