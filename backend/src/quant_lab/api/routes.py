@@ -29,6 +29,7 @@ from quant_lab.api.schemas import (
     EquityPoint,
     EventView,
     InstrumentView,
+    MonthBuy,
     OrderView,
     ParallelRequest,
     ParallelView,
@@ -849,6 +850,7 @@ def _parallel_view(worlds: list[World]) -> ParallelView:
                 cagr=w.cagr,
                 same_as_me=w.key != "me" and w.final_equity == me,
                 equity=[WorldPoint(date=d, equity=e) for d, e in w.equity],
+                recent=[MonthBuy(month=k, bought=v) for k, v in w.recent],
             )
             for w in worlds
         ],
