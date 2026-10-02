@@ -50,3 +50,8 @@ export function ago(iso: string | null | undefined): string {
   const m = Math.round(sec / 60)
   return m < 60 ? `${m}분 전` : m < 60 * 24 ? `${Math.round(m / 60)}시간 전` : `${Math.round(m / 1440)}일 전`
 }
+
+/** 이미 지난 시각인지 (예: 예정된 판단 시각이 지났는지). */
+export function isPast(iso: string | null | undefined): boolean {
+  return !!iso && new Date(iso).getTime() <= Date.now()
+}
