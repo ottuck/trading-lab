@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ColorType, createChart, LineSeries, type Time } from 'lightweight-charts'
 import { useEffect, useRef, useState } from 'react'
 import { backtestApi, type BacktestDetail, type StrategyInfo } from '../api'
-import { money, percent, signedMoney, tone } from '../format'
+import { money, percent, shares, signedMoney, tone } from '../format'
 import { presetOf, useStrategies } from '../strategies'
 import { cssVar, useTheme } from '../theme'
 import { Term } from './Help'
@@ -306,7 +306,7 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
                     <td>
                       <span className={`side-tag ${f.side === 'BUY' ? 'rise' : 'fall'}`}>{f.side === 'BUY' ? '샀어요' : '팔았어요'}</span>
                     </td>
-                    <td className="qty">{f.qty}주</td>
+                    <td className="qty">{shares(f.qty)}주</td>
                     <td className="num">{money(f.price)}</td>
                     <td className={`num ${tone(f.realized_pnl)}`}>
                       {f.realized_pnl != null ? signedMoney(f.realized_pnl) : <span className="faint">—</span>}

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLayoutEffect, useRef, useState } from 'react'
 import { api, type ActivityItem, type Bot, type BotState, type CommandKind, type EquityPoint, type Order } from '../api'
-import { ago, isPast, kstTime, money, percent, signedMoney, tone } from '../format'
+import { ago, isPast, kstTime, money, percent, shares, signedMoney, tone } from '../format'
 import { leverageOf, useInstruments } from '../instruments'
 import { sourceLabel } from '../source'
 import { useStrategies } from '../strategies'
@@ -234,7 +234,7 @@ function EquityChart({
         <div className="date" style={{ left: Math.min(Math.max(x(idx), 110), width - 110) }}>
           {md(points[idx].date)}
           {points[idx].live && ' · 지금'}
-          {fillsAt.map((o) => ` · ${o.side === 'BUY' ? '샀어요' : '팔았어요'} ${o.qty}주`)}
+          {fillsAt.map((o) => ` · ${o.side === 'BUY' ? '샀어요' : '팔았어요'} ${shares(o.qty)}주`)}
           {` · 그냥 보유 ${money(points[idx].benchmark)}`}
         </div>
       )}
@@ -382,8 +382,8 @@ function Facts({ bot }: { bot: Bot }) {
         <div className="label">
           <Term k="평가 손익" />
         </div>
-        <div className={`value ${tone(unrealized)}`}>{a.qty ? signedMoney(unrealized) : '—'}</div>
-        <div className="sub">{a.qty ? '팔기 전 손익' : '들고 있는 주식 없음'}</div>
+        <div className={`value ${tone(unrealized)}`}>{Number(a.qty) > 0 ? signedMoney(unrealized) : '—'}</div>
+        <div className="sub">{Number(a.qty) > 0 ? '팔기 전 손익' : '들고 있는 주식 없음'}</div>
       </div>
       {accumulates ? (
         // 모으기 봇은 팔지 않으므로 확정 손익 대신 넣은 돈과 입금 일정을 보여준다.
@@ -462,22 +462,23 @@ function Decision({ bot }: { bot: Bot }) {
 function Holding({ bot }: { bot: Bot }) {
   const a = bot.account
   const price = a.live_price ?? a.last_close
-  const value = a.qty && price ? String(a.qty * Number(price)) : a.market_value
+  const held = Number(a.qty) > 0
+  const value = held && price ? String(Number(a.qty) * Number(price)) : a.market_value
   const pnl = a.live_unrealized_pnl ?? a.unrealized_pnl
-  const ret = a.qty && Number(a.avg_cost) ? String(Number(price) / Number(a.avg_cost) - 1) : null
+  const ret = held && Number(a.avg_cost) ? String(Number(price) / Number(a.avg_cost) - 1) : null
   return (
     <section className="block">
       <div className="block-head">
         <h2>들고 있는 주식</h2>
         <span className="sub">남은 현금 {money(a.cash)}</span>
       </div>
-      {a.qty ? (
+      {held ? (
         <div className="lines">
           <div className="line">
             <div>
               <div className="title">{bot.symbol}</div>
               <div className="muted small tnum">
-                {a.qty}주 · 산 가격 {money(a.avg_cost)} · 지금 {money(price)}
+                {shares(a.qty)}주 · 산 가격 {money(a.avg_cost)} · 지금 {money(price)}
                 {a.live_change != null && <span className={tone(a.live_change)}> ({percent(a.live_change)})</span>}
               </div>
             </div>
@@ -534,7 +535,7 @@ function Trades({ bot, onOpenLog }: { bot: Bot; onOpenLog: () => void }) {
                         {status && <span className="faint small">{status}</span>}
                       </span>
                     </td>
-                    <td className="qty">{o.qty ? `${o.qty}주` : '—'}</td>
+                    <td className="qty">{Number(o.qty) > 0 ? `${shares(o.qty)}주` : '—'}</td>
                     <td className="num">{money(o.price)}</td>
                     <td className={`num ${tone(o.realized_pnl)}`}>{o.realized_pnl != null ? signedMoney(o.realized_pnl) : <span className="faint">—</span>}</td>
                   </tr>

@@ -11,7 +11,7 @@ export type Health = {
 export type Account = {
   initial_cash: Money
   cash: Money
-  qty: number
+  qty: Money // 소수점 6자리까지 (2026-10-02~)
   avg_cost: Money
   realized_pnl: Money
   last_close: Money | null
@@ -57,7 +57,7 @@ export type Order = {
   status: 'PENDING' | 'FILLED' | 'UNFILLED'
   signal_date: string
   fill_date: string | null
-  qty: number | null
+  qty: Money | null
   price: Money | null
   commission: Money | null
   realized_pnl: Money | null
@@ -205,7 +205,7 @@ export type BacktestFill = {
   side: 'BUY' | 'SELL'
   signal_date: string
   fill_date: string
-  qty: number
+  qty: Money
   price: Money
   commission: Money
   realized_pnl: Money | null

@@ -13,6 +13,7 @@ import {
 } from 'lightweight-charts'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type Bar, type Bot } from '../api'
+import { shares } from '../format'
 import { sourceLabel } from '../source'
 import { cssVar, useTheme } from '../theme'
 
@@ -149,7 +150,7 @@ export function PriceChart({ bot }: { bot: Bot }) {
         position: o.side === 'BUY' ? 'belowBar' : 'aboveBar',
         shape: o.side === 'BUY' ? 'arrowUp' : 'arrowDown',
         color: o.side === 'BUY' ? up : down,
-        text: `${o.side === 'BUY' ? '산' : '판'} ${o.qty}주`,
+        text: `${o.side === 'BUY' ? '산' : '판'} ${shares(o.qty)}주`,
       })
     }
     markers.sort((a, b) => String(a.time).localeCompare(String(b.time)))

@@ -54,7 +54,7 @@ def create_bot(
         BotAccountRow(
             bot_id=bot.id,
             cash=initial_cash,
-            qty=0,
+            qty=Decimal(0),
             avg_cost=Decimal(0),
             realized_pnl=Decimal(0),
             contributed=initial_cash,

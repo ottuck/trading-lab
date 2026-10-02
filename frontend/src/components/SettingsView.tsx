@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import { api, botApi, type Bot } from '../api'
-import { ago, money } from '../format'
+import { ago, money, shares } from '../format'
 import { closeNewBot, selectBot, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
 import { sameParams, useStrategies } from '../strategies'
 import { toConfig, toDraft, type Draft } from '../botConfig'
@@ -184,9 +184,9 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
     <>
       <Section title="전략" desc="언제 사고팔지 정해요. 돌아가는 중에도 바꿀 수 있고, 다음 판단부터 적용돼요.">
         <StrategyFields draft={draft} onChange={setDraft} />
-        {changing && bot.account.qty > 0 && (
+        {changing && Number(bot.account.qty) > 0 && (
           <div className="notice">
-            지금 {bot.symbol} {bot.account.qty}주를 들고 있어요. 저장하면 다음 판단부터 새 전략으로 봐요. 새 전략이 &quot;팔
+            지금 {bot.symbol} {shares(bot.account.qty)}주를 들고 있어요. 저장하면 다음 판단부터 새 전략으로 봐요. 새 전략이 &quot;팔
             때&quot;라고 보면 그다음 장이 열릴 때 바로 팔아요.
           </div>
         )}
