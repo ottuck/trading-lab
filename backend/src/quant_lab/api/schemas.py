@@ -262,6 +262,40 @@ class BacktestRequest(BaseModel):
     slippage_bps: Decimal = Decimal(5)
 
 
+class ParallelRequest(BaseModel):
+    """평행세계의 나 (나처럼 모으기 전용). 시작 금액이 없으면 한 달 입금액."""
+
+    symbol: str = ""
+    symbols: list[SymbolWeight] | None = None
+    params: dict[str, int] = {}
+    start: date | None = None
+    end: date | None = None
+    initial_cash: Decimal | None = None
+
+
+class WorldPoint(BaseModel):
+    date: date
+    equity: Decimal
+
+
+class WorldView(BaseModel):
+    key: str  # me(나), dca(매달 그냥 사기), 그 밖은 규칙을 하나 바꾼 나
+    title: str
+    params: dict[str, int] | None
+    final_equity: Decimal
+    contributed: Decimal
+    cagr: Decimal  # 넣은 시점을 반영한 연 수익률 (XIRR)
+    same_as_me: bool  # 이 기간에는 나와 결과가 같았다
+    equity: list[WorldPoint]  # 달마다 마지막 날
+
+
+class ParallelView(BaseModel):
+    start: date | None
+    end: date | None
+    worlds: list[WorldView]
+    note: str | None = None  # 계산하지 못한 이유 (예: 시작한 지 얼마 안 됨)
+
+
 class BotConfig(BaseModel):
     """봇의 전략·비용·위험 한도. 바꾸면 이후 판단부터 적용되고 이력은 이벤트로 남는다."""
 

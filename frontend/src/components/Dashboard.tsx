@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLayoutEffect, useRef, useState } from 'react'
 import {
   api,
+  botApi,
   type ActivityItem,
   type Bot,
   type BotState,
@@ -20,6 +21,8 @@ import { PriceChart } from './PriceChart'
 import { useDismiss } from '../useDismiss'
 import { activeOf, basketLabel } from '../basket'
 import { LeverageNotice } from './SymbolPicker'
+import { ParallelWorlds } from './Parallel'
+import { toConfig, toDraft } from '../botConfig'
 
 const STATE: Record<BotState, { label: string; dot: string }> = {
   RUNNING: { label: '실행 중', dot: 'ok pulse' },
@@ -711,6 +714,24 @@ function BotItem({ bot, active, onPick }: { bot: Bot; active: boolean; onPick: (
 }
 
 /** 홈: 왼쪽에 고른 봇의 자산·판단·거래, 오른쪽에 봇 목록. 고른 봇은 이 브라우저에 기억한다. */
+/** 나처럼 모으기 봇: 시작한 뒤로 규칙을 하나씩 바꿨다면 (고르면 다음 판단부터 그 규칙으로). */
+function BotParallel({ bot }: { bot: Bot }) {
+  const qc = useQueryClient()
+  return (
+    <ParallelWorlds
+      queryKey={['parallel', bot.id, JSON.stringify(bot.params), JSON.stringify(bot.symbols)]}
+      fetch={() => botApi.parallel(bot.id)}
+      sub={(p) => (p.start ? `${md(p.start)}에 시작한 뒤로, 규칙을 하나씩 바꿨다면` : '')}
+      chooseLabel="로 바꾸기"
+      confirm="다음 판단부터 이 규칙으로 바꿀까요? 지금까지의 기록은 그대로예요."
+      onChoose={async (params) => {
+        await botApi.updateConfig(bot.id, { ...toConfig(toDraft(bot), bot), params })
+        await qc.invalidateQueries({ queryKey: ['bots'] })
+      }}
+    />
+  )
+}
+
 export function Home({ bots }: { bots: Bot[] }) {
   const [logOpen, setLogOpen] = useState(false)
   const bot = useSelectedBot(bots)
@@ -721,6 +742,7 @@ export function Home({ bots }: { bots: Bot[] }) {
         <Overview bot={bot} />
         <Decision bot={bot} />
         <Holding bot={bot} />
+        {bot.strategy === 'dip_saver' && <BotParallel bot={bot} />}
         <PriceChart bot={bot} />
         <Trades bot={bot} onOpenLog={() => setLogOpen(true)} />
         <Strategy bot={bot} />
