@@ -240,3 +240,21 @@ class QuoteRow(Base):
     price: Mapped[Decimal] = mapped_column(PRICE)
     quoted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class LiveBarRow(Base):
+    """진행 중인 오늘 일봉 (화면 차트용). 토스는 정규장 전 거래부터 채워 준다.
+
+    완료 일봉(daily_bars)과 섞지 않는다. 판단은 완료 일봉만 쓴다 (원칙 2).
+    """
+
+    __tablename__ = "live_bars"
+
+    symbol: Mapped[str] = mapped_column(String(20), primary_key=True)
+    session_date: Mapped[date] = mapped_column(Date)
+    open: Mapped[Decimal] = mapped_column(PRICE)
+    high: Mapped[Decimal] = mapped_column(PRICE)
+    low: Mapped[Decimal] = mapped_column(PRICE)
+    close: Mapped[Decimal] = mapped_column(PRICE)
+    volume: Mapped[Decimal] = mapped_column(VOLUME)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
