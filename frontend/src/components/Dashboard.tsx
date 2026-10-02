@@ -18,7 +18,7 @@ import { Term } from './Help'
 import { selectBot, startNewBot, useSelectedBot } from '../selectedBot'
 import { PriceChart } from './PriceChart'
 import { useDismiss } from '../useDismiss'
-import { basketLabel } from '../basket'
+import { activeOf, basketLabel } from '../basket'
 import { LeverageNotice } from './SymbolPicker'
 
 const STATE: Record<BotState, { label: string; dot: string }> = {
@@ -292,7 +292,7 @@ function Overview({ bot }: { bot: Bot }) {
             <span className={`dot ${state.dot}`}>{state.label}</span>
             <span>
               · {byName[bot.strategy]?.nickname ?? bot.strategy}
-              {bot.symbols.length > 1 && ` · ${basketLabel(bot.symbols, bot.symbol)}`}
+              {activeOf(bot.symbols).length > 1 && ` · ${basketLabel(bot.symbols, bot.symbol)}`}
             </span>
           </div>
           <div className="hero-value">{money(String(end.eq))}</div>
@@ -526,7 +526,7 @@ function Holding({ bot }: { bot: Bot }) {
                 <div>
                   <div className="title">
                     {p.symbol}
-                    {multi && <span className="sub"> · 비율 {p.weight}%</span>}
+                    {multi && <span className="sub"> · {p.weight > 0 ? `비율 ${p.weight}%` : '더 사지 않고 들고만 있어요'}</span>}
                   </div>
                   <div className="muted small tnum">
                     {shares(p.qty)}주 · 산 가격 {money(p.avg_cost)} · 지금 {money(price)}

@@ -426,6 +426,9 @@ def event_message(
             True,
         )
     if kind == "config_change":
+        if raw.startswith("종목 변경: "):
+            body = raw.removeprefix("종목 변경: ")
+            return Message("⚙️", "종목을 바꿨어요", body, "INFO", False)
         title = "봇을 만들었어요" if raw.startswith("봇 생성") else "설정을 바꿨어요"
         return Message(
             "⚙️",

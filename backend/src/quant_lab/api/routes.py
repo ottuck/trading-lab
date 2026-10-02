@@ -34,6 +34,7 @@ from quant_lab.api.schemas import (
     PresetView,
     RunView,
     StrategyInfo,
+    SymbolsUpdate,
     SymbolWeight,
 )
 from quant_lab.application.backtesting import backtest_symbol
@@ -52,6 +53,7 @@ from quant_lab.persistence.bots import (
     enqueue_command,
     get_bot,
     list_bots,
+    pending_orders,
     reset_bot_history,
 )
 from quant_lab.persistence.db import get_session
@@ -278,12 +280,16 @@ def _checked_strategy(config: BotConfig) -> Strategy:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"파라미터 오류: {exc}") from exc
 
 
-def _checked_weights(body: BotCreate | BacktestRequest, strategy: Strategy) -> dict[str, int]:
+def _checked_weights(
+    symbol: str, symbols: list[SymbolWeight] | None, strategy: Strategy
+) -> dict[str, int]:
     """종목과 비율을 검증한다: 최대 10개, 비율 합 100, 여러 종목은 모으기 전략만."""
-    if not body.symbols:
-        return {body.symbol.upper(): 100}
+    if not symbols:
+        if not symbol.strip():
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "종목을 골라 주세요")
+        return {symbol.strip().upper(): 100}
     weights: dict[str, int] = {}
-    for item in body.symbols:
+    for item in symbols:
         symbol = item.symbol.strip().upper()
         if not symbol or symbol in weights or item.weight <= 0:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"종목·비율을 확인해 주세요: {symbol}")
@@ -329,7 +335,7 @@ def create(session: SessionDep, body: BotCreate) -> BotView:
     strategy = _checked_strategy(body)
     if session.scalar(select(BotRow.id).where(BotRow.name == body.name)) is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, f"같은 이름의 봇이 있습니다: {body.name}")
-    weights = _checked_weights(body, strategy)
+    weights = _checked_weights(body.symbol, body.symbols, strategy)
     now = datetime.now(UTC)
     bot = create_bot(
         session,
@@ -395,6 +401,63 @@ def update_config(session: SessionDep, bot_id: int, body: BotConfig) -> BotView:
     )
     session.commit()
     return _bot_view(session, bot)
+
+
+@router.put("/bots/{bot_id}/symbols")
+def update_symbols(session: SessionDep, bot_id: int, body: SymbolsUpdate) -> BotView:
+    """만든 뒤 종목·비율을 바꾼다. 다음 판단부터 적용된다.
+
+    모으기 전략에서 뺀 종목을 들고 있으면(또는 주문 예정이면) 비율 0으로 남겨 더 사지 않고
+    들고만 있는다. 팔고 사는 전략은 들고 있는 종목을 뺄 수 없다 (팔 기회를 잃으므로).
+    """
+    bot = _require_bot(session, bot_id, for_update=True)
+    strategy = STRATEGIES[bot.strategy](**bot.params)
+    weights = _checked_weights("", body.symbols, strategy)
+    before = bot_weights(bot)
+    held = {
+        p.symbol
+        for p in session.scalars(select(BotPositionRow).where(BotPositionRow.bot_id == bot.id))
+        if p.qty > 0
+    } | {o.symbol for o in pending_orders(session, bot.id)}
+    dropped = [s for s in before if s in held and s not in weights]
+    if dropped and deposit_plan(strategy) is None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"들고 있는 {', '.join(dropped)}는 이 전략에서 뺄 수 없어요. 판 뒤에 바꿔 주세요",
+        )
+    after = weights | {s: 0 for s in dropped}
+    if after == before:
+        return _bot_view(session, bot)
+    now = datetime.now(UTC)
+
+    def label(w: dict[str, int]) -> str:
+        active = {s: v for s, v in w.items() if v > 0}
+        return (
+            " · ".join(f"{s} {v}%" for s, v in active.items())
+            if len(active) > 1
+            else "·".join(active)
+        )
+
+    detail = f"종목 변경: {label(before)} → {label(after)}"
+    if dropped:
+        detail += f" (더 사지 않고 들고만 있기: {', '.join(dropped)})"
+    add_event(
+        session,
+        now,
+        "INFO",
+        "config_change",
+        detail,
+        bot_id=bot.id,
+        data={"before": {"symbols": bot.symbols}, "after": {"symbols": _symbols_json(after)}},
+    )
+    bot.symbols, bot.symbol = _symbols_json(after), next(iter(weights))
+    bot.updated_at = now
+    session.commit()
+    return _bot_view(session, bot)
+
+
+def _symbols_json(weights: dict[str, int]) -> list[dict[str, Any]]:
+    return [{"symbol": s, "weight": w} for s, w in weights.items()]
 
 
 @router.patch("/bots/{bot_id}")
@@ -741,7 +804,7 @@ def run_backtest(session: SessionDep, body: BacktestRequest) -> BacktestDetail:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"알 수 없는 전략: {body.strategy}")
     try:
         strategy = factory(**body.params)
-        weights = _checked_weights(body, strategy)
+        weights = _checked_weights(body.symbol, body.symbols, strategy)
         plan = deposit_plan(strategy)
         # 모으기 전략은 첫 달 입금액으로 시작한다 ("월급부터 모았다면").
         initial = body.initial_cash or (plan.amount if plan else Decimal(10_000))
