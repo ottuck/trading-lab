@@ -54,13 +54,27 @@ class RiskLimits:
 
 @dataclass
 class Portfolio:
+    """모의 계좌. contributed는 지금까지 넣은 돈(시작 금액 + 입금)으로, 수익률의 기준이다."""
+
     cash: Decimal
     qty: int = 0
     avg_cost: Decimal = Decimal(0)
     realized_pnl: Decimal = Decimal(0)
+    contributed: Decimal | None = None
+
+    def __post_init__(self) -> None:
+        if self.contributed is None:
+            self.contributed = self.cash
 
     def equity(self, mark: Decimal) -> Decimal:
         return self.cash + self.qty * mark
+
+    def deposit(self, amount: Decimal) -> None:
+        """정기 입금(월급). 현금과 넣은 돈이 함께 늘어난다."""
+        if amount <= 0:
+            raise ValueError("입금액은 양수여야 합니다")
+        self.cash += amount
+        self.contributed = (self.contributed or Decimal(0)) + amount
 
     def buy(self, qty: int, price: Decimal, commission: Decimal) -> None:
         cost = qty * price + commission

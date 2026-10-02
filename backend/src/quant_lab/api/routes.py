@@ -34,11 +34,12 @@ from quant_lab.api.schemas import (
 from quant_lab.application.backtesting import backtest_symbol
 from quant_lab.application.messages import CATALOG, action_phrase, decision_reason, event_message
 from quant_lab.config import get_settings
-from quant_lab.domain.portfolio import CostModel, RiskLimits
-from quant_lab.domain.strategy import STRATEGIES, Strategy
+from quant_lab.domain.portfolio import CostModel, Portfolio, RiskLimits, affordable_qty
+from quant_lab.domain.strategy import STRATEGIES, Strategy, deposit_plan
 from quant_lab.persistence.backtests import to_jsonable
 from quant_lab.persistence.bots import (
     add_event,
+    bot_costs,
     create_bot,
     delete_bot,
     enqueue_command,
@@ -50,6 +51,7 @@ from quant_lab.persistence.db import get_session
 from quant_lab.persistence.models import (
     BacktestRow,
     BotAccountRow,
+    BotDepositRow,
     BotRow,
     DailyBarRow,
     DecisionRow,
@@ -86,6 +88,7 @@ def _account(session: Session, bot: BotRow) -> AccountView:
             unrealized_pnl=None,
             equity=None,
             total_return=None,
+            contributed=acc.contributed,
         )
     market_value = acc.qty * last.close
     equity = acc.cash + market_value
@@ -111,7 +114,8 @@ def _account(session: Session, bot: BotRow) -> AccountView:
         market_value=market_value,
         unrealized_pnl=market_value - acc.qty * acc.avg_cost,
         equity=equity,
-        total_return=(equity / bot.initial_cash - 1) if bot.initial_cash else None,
+        total_return=(equity / acc.contributed - 1) if acc.contributed else None,
+        contributed=acc.contributed,
         **live,
     )
 
@@ -126,6 +130,7 @@ def _decision(row: DecisionRow, bot: BotRow | None = None) -> DecisionView:
             row.indicators,
             row.target_long,
             row.holding,
+            action=row.action,
         )
         view.plain_action = action_phrase(row.action, row.holding, row.symbol)
     return view
@@ -386,7 +391,11 @@ def orders(
 
 @router.get("/bots/{bot_id}/equity")
 def equity(session: SessionDep, bot_id: int) -> list[EquityPoint]:
-    """홈 차트용 하루 단위 모의 자산. 첫 판단일부터 체결 기록을 장 마감 가격에 다시 적용한다."""
+    """홈 차트용 하루 단위 모의 자산. 첫 판단일부터 입금·체결 기록을 장 마감 가격에 다시 적용한다.
+
+    benchmark는 같은 돈으로 "그냥 들고 있었다면"의 자산이다. 첫 판단 다음 날 시가에 전부 사고,
+    입금이 있으면 다음 날 시가에 또 산다 (백테스트의 비교 기준과 같은 규칙).
+    """
     bot = _require_bot(session, bot_id)
     first = session.scalar(
         select(func.min(DecisionRow.session_date)).where(DecisionRow.bot_id == bot_id)
@@ -401,26 +410,59 @@ def equity(session: SessionDep, bot_id: int) -> list[EquityPoint]:
         )
         if o.fill_date is not None
     ]
+    deposits = {
+        d.session_date: d.amount
+        for d in session.scalars(select(BotDepositRow).where(BotDepositRow.bot_id == bot_id))
+    }
     bars = session.scalars(
         select(DailyBarRow)
         .where(DailyBarRow.symbol == bot.symbol, DailyBarRow.session_date >= start)
         .order_by(DailyBarRow.session_date)
     )
-    cash, qty, i = bot.initial_cash, 0, 0
+    costs = bot_costs(bot)
+    cash, qty, contributed, i = bot.initial_cash, 0, bot.initial_cash, 0
+    bench = Portfolio(cash=bot.initial_cash)
+    bench_buy = False
     out: list[EquityPoint] = []
-    for bar in bars:
+    for n, bar in enumerate(bars):
+        if bench_buy or n == 1:
+            price = costs.buy_price(bar.open)
+            q = affordable_qty(bench.cash, price, costs, RiskLimits(), Decimal(0))
+            if q > 0:
+                bench.buy(q, price, costs.commission(q * price))
+            bench_buy = False
         while i < len(fills) and fills[i][0] <= bar.session_date:
-            _, side, n, notional, commission = fills[i]
+            _, side, k, notional, commission = fills[i]
             if side == "BUY":
-                cash, qty = cash - notional - commission, qty + n
+                cash, qty = cash - notional - commission, qty + k
             else:
-                cash, qty = cash + notional - commission, qty - n
+                cash, qty = cash + notional - commission, qty - k
             i += 1
-        out.append(EquityPoint(date=bar.session_date, equity=cash + qty * bar.close))
+        if bar.session_date in deposits:
+            amount = deposits[bar.session_date]
+            cash, contributed = cash + amount, contributed + amount
+            bench.deposit(amount)
+            bench_buy = True
+        out.append(
+            EquityPoint(
+                date=bar.session_date,
+                equity=cash + qty * bar.close,
+                contributed=contributed,
+                benchmark=bench.equity(bar.close),
+            )
+        )
     # 오늘 진행 중인 장이 있으면 실시간 가격으로 한 점을 더한다 (홈의 "지금 가치"와 같은 값).
     lb, quote = session.get(LiveBarRow, bot.symbol), session.get(QuoteRow, bot.symbol)
     if out and lb is not None and quote is not None and lb.session_date > out[-1].date:
-        out.append(EquityPoint(date=lb.session_date, equity=cash + qty * quote.price, live=True))
+        out.append(
+            EquityPoint(
+                date=lb.session_date,
+                equity=cash + qty * quote.price,
+                contributed=contributed,
+                benchmark=bench.equity(quote.price),
+                live=True,
+            )
+        )
     return out
 
 
@@ -512,6 +554,8 @@ def strategies() -> list[StrategyInfo]:
                     PresetView(key=p.key, label=p.label, params=p.params) for p in info.presets
                 ],
                 default_params=factory().params,
+                accumulates=deposit_plan(factory()) is not None,
+                preset_label=info.preset_label,
             )
         )
     return out
@@ -561,11 +605,14 @@ def run_backtest(session: SessionDep, body: BacktestRequest) -> BacktestDetail:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"알 수 없는 전략: {body.strategy}")
     try:
         strategy = factory(**body.params)
+        plan = deposit_plan(strategy)
+        # 모으기 전략은 첫 달 입금액으로 시작한다 ("월급부터 모았다면").
+        initial = body.initial_cash or (plan.amount if plan else Decimal(10_000))
         run = backtest_symbol(
             session,
             body.symbol.upper(),
             strategy,
-            initial_cash=body.initial_cash,
+            initial_cash=initial,
             costs=CostModel(commission_rate=body.commission_rate, slippage_bps=body.slippage_bps),
             limits=RiskLimits(),
             start=body.start,

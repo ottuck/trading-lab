@@ -56,13 +56,18 @@ def weekly_summary(
     def change(a: Any, b: Any) -> str:
         return str(round(Decimal(str(b)) / Decimal(str(a)) - 1, 6))
 
+    # 이번 주에 들어온 입금은 수익이 아니므로 뺀다 (모으기 전략).
+    added = Decimal(str(end.get("contributed", 0))) - Decimal(
+        str(start.get("contributed", end.get("contributed", 0)))
+    )
+
     return {
         "symbol": bot.symbol,
         "week_start": week_start.isoformat(),
         "week_end": session_date.isoformat(),
         "equity": end["equity"],
         "total_return": end["total_return"],
-        "week_return": change(start["equity"], end["equity"]),
+        "week_return": change(start["equity"], Decimal(str(end["equity"])) - added),
         "hold_return": change(start["close"], end["close"]),
         "buys": counts.get("BUY", 0),
         "sells": counts.get("SELL", 0),

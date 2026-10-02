@@ -19,7 +19,8 @@ export type Account = {
   market_value: Money | null
   unrealized_pnl: Money | null
   equity: Money | null
-  total_return: Money | null
+  total_return: Money | null // 넣은 돈 대비
+  contributed: Money // 넣은 돈 (시작 금액 + 정기 입금)
   // 실시간(화면 표시용). 판단은 장 마감 기준 값을 쓴다.
   live_price?: Money | null
   live_at?: string | null
@@ -107,7 +108,8 @@ export type EventItem = {
   run_id: string | null
 }
 
-export type EquityPoint = { date: string; equity: Money; live?: boolean }
+/** 하루 자산. contributed는 넣은 돈, benchmark는 같은 돈으로 그냥 들고 있었다면. */
+export type EquityPoint = { date: string; equity: Money; contributed: Money; benchmark: Money; live?: boolean }
 
 export type Bar = { date: string; open: Money; high: Money; low: Money; close: Money; volume: Money; live?: boolean }
 
@@ -158,6 +160,8 @@ export type StrategyInfo = {
   trades: string
   presets: { key: string; label: string; params: Record<string, number> }[]
   default_params: Record<string, number>
+  accumulates: boolean // 매달 입금하고 사 모으는 전략 (팔지 않음)
+  preset_label: string
 }
 
 export type ActivityItem = { id: number; at: string; icon: string; title: string; body: string; level: string }
@@ -183,6 +187,9 @@ export type BacktestMetrics = {
   benchmark_volatility?: Money
   benchmark_sharpe?: Money | null
   annual_returns?: { year: number; strategy: Money; benchmark: Money }[]
+  // 2026-10-02 이후: 정기 입금 (모으기 전략). 없으면 입금 없음
+  contributed?: Money
+  deposits?: number
 }
 
 export type BacktestSummary = {

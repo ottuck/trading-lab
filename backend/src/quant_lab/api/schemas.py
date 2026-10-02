@@ -21,7 +21,8 @@ class AccountView(BaseModel):
     market_value: Decimal | None
     unrealized_pnl: Decimal | None
     equity: Decimal | None
-    total_return: Decimal | None
+    total_return: Decimal | None  # 넣은 돈 대비
+    contributed: Decimal  # 넣은 돈 (시작 금액 + 정기 입금)
     # 실시간(화면 표시용). 판단·주간 리포트는 위의 장 마감 기준 값을 쓴다.
     live_price: Decimal | None = None
     live_at: datetime | None = None
@@ -120,6 +121,8 @@ class BarView(BaseModel):
 class EquityPoint(BaseModel):
     date: date
     equity: Decimal
+    contributed: Decimal  # 이날까지 넣은 돈
+    benchmark: Decimal  # 같은 돈으로 그냥 들고 있었다면
     live: bool = False
 
 
@@ -184,6 +187,8 @@ class StrategyInfo(BaseModel):
     trades: str
     presets: list[PresetView]
     default_params: dict[str, int]
+    accumulates: bool = False  # 매달 입금하고 사 모으는 전략 (팔지 않음)
+    preset_label: str = "반응 속도"
 
 
 class ActivityItem(BaseModel):
@@ -203,7 +208,7 @@ class BacktestRequest(BaseModel):
     params: dict[str, int] = {}
     start: date | None = None
     end: date | None = None
-    initial_cash: Decimal = Decimal(10_000)
+    initial_cash: Decimal | None = None  # 없으면 $10,000 (모으기 전략은 한 달 입금액)
     commission_rate: Decimal = Decimal("0.001")
     slippage_bps: Decimal = Decimal(5)
 

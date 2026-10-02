@@ -1,15 +1,26 @@
 """규칙 전략. 완료된 봉의 이력만 받아 '보유할지'를 판단한다.
 
 전략은 주문 수량·가격을 정하지 않는다. 수량은 위험 규칙, 체결은 모의 브로커가 정한다.
+모으기 전략(매달 입금하고 사 모으는 전략)은 '얼마만큼 살지'를 Spend로 알려 준다.
 """
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal
+from enum import StrEnum
 from itertools import pairwise
 from typing import ClassVar, Protocol
 
 from quant_lab.domain.bars import DailyBar
+
+
+class Spend(StrEnum):
+    """모으기 전략이 이번 판단에 쓸 돈. 보통 전략(전부 사거나 전부 팔기)은 None을 쓴다."""
+
+    DEPOSIT = "DEPOSIT"  # 오늘 들어온 입금액만큼 산다 (입금일이 아니면 사지 않는다)
+    ALL = "ALL"  # 모아 둔 현금까지 모두 산다
+    NONE = "NONE"  # 사지 않고 현금으로 모아 둔다
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,6 +30,28 @@ class Signal:
     long: bool
     reason: str
     indicators: dict[str, Decimal] = field(default_factory=dict)
+    spend: Spend | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DepositPlan:
+    """매달 day일(휴장이면 그 뒤 첫 판단일)에 amount달러를 넣는다. 한 달에 한 번."""
+
+    amount: Decimal
+    day: int
+
+    def due(self, session_date: date, last_month: str | None) -> bool:
+        return session_date.day >= self.day and month_key(session_date) != last_month
+
+
+def month_key(d: date) -> str:
+    return f"{d.year:04d}-{d.month:02d}"
+
+
+def deposit_plan(strategy: object) -> DepositPlan | None:
+    """정기 입금을 하는 전략이면 그 계획, 아니면 None."""
+    plan = getattr(strategy, "deposit_plan", None)
+    return plan if isinstance(plan, DepositPlan) else None
 
 
 class Strategy(Protocol):
@@ -218,9 +251,73 @@ class ConnorsRsi2:
         )
 
 
+@dataclass(frozen=True)
+class DipSaver:
+    """나처럼 모으기: 매달 입금하고 사 모은다. 팔지 않는다.
+
+    - 1년(high일) 종가 최고보다 dip% 이상 낮으면: 모아 둔 현금까지 모두 산다 (입금일이 아니어도)
+    - SMA(sma) 보다 hot% 이상 높으면: 사지 않고 현금으로 모아 둔다
+    - 그 밖에는: 입금일에 그달 입금액만큼 산다
+    """
+
+    deposit: int = 675  # 매달 넣는 돈 (달러)
+    day: int = 25  # 입금일 (1~28)
+    dip: int = 10  # %
+    hot: int = 10  # %
+    high: int = 252
+    sma: int = 200
+    name: ClassVar[str] = "dip_saver"
+
+    def __post_init__(self) -> None:
+        if self.deposit <= 0 or not 1 <= self.day <= 28:
+            raise ValueError("deposit은 양수, day는 1~28이어야 합니다")
+        if self.dip <= 0 or self.hot <= 0 or self.high <= 1 or self.sma <= 1:
+            raise ValueError("dip, hot은 양수, high, sma는 2 이상이어야 합니다")
+
+    @property
+    def params(self) -> dict[str, int]:
+        return {
+            "deposit": self.deposit,
+            "day": self.day,
+            "dip": self.dip,
+            "hot": self.hot,
+            "high": self.high,
+            "sma": self.sma,
+        }
+
+    @property
+    def warmup(self) -> int:
+        return max(self.high, self.sma)
+
+    @property
+    def deposit_plan(self) -> DepositPlan:
+        return DepositPlan(Decimal(self.deposit), self.day)
+
+    def signal(self, history: Sequence[DailyBar], holding: bool) -> Signal | None:
+        if len(history) < self.warmup:
+            return None
+        close = history[-1].close
+        top = max(b.close for b in history[-self.high :])
+        avg = _sma(history, self.sma)
+        drawdown, premium = close / top - 1, close / avg - 1
+        indicators = {
+            f"high{self.high}": top,
+            f"sma{self.sma}": avg,
+            "drawdown": round(drawdown, 4),
+            "premium": round(premium, 4),
+        }
+        state = f"최고 대비 {drawdown:.1%}, SMA{self.sma} 대비 {premium:+.1%}"
+        if drawdown <= -Decimal(self.dip) / 100:
+            return Signal(True, f"하락장 ({state}): 모은 현금 모두 매수", indicators, Spend.ALL)
+        if premium >= Decimal(self.hot) / 100:
+            return Signal(True, f"고점 ({state}): 현금으로 모아 둠", indicators, Spend.NONE)
+        return Signal(True, f"보통 ({state}): 입금액만큼 매수", indicators, Spend.DEPOSIT)
+
+
 STRATEGIES: dict[str, Callable[..., Strategy]] = {
     "sma_cross": SmaCross,
     "donchian": DonchianBreakout,
     "trend_filter": TrendFilter,
     "rsi2": ConnorsRsi2,
+    "dip_saver": DipSaver,
 }

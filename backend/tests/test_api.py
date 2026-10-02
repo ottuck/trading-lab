@@ -76,6 +76,8 @@ def test_bot_view_shows_position_and_reason(client: TestClient, bot_id: int) -> 
     curve = client.get(f"/api/bots/{bot_id}/equity").json()
     assert curve[0]["date"] == BARS[10].session_date.isoformat()
     assert Decimal(curve[-1]["equity"]) == Decimal(body["account"]["equity"])
+    assert Decimal(curve[-1]["contributed"]) == Decimal(10_000)
+    assert Decimal(curve[-1]["benchmark"]) > 0
 
 
 def test_command_is_queued_for_worker(client: TestClient, session: Session, bot_id: int) -> None:

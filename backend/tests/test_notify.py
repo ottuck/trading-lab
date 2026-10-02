@@ -28,7 +28,7 @@ def test_events_become_plain_messages_sent_once(engine: Engine, session: Session
     notifier.start()  # 시작 전 이벤트는 보내지 않는다
 
     add_event(session, NOW, "INFO", "worker_start", "Worker 시작")  # 내부 기록
-    add_event(
+    add_event(  # 아무것도 안 하는 날의 점검은 앱에만
         session, NOW, "INFO", "decision", "x", data={**DECISION, "action": "HOLD", "holding": True}
     )
     add_event(session, NOW, "INFO", "decision_repeat", "이미 있음", data=DECISION)  # 내부 기록
@@ -48,16 +48,15 @@ def test_events_become_plain_messages_sent_once(engine: Engine, session: Session
     )
     session.commit()
 
-    assert notifier.poll() == 4
+    assert notifier.poll() == 3
     assert notifier.poll() == 0
     # 한 번에 생긴 소식은 한 통으로 묶는다
     assert len(sent) == 1
     parts = sent[0].split("\n\n")
     assert [p.split("\n")[0] for p in parts] == [
-        "📋 오늘의 점검 · QQQ",
         "🔴 매수 신호 · QQQ",
         "✅ QQQ 13주를 샀어요",
         "⏳ 오늘 판단을 잠시 미뤘어요",
     ]
-    assert "상승 흐름이에요" in parts[1] and "내일 장이 열리면 QQQ를 사요" in parts[1]
-    assert "아직 최신 시세가 도착하지 않았어요" in parts[3]
+    assert "상승 흐름이에요" in parts[0] and "내일 장이 열리면 QQQ를 사요" in parts[0]
+    assert "아직 최신 시세가 도착하지 않았어요" in parts[2]
