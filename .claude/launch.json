@@ -40,7 +40,9 @@
         "--",
         "--port",
         "5174",
-        "--strictPort"
+        "--strictPort",
+        "--host",
+        "127.0.0.1"
       ],
       "env": {
         "QL_API_URL": "http://127.0.0.1:8001"
