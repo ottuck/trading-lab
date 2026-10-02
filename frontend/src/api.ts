@@ -107,6 +107,8 @@ export type EventItem = {
   run_id: string | null
 }
 
+export type EquityPoint = { date: string; equity: Money; live?: boolean }
+
 export type Bar = { date: string; open: Money; high: Money; low: Money; close: Money; volume: Money; live?: boolean }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -123,8 +125,9 @@ export const api = {
   bots: () => request<Bot[]>('/api/bots'),
   orders: (botId: number) => request<Order[]>(`/api/bots/${botId}/orders?limit=20`),
   decisions: (botId: number) => request<Decision[]>(`/api/bots/${botId}/decisions?limit=500`),
-  activity: (botId: number, kind?: string) =>
-    request<ActivityItem[]>(`/api/activity?bot_id=${botId}&limit=${kind ? 10 : 8}${kind ? `&kind=${kind}` : ''}`),
+  equity: (botId: number) => request<EquityPoint[]>(`/api/bots/${botId}/equity`),
+  activity: (botId: number, kind?: string, limit = 10) =>
+    request<ActivityItem[]>(`/api/activity?bot_id=${botId}&limit=${limit}${kind ? `&kind=${kind}` : ''}`),
   events: (level?: string) =>
     request<EventItem[]>(`/api/events?limit=200${level ? `&level=${level}` : ''}`),
   bars: (symbol: string) => request<Bar[]>(`/api/bars/${symbol}?limit=750`),

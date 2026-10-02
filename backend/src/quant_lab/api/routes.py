@@ -22,6 +22,7 @@ from quant_lab.api.schemas import (
     CommandAccepted,
     CommandRequest,
     DecisionView,
+    EquityPoint,
     EventView,
     InstrumentView,
     OrderView,
@@ -326,6 +327,46 @@ def orders(
         .limit(limit)
     )
     return [_order(r) for r in rows]
+
+
+@router.get("/bots/{bot_id}/equity")
+def equity(session: SessionDep, bot_id: int) -> list[EquityPoint]:
+    """홈 차트용 하루 단위 모의 자산. 첫 판단일부터 체결 기록을 장 마감 가격에 다시 적용한다."""
+    bot = _require_bot(session, bot_id)
+    first = session.scalar(
+        select(func.min(DecisionRow.session_date)).where(DecisionRow.bot_id == bot_id)
+    )
+    start = first or bot.created_at.date()
+    fills = [
+        (o.fill_date, o.side, o.qty or 0, (o.qty or 0) * (o.price or 0), o.commission or 0)
+        for o in session.scalars(
+            select(SimOrderRow)
+            .where(SimOrderRow.bot_id == bot_id, SimOrderRow.status == "FILLED")
+            .order_by(SimOrderRow.fill_date, SimOrderRow.id)
+        )
+        if o.fill_date is not None
+    ]
+    bars = session.scalars(
+        select(DailyBarRow)
+        .where(DailyBarRow.symbol == bot.symbol, DailyBarRow.session_date >= start)
+        .order_by(DailyBarRow.session_date)
+    )
+    cash, qty, i = bot.initial_cash, 0, 0
+    out: list[EquityPoint] = []
+    for bar in bars:
+        while i < len(fills) and fills[i][0] <= bar.session_date:
+            _, side, n, notional, commission = fills[i]
+            if side == "BUY":
+                cash, qty = cash - notional - commission, qty + n
+            else:
+                cash, qty = cash + notional - commission, qty - n
+            i += 1
+        out.append(EquityPoint(date=bar.session_date, equity=cash + qty * bar.close))
+    # 오늘 진행 중인 장이 있으면 실시간 가격으로 한 점을 더한다 (홈의 "지금 가치"와 같은 값).
+    lb, quote = session.get(LiveBarRow, bot.symbol), session.get(QuoteRow, bot.symbol)
+    if out and lb is not None and quote is not None and lb.session_date > out[-1].date:
+        out.append(EquityPoint(date=lb.session_date, equity=cash + qty * quote.price, live=True))
+    return out
 
 
 @router.get("/events")

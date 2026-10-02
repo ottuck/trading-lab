@@ -27,8 +27,11 @@ export function HelpButton() {
   const [open, setOpen] = useState(false)
   return (
     <>
-      <button className="ghost" onClick={() => setOpen(true)}>
-        도움말
+      <button className="icon-btn" aria-label="도움말" title="도움말" onClick={() => setOpen(true)}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M9.6 9.2a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.9M12 17h.01" />
+        </svg>
       </button>
       {open && (
         <div className="modal-backdrop" onClick={() => setOpen(false)}>
