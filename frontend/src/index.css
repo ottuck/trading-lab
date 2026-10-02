@@ -730,62 +730,6 @@ button.pick.active {
   font-size: 12px;
 }
 
-/* 목록형 (모바일에서도 가로로 넘치지 않음) */
-.activity,
-.trades,
-.history {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-}
-.activity li,
-.trades li,
-.history li {
-  display: grid;
-  gap: 10px;
-  align-items: start;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
-}
-.activity li:last-child,
-.trades li:last-child,
-.history li:last-child {
-  border-bottom: 0;
-}
-.activity li {
-  grid-template-columns: 24px 1fr;
-}
-.activity .icon {
-  font-size: 16px;
-}
-.activity .title {
-  font-weight: 500;
-}
-.activity .body {
-  white-space: pre-line;
-}
-.trades li {
-  grid-template-columns: 64px 1fr auto;
-}
-.trades .side {
-  font-weight: 600;
-}
-.trades .pnl {
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.history li {
-  grid-template-columns: 1fr auto;
-  cursor: pointer;
-  padding: 10px 8px;
-  border-radius: 8px;
-}
-.history li:hover,
-.history li.selected {
-  background: var(--hover);
-}
-
 /* 레버리지 배수 표시 */
 .lev {
   display: inline-block;
@@ -1347,119 +1291,125 @@ button.bot-item.active {
   cursor: pointer;
 }
 .toggle input {
-  accent-color: var(--accent);
+  accent-color: var(--ink);
 }
 
-/* 설정: 봇 고르기·이름·봇 관리 */
-.bot-chips .chip-sub {
-  margin-left: 4px;
-  font-weight: 500;
-  opacity: 0.6;
+/* ---------- 설정 ---------- */
+/* Vercel식: 제목 자리의 봇 바꾸기 메뉴, 왼쪽 섹션 설명·오른쪽 입력, 저장 하나, 맨 아래 위험 영역 */
+.settings {
+  max-width: 960px;
 }
-.name-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
+.settings-head {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 20px;
 }
-.danger-zone {
-  margin-top: 8px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
+.settings-head p {
+  margin: 0;
 }
-
-/* ---------- 시험해 보기 ---------- */
-/* 홈과 같은 2단: 왼쪽 시험 양식 다음 결과(큰 숫자·그래프·지표), 오른쪽 지난 시험 목록 */
-.bt-verdict {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin: 14px 0 0;
-  max-width: 62ch;
+.switcher {
+  position: relative;
+  justify-self: start;
 }
-.bt-verdict .mark {
-  transform: translateY(-1px);
-}
-.bt-chart {
-  height: 320px;
-  margin-top: 24px;
-}
-.legend {
+button.switcher-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12.5px;
+  padding: 2px 6px 2px 0;
+  border: 0;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+button.switcher-btn:hover:not(:disabled) {
+  background: none;
   color: var(--muted);
 }
-.legend i {
-  width: 14px;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--text);
+.switcher-btn svg {
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
 }
-.legend i.bench {
-  height: 1px;
-  background: var(--faint);
+.switcher .menu {
+  left: 0;
+  right: auto;
+  min-width: 220px;
 }
-.bt-facts {
-  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+.switcher .menu button {
+  justify-content: space-between;
 }
-.bt-result {
-  margin-top: 40px;
-  padding-top: 32px;
-  border-top: 1px solid var(--border);
-}
-.bt-form .block-head {
-  flex-wrap: wrap;
-}
-button.bt-item {
+.set-section {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 11px 16px;
-  border: 0;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 12px 40px;
+  padding-block: 28px;
   border-top: 1px solid var(--border);
-  border-radius: 0;
-  background: none;
-  text-align: left;
-  font-weight: 400;
 }
-button.bt-item.active {
-  background: var(--surface);
-}
-.bt-item .sym {
+.set-label h2 {
+  font-size: 14px;
   font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.bt-item .sub {
-  font-size: 12px;
-  color: var(--faint);
-}
-.bt-item .r {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-.bt-item .ret {
-  font-weight: 600;
+.set-label p {
+  margin: 4px 0 0;
   font-size: 13px;
+  color: var(--muted);
 }
-@media (max-width: 960px) {
-  .bt .home-side {
-    order: 0;
-  }
+.set-body {
+  min-width: 0;
 }
-@media (max-width: 640px) {
-  .bt-chart {
-    height: 240px;
+.save-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding-block: 20px 28px;
+  border-top: 1px solid var(--border);
+}
+.save-bar .toggle {
+  flex-basis: 100%;
+}
+.set-log .log-item:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.danger-title {
+  margin-top: 40px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--bad);
+}
+.danger-box {
+  border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent);
+  border-radius: 10px;
+  background: var(--card);
+}
+.danger-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+}
+.danger-row + .danger-row {
+  border-top: 1px solid color-mix(in srgb, var(--bad) 20%, transparent);
+}
+.danger-row .title {
+  font-weight: 600;
+}
+.danger-row p {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.danger-row button {
+  flex: none;
+}
+@media (max-width: 760px) {
+  .set-section {
+    grid-template-columns: minmax(0, 1fr);
   }
-  .bt-facts {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .bt-facts .fact:nth-child(odd) {
-    border-left: 0;
+  .danger-row {
+    flex-wrap: wrap;
   }
 }
