@@ -21,6 +21,8 @@ from quant_lab.api.schemas import (
     BotCreate,
     BotRename,
     BotView,
+    ChoiceOption,
+    ChoiceView,
     CommandAccepted,
     CommandRequest,
     DecisionView,
@@ -681,6 +683,15 @@ def strategies() -> list[StrategyInfo]:
                 default_params=factory().params,
                 accumulates=deposit_plan(factory()) is not None,
                 preset_label=info.preset_label,
+                choices=[
+                    ChoiceView(
+                        key=c.key,
+                        label=c.label,
+                        options=[ChoiceOption(value=v, label=t) for v, t in c.options],
+                        hint=c.hint,
+                    )
+                    for c in info.choices
+                ],
             )
         )
     return out
