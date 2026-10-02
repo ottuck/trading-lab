@@ -114,9 +114,18 @@ export type Bar = { date: string; open: Money; high: Money; low: Money; close: M
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init)
   if (!res.ok && res.status !== 503) {
+    // FastAPI의 {"detail": "..."}는 사람이 읽는 문장만 보여준다.
     const text = await res.text()
-    throw new Error(`${res.status} ${text.slice(0, 200)}`)
+    let message = text.slice(0, 200)
+    try {
+      const detail = (JSON.parse(text) as { detail?: unknown }).detail
+      if (typeof detail === 'string') message = detail
+    } catch {
+      // JSON이 아니면 원문 일부를 그대로 쓴다.
+    }
+    throw new Error(message || `요청 실패 (${res.status})`)
   }
+  if (res.status === 204) return undefined as T
   return (await res.json()) as T
 }
 
@@ -246,6 +255,9 @@ const json = (method: string, body: unknown): RequestInit => ({
 export const botApi = {
   create: (body: BotCreate) => request<Bot>('/api/bots', json('POST', body)),
   updateConfig: (botId: number, body: BotConfig) => request<Bot>(`/api/bots/${botId}/config`, json('PUT', body)),
+  rename: (botId: number, name: string) => request<Bot>(`/api/bots/${botId}`, json('PATCH', { name })),
+  reset: (botId: number) => request<Bot>(`/api/bots/${botId}/reset`, { method: 'POST' }),
+  remove: (botId: number) => request<void>(`/api/bots/${botId}`, { method: 'DELETE' }),
   history: (botId: number) =>
     request<ConfigEvent[]>(`/api/events?bot_id=${botId}&kind=config_change&limit=20`),
 }

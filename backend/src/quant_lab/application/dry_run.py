@@ -105,6 +105,9 @@ def evaluate_bot(
     now: datetime,
     trigger: Trigger,
 ) -> EvaluationOutcome:
+    if session.get(BotRow, bot_id) is None:
+        # 평가 대상을 고른 뒤 화면에서 봇이 지워진 경우. 실행 기록도 남기지 않는다.
+        return EvaluationOutcome(uuid.uuid4(), RunStatus.SKIPPED, None, f"봇 {bot_id}가 없습니다")
     run = RunRow(id=uuid.uuid4(), bot_id=bot_id, trigger=trigger, started_at=now, status="RUNNING")
     session.add(run)
     session.commit()

@@ -16,7 +16,7 @@ from quant_lab.persistence.bars import upsert_daily_bars
 from quant_lab.persistence.bots import create_bot
 from quant_lab.persistence.db import get_session
 from quant_lab.persistence.heartbeat import record_heartbeat
-from quant_lab.persistence.models import BotRow, CommandRow
+from quant_lab.persistence.models import CommandRow
 from tests.fakes import WeekdayCalendar, make_bars
 
 CAL = WeekdayCalendar()
@@ -114,16 +114,11 @@ def test_run_backtest_and_list(client: TestClient, bot_id: int) -> None:
     assert bad.status_code == 400
 
 
-def test_bot_config_change_requires_pause(
-    client: TestClient, session: Session, bot_id: int
-) -> None:
+def test_bot_management(client: TestClient, session: Session, bot_id: int) -> None:
+    # 실행 중에도 설정을 바꾸고, 다음 판단부터 적용된다
     config = {"strategy": "trend_filter", "params": {"sma": 4}, "max_order_value": "5000"}
-    assert client.put(f"/api/bots/{bot_id}/config", json=config).status_code == 409  # RUNNING
-
-    bot = session.get_one(BotRow, bot_id)
-    bot.state = BotState.PAUSED
-    session.commit()
     updated = client.put(f"/api/bots/{bot_id}/config", json=config).json()
+    assert updated["state"] == "RUNNING"
     assert updated["strategy"] == "trend_filter"
     assert updated["risk"]["max_order_value"] == "5000"
     history = client.get("/api/events", params={"bot_id": bot_id, "kind": "config_change"}).json()
@@ -139,3 +134,15 @@ def test_bot_config_change_requires_pause(
         ).status_code
         == 409
     )
+    assert client.patch(f"/api/bots/{bot_id}", json={"name": "voo"}).status_code == 409
+    assert client.patch(f"/api/bots/{bot_id}", json={"name": "나스닥"}).json()["name"] == "나스닥"
+
+    # 처음부터 다시 시작: 잔고·기록 초기화, 설정·상태 유지
+    reset = client.post(f"/api/bots/{bot_id}/reset").json()
+    assert reset["account"]["qty"] == 0 and reset["account"]["cash"] == "10000"
+    assert reset["last_decision"] is None and reset["state"] == "RUNNING"
+    assert reset["strategy"] == "trend_filter"
+
+    voo = created.json()["id"]
+    assert client.delete(f"/api/bots/{voo}").status_code == 204
+    assert client.get(f"/api/bots/{voo}").status_code == 404

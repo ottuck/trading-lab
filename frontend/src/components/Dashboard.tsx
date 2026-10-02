@@ -6,13 +6,14 @@ import { leverageOf, useInstruments } from '../instruments'
 import { sourceLabel } from '../source'
 import { useStrategies } from '../strategies'
 import { Term } from './Help'
+import { selectBot, startNewBot, useSelectedBot } from '../selectedBot'
 import { PriceChart } from './PriceChart'
 import { LeverageNotice } from './SymbolPicker'
 
 const STATE: Record<BotState, { label: string; dot: string }> = {
   RUNNING: { label: '실행 중', dot: 'ok pulse' },
-  PAUSED: { label: '잠시 멈춤', dot: 'warn' },
-  STOPPED: { label: '멈춤', dot: '' },
+  PAUSED: { label: '멈춤', dot: 'warn' },
+  STOPPED: { label: '멈춤', dot: 'warn' },
   ERROR: { label: '문제 발생', dot: 'bad' },
 }
 
@@ -78,24 +79,20 @@ function useDismiss(open: boolean, close: () => void, ref?: React.RefObject<HTML
   }, [open, close, ref])
 }
 
-/* ---------- 봇 제어: 주 동작 하나 + 나머지는 ⋯ 메뉴 ---------- */
+/* ---------- 봇 제어: 멈추기·시작 하나 + 설정 ---------- */
 
-type Action = { kind: CommandKind; label: string; danger?: boolean }
-const RUN_ONCE: Action = { kind: 'RUN_ONCE', label: '지금 판단해 보기' }
-const PAUSE: Action = { kind: 'PAUSE', label: '잠시 멈춤' }
-const STOP: Action = { kind: 'STOP', label: '매매 중단', danger: true }
+// 일반 사용자에게는 "멈추기 / 시작" 두 가지만 보여준다.
+// 판단은 하루 한 번 자동으로 하므로 "지금 판단해 보기"(RUN_ONCE)와 "중단"(STOP)은 화면에서 뺐다 (API·CLI에는 남김).
+type Action = { kind: CommandKind; label: string }
 
-function actionsFor(state: BotState): { main: Action; primary: boolean; more: Action[] } {
-  if (state === 'RUNNING') return { main: RUN_ONCE, primary: false, more: [PAUSE, STOP] }
-  if (state === 'STOPPED') return { main: { kind: 'START', label: '매매 시작' }, primary: true, more: [RUN_ONCE] }
-  return { main: { kind: 'START', label: '다시 시작' }, primary: true, more: [RUN_ONCE, STOP] }
+function actionFor(state: BotState): { main: Action; primary: boolean } {
+  if (state === 'RUNNING') return { main: { kind: 'PAUSE', label: '멈추기' }, primary: false }
+  if (state === 'STOPPED') return { main: { kind: 'START', label: '매매 시작' }, primary: true }
+  return { main: { kind: 'START', label: '다시 시작' }, primary: true }
 }
 
 function Controls({ bot, onSent }: { bot: Bot; onSent: (msg: string) => void }) {
   const qc = useQueryClient()
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useDismiss(open, () => setOpen(false), ref)
   const mutation = useMutation({
     mutationFn: (kind: CommandKind) => api.command(bot.id, kind),
     onSuccess: () => {
@@ -105,32 +102,29 @@ function Controls({ bot, onSent }: { bot: Bot; onSent: (msg: string) => void }) 
     onError: (e) => onSent(`요청하지 못했어요: ${e.message}`),
   })
   const send = (a: Action) => {
-    setOpen(false)
-    if (a.kind === 'STOP' && !window.confirm('매매를 중단할까요? 예정된 거래는 그대로 남아요.')) return
+    if (a.kind === 'PAUSE') {
+      const pending = bot.pending_order
+        ? `
+
+예약된 ${bot.pending_order.side === 'BUY' ? '매수' : '매도'}는 다시 시작할 때 원래 날짜의 가격으로 처리돼요.`
+        : ''
+      const ok = window.confirm(
+        `${bot.name}을(를) 멈출까요?
+멈춘 동안에는 새로 판단하지 않아요. 다시 시작하면 그날 판단부터 이어가요.${pending}`,
+      )
+      if (!ok) return
+    }
     mutation.mutate(a.kind)
   }
-  const { main, primary, more } = actionsFor(bot.state)
+  const { main, primary } = actionFor(bot.state)
   return (
-    <div className="hero-actions" ref={ref}>
+    <div className="hero-actions">
       <button className={primary ? 'primary' : ''} disabled={mutation.isPending} onClick={() => send(main)}>
         {main.label}
       </button>
-      <button className="more" aria-label="다른 동작" aria-expanded={open} onClick={() => setOpen(!open)}>
-        ⋯
+      <button className="ghost" onClick={() => (location.hash = 'settings')}>
+        설정
       </button>
-      {open && (
-        <div className="menu" role="menu">
-          {more.map((a) => (
-            <button key={a.kind} role="menuitem" className={a.danger ? 'danger' : ''} onClick={() => send(a)}>
-              {a.label}
-            </button>
-          ))}
-          <hr />
-          <button role="menuitem" onClick={() => (location.hash = 'settings')}>
-            설정 바꾸기
-          </button>
-        </div>
-      )}
     </div>
   )
 }
@@ -599,29 +593,11 @@ function BotItem({ bot, active, onPick }: { bot: Bot; active: boolean; onPick: (
   )
 }
 
-const SELECTED_KEY = 'quant-lab:bot'
-
-function readSelected(): number | null {
-  try {
-    return Number(localStorage.getItem(SELECTED_KEY)) || null
-  } catch {
-    return null
-  }
-}
-
 /** 홈: 왼쪽에 고른 봇의 자산·판단·거래, 오른쪽에 봇 목록. 고른 봇은 이 브라우저에 기억한다. */
 export function Home({ bots }: { bots: Bot[] }) {
-  const [selected, setSelected] = useState(readSelected)
   const [logOpen, setLogOpen] = useState(false)
-  const bot = bots.find((b) => b.id === selected) ?? bots[0]
-  const pick = (id: number) => {
-    setSelected(id)
-    try {
-      localStorage.setItem(SELECTED_KEY, String(id))
-    } catch {
-      // 저장이 막힌 브라우저에서는 이번 방문 동안만 기억한다.
-    }
-  }
+  const bot = useSelectedBot(bots)
+  const pick = selectBot
   return (
     <div className="home">
       <div className="home-main" key={bot.id}>
@@ -636,7 +612,7 @@ export function Home({ bots }: { bots: Bot[] }) {
         <div className="bot-list">
           <div className="bot-list-head">
             내 봇
-            <button className="link" onClick={() => (location.hash = 'settings')}>
+            <button className="link" onClick={() => startNewBot()}>
               + 새 봇
             </button>
           </div>

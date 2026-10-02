@@ -1,5 +1,7 @@
 """이벤트 테이블을 따라가며 사람이 읽을 만한 것만 텔레그램으로 보낸다.
 
+한 번에 생긴 소식(예: 아침 07:00 봇 여러 개의 체결·점검·주간 리포트)은 한 통으로 묶는다.
+
 문장은 application/messages.py가 만든다 (화면의 '최근 활동'과 같은 말).
 평가 로직과 분리되어 있어 알림이 실패해도 판단·모의 체결에는 영향이 없다.
 Worker 자신이 죽은 경우는 외부 heartbeat ping(HEARTBEAT_PING_URL)으로 감시한다.
@@ -15,6 +17,8 @@ from quant_lab.application.messages import KST, event_message, telegram_text
 from quant_lab.persistence.models import BotRow, EventRow
 
 log = logging.getLogger(__name__)
+# 텔레그램 메시지 한 통 최대 4096자. 여유를 두고 자른다.
+MAX_TEXT = 3800
 
 
 def render(event: EventRow, bot: tuple[str, str] | None) -> str | None:
@@ -56,15 +60,26 @@ class EventNotifier:
                     select(BotRow.id, BotRow.name, BotRow.symbol)
                 )
             }
+        # (마지막 이벤트 id, 묶은 문장, 소식 수) 단위로 보낸다.
+        chunks: list[tuple[int, str, int]] = []
         for event in events:
             text = render(event, bots.get(event.bot_id) if event.bot_id else None)
-            if text is not None:
-                try:
-                    self.send(text)
-                except Exception as exc:
-                    # 다음 주기에 같은 이벤트부터 다시 시도한다.
-                    log.warning("알림 전송 실패: %s", exc)
-                    return sent
-                sent += 1
-            self.cursor = event.id
+            if text is None:
+                continue
+            if chunks and len(chunks[-1][1]) + len(text) + 2 <= MAX_TEXT:
+                _, joined, n = chunks[-1]
+                chunks[-1] = (event.id, f"{joined}\n\n{text}", n + 1)
+            else:
+                chunks.append((event.id, text, 1))
+        for last_id, text, n in chunks:
+            try:
+                self.send(text)
+            except Exception as exc:
+                # 다음 주기에 보내지 못한 묶음부터 다시 시도한다.
+                log.warning("알림 전송 실패: %s", exc)
+                return sent
+            sent += n
+            self.cursor = last_id
+        if events:
+            self.cursor = events[-1].id
         return sent
