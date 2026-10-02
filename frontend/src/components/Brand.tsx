@@ -1,31 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 import { setThemePref, useTheme, type ThemePref } from '../theme'
 
-/** 로고: 오른쪽 위로 오르는 선 마크 + Quant(굵게) Lab(가늘게, 그라데이션) 워드마크. */
+/** 로고: 글자색 사각형 위에 오른쪽 위로 오르는 선 + "Quant Lab" 워드마크. 테마 색을 그대로 따른다. */
 export function Brand() {
   return (
     <a className="brand" href="#dashboard" aria-label="Quant Lab 홈">
-      <svg className="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
-        <defs>
-          <linearGradient id="brand-g" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-            <stop style={{ stopColor: 'var(--brand-from)' }} />
-            <stop offset="1" style={{ stopColor: 'var(--brand-to)' }} />
-          </linearGradient>
-        </defs>
-        <rect width="32" height="32" rx="9" fill="url(#brand-g)" />
+      <svg className="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+        <rect width="24" height="24" rx="6" style={{ fill: 'var(--text)' }} />
         <path
-          d="M8 21.5l5-5.2 4 3.4 6.6-8"
+          d="M6 16l3.8-4 3 2.6 5-6"
           fill="none"
-          stroke="#fff"
-          strokeWidth="2.6"
+          style={{ stroke: 'var(--bg)' }}
+          strokeWidth="2.2"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        <circle cx="24" cy="11.4" r="2.5" fill="#fff" />
       </svg>
-      <h1 className="wordmark">
-        Quant<span className="lab">Lab</span>
-      </h1>
+      <h1 className="wordmark">Quant Lab</h1>
     </a>
   )
 }

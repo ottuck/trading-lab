@@ -27,7 +27,7 @@ function apply() {
   const theme = resolved()
   document.documentElement.dataset.theme = theme
   // 모바일 브라우저 주소창 색도 배경에 맞춘다.
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0a0d14' : '#f2f4f6')
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0a0a0b' : '#fbfbfc')
   listeners.forEach((l) => l())
 }
 

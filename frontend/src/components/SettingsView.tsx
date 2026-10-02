@@ -139,7 +139,7 @@ function BotSettings({ bot }: { bot: Bot }) {
         </div>
         <span className="muted small">시작 금액 {money(bot.account.initial_cash)}</span>
       </div>
-      {running && <div className="notice">돌아가는 중에는 바꿀 수 없어요. 홈에서 [잠시 멈춤]을 누른 뒤 바꿔 주세요.</div>}
+      {running && <div className="notice">돌아가는 중에는 바꿀 수 없어요. 홈의 ⋯ 메뉴에서 [잠시 멈춤]을 누른 뒤 바꿔 주세요.</div>}
       <fieldset disabled={running} className="plain">
         <ConfigFields draft={draft} onChange={setDraft} />
       </fieldset>

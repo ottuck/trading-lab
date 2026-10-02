@@ -90,7 +90,7 @@ export function PriceChart({ bot }: { bot: Bot }) {
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
         textColor: text,
-        fontFamily: 'Pretendard Variable, system-ui, sans-serif',
+        fontFamily: cssVar('--sans'),
       },
       crosshair: { vertLine: { color: cssVar('--chart-cross') }, horzLine: { color: cssVar('--chart-cross') } },
       grid: { vertLines: { color: grid }, horzLines: { color: grid } },
@@ -169,21 +169,20 @@ export function PriceChart({ bot }: { bot: Bot }) {
 
   const last = completed.at(-1)
   return (
-    <section className="card">
-      <div className="panel-head">
-        <div className="card-title">
-          가격 차트 <span className="sub">{bot.symbol}</span>
-        </div>
-        <div className="controls">
+    <section className="block">
+      <div className="block-head">
+        <h2>가격 차트</h2>
+        <span className="sub">{bot.symbol}</span>
+        <div className="ranges" role="group" aria-label="기간" style={{ marginLeft: 'auto' }}>
           {RANGES.map((r) => (
-            <button key={r.days} className={`seg ${r.days === days ? 'active' : ''}`} onClick={() => setDays(r.days)}>
+            <button key={r.days} className={r.days === days ? 'active' : ''} aria-pressed={r.days === days} onClick={() => setDays(r.days)}>
               {r.label}
             </button>
           ))}
         </div>
       </div>
       {bot.strategy === 'sma_cross' && (
-        <div className="small muted" style={{ marginTop: 8 }}>
+        <div className="small muted">
           <span style={{ color: 'var(--line-fast)' }}>━ 최근 {bot.params.fast}일 평균</span>{'  '}
           <span style={{ color: 'var(--dry)' }}>━ {bot.params.slow}일 평균</span> · ▲ 산 날 · ▼ 판 날
           {liveBar && ' · 흐린 봉: 오늘 진행 중'}
