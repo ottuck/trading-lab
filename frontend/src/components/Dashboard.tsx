@@ -737,7 +737,7 @@ function BotParallel({ bot }: { bot: Bot }) {
   )
 }
 
-/** 오른쪽 봇 목록: 나 카피 봇이 위, 다른 전략 봇은 아래 묶음. */
+/** 오른쪽 봇 목록: 나 카피 봇이 위, 다른 봇은 아래 묶음. */
 function BotSide({ bots, current, onPick }: { bots: Bot[]; current?: Bot; onPick: (b: Bot) => void }) {
   const mine = bots.filter(isMeBot)
   const others = bots.filter((b) => !isMeBot(b))
@@ -753,12 +753,12 @@ function BotSide({ bots, current, onPick }: { bots: Bot[]; current?: Bot; onPick
         </div>
         {mine.length ? mine.map(row) : <div className="bot-list-empty">아직 없어요</div>}
         <div className="bot-list-head sub">
-          다른 전략 봇
+          다른 봇
           <button className="link" onClick={() => startNewBot()}>
             + 새 봇
           </button>
         </div>
-        {others.length ? others.map(row) : <div className="bot-list-empty">유명한 전략을 따라 하는 봇이에요</div>}
+        {others.length ? others.map(row) : <div className="bot-list-empty">유명한 투자법을 따라 하는 봇이에요</div>}
       </div>
       <div className="side-note">10초마다 새로 불러와요.</div>
     </aside>

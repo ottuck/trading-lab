@@ -1,6 +1,7 @@
 import type { StrategyInfo } from '../api'
+import { StrategyGlyph } from './StrategyGlyph'
 
-/** 전략 카드 4개 (별명·설명·위험·거래 빈도). 시험해 보기와 봇 설정에서 같이 쓴다. */
+/** 전략 카드 (규칙 그림·별명·설명·위험·거래 빈도). 봇 설정과 새 봇 만들기에서 쓴다. */
 export function StrategyPicker({
   list,
   value,
@@ -14,6 +15,7 @@ export function StrategyPicker({
     <div className="pick-grid">
       {list.map((s) => (
         <button key={s.name} className={`pick ${s.name === value ? 'active' : ''}`} onClick={() => onChange(s.name)}>
+          <StrategyGlyph name={s.name} />
           <div className="pick-title">
             {s.nickname}
           </div>
