@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api, backtestApi, type BacktestDetail, type StrategyInfo, type SymbolWeight } from '../api'
 import { money, percent, shares, signedMoney, tone } from '../format'
 import { isMeBot, useStrategies } from '../strategies'
+import { useDemo } from '../demo'
 import { cssVar, useTheme } from '../theme'
 import { Term } from './Help'
 import { goTo, startNewBot } from '../selectedBot'
@@ -221,6 +222,7 @@ function Fact({ term, a, b, t }: { term: string; a: React.ReactNode; b: React.Re
 }
 
 function Result({ id, info }: { id: string; info?: StrategyInfo }) {
+  const demo = useDemo()
   const { data } = useQuery({ queryKey: ['backtest', id], queryFn: () => backtestApi.get(id), refetchInterval: false })
   const [showTrades, setShowTrades] = useState(false)
   if (!data) return <div className="line-empty">불러오는 중…</div>
@@ -254,11 +256,13 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
             <span className="when">해마다 평균 {percent(m.cagr)}</span>
           </div>
         </div>
-        <div className="hero-actions">
-          <button className="primary" onClick={() => startNewBot({ symbol: data.symbol, symbols: data.symbols ?? undefined, strategy: data.strategy, params: data.params })}>
-            이 전략으로 모의 투자 시작
-          </button>
-        </div>
+        {!demo && (
+          <div className="hero-actions">
+            <button className="primary" onClick={() => startNewBot({ symbol: data.symbol, symbols: data.symbols ?? undefined, strategy: data.strategy, params: data.params })}>
+              이 전략으로 모의 투자 시작
+            </button>
+          </div>
+        )}
       </div>
       <p className="bt-verdict">
         <span className={`mark ${won ? 'rise' : 'fall'}`} />
@@ -410,7 +414,7 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
           }
           sub={() => `${ym(m.start)}부터, 규칙을 하나씩 바꿨다면`}
           chooseLabel="로 모의 투자 시작"
-          onChoose={(params) => startNewBot({ symbol: data.symbol, symbols: data.symbols ?? undefined, strategy: data.strategy, params })}
+          onChoose={demo ? undefined : (params) => startNewBot({ symbol: data.symbol, symbols: data.symbols ?? undefined, strategy: data.strategy, params })}
         />
       )}
     </section>

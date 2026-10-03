@@ -2240,3 +2240,20 @@ body {
     gap: 10px;
   }
 }
+
+/* 포트폴리오 데모 (D2) */
+.demo-bar {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 13px;
+  text-align: center;
+  color: var(--muted);
+}
+.demo-bar b {
+  color: var(--text);
+  font-weight: 600;
+}
+.dot.demo::before {
+  background: var(--accent);
+}

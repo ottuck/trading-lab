@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     # stored: DB에 저장된 봉만 사용 (토스 호출 없음, 로컬 기본값). toss: 운영 서버.
     worker_market_source: Literal["stored", "toss"] = "stored"
 
+    # 포트폴리오 데모 (D2): 예시 시세만 있는 공개 데모. 서버 상태를 바꾸는 요청은 막고
+    # 시험해 보기·평행세계 계산만 받는다. 토스·주문 키는 넣지 않는다.
+    demo_mode: bool = False
+
     # Cloudflare Access (N7). 둘 다 있으면 Cloudflare를 거쳐 온 요청은 Access 토큰을 확인한다.
     cf_access_team: str | None = None  # <team>.cloudflareaccess.com의 <team>
     cf_access_aud: str | None = None  # Access 애플리케이션의 Audience(AUD) 태그

@@ -16,6 +16,7 @@ import { ago, isPast, kstTime, money, percent, shares, signedMoney, tone } from 
 import { leverageOf, useInstruments } from '../instruments'
 import { sourceLabel } from '../source'
 import { isMeBot, useStrategies } from '../strategies'
+import { useDemo } from '../demo'
 import { Term } from './Help'
 import { goTo, selectBot, startNewBot, useSelectedBot } from '../selectedBot'
 import { PriceChart } from './PriceChart'
@@ -284,6 +285,7 @@ function Overview({ bot }: { bot: Bot }) {
   const when = hover != null && points[hover] ? md(points[hover].date) : whole ? '시작 이후' : `지난 ${range.label}`
   const state = STATE[bot.state]
   const near = 0.005 * (mine.base || 1)
+  const demo = useDemo()
   const me = isMeBot(bot)
 
   return (
@@ -309,7 +311,7 @@ function Overview({ bot }: { bot: Bot }) {
             <span className="when">{when}</span>
           </div>
         </div>
-        <Controls bot={bot} onSent={setSent} />
+        {!demo && <Controls bot={bot} onSent={setSent} />}
       </div>
       {sent && <div className="hero-note">{sent}</div>}
       {bot.state_reason && (
@@ -723,6 +725,7 @@ const parallelKey = (bot: Bot) => ['parallel', bot.id, JSON.stringify(bot.params
 /** 나처럼 투자 봇: 시작한 뒤로 규칙을 하나씩 바꿨다면 (고르면 다음 판단부터 그 규칙으로). */
 function BotParallel({ bot }: { bot: Bot }) {
   const qc = useQueryClient()
+  const demo = useDemo()
   return (
     <ParallelWorlds
       queryKey={parallelKey(bot)}
@@ -730,7 +733,7 @@ function BotParallel({ bot }: { bot: Bot }) {
       sub={(p) => (p.start ? `${md(p.start)}에 시작한 뒤로, 규칙을 하나씩 바꿨다면` : '')}
       chooseLabel="로 바꾸기"
       confirm="다음 판단부터 이 규칙으로 바꿀까요? 지금까지의 기록은 그대로예요."
-      onChoose={async (params) => {
+      onChoose={demo ? undefined : async (params) => {
         await botApi.updateConfig(bot.id, { ...toConfig(toDraft(bot), bot), params })
         await qc.invalidateQueries({ queryKey: ['bots'] })
       }}
@@ -740,6 +743,7 @@ function BotParallel({ bot }: { bot: Bot }) {
 
 /** 오른쪽 봇 목록: 나 카피 봇이 위, 다른 봇은 아래 묶음. */
 function BotSide({ bots, current, onPick }: { bots: Bot[]; current?: Bot; onPick: (b: Bot) => void }) {
+  const demo = useDemo()
   const mine = bots.filter(isMeBot)
   const others = bots.filter((b) => !isMeBot(b))
   const row = (b: Bot) => <BotItem key={b.id} bot={b} active={b.id === current?.id} onPick={() => onPick(b)} />
@@ -755,9 +759,11 @@ function BotSide({ bots, current, onPick }: { bots: Bot[]; current?: Bot; onPick
         {mine.length ? mine.map(row) : <div className="bot-list-empty">아직 없어요</div>}
         <div className="bot-list-head sub">
           다른 봇
-          <button className="link" onClick={() => startNewBot()}>
-            + 새 봇
-          </button>
+          {!demo && (
+            <button className="link" onClick={() => startNewBot()}>
+              + 새 봇
+            </button>
+          )}
         </div>
         {others.length ? others.map(row) : <div className="bot-list-empty">유명한 투자법을 따라 하는 봇이에요</div>}
       </div>
@@ -958,6 +964,7 @@ function MePreview() {
 
 /** 홈 첫 화면은 늘 나 카피 봇 자리다. 고른 봇이 나 카피 봇이 아니면 첫 나 카피 봇, 없으면 시작 화면. */
 export function MeHome({ bots }: { bots: Bot[] }) {
+  const demo = useDemo()
   const selected = useSelectedBot(bots) as Bot | undefined
   const bot = selected && isMeBot(selected) ? selected : bots.find(isMeBot)
   return (
@@ -979,7 +986,7 @@ export function MeHome({ bots }: { bots: Bot[] }) {
               >
                 자세히 보기
               </button>
-              <span className="faint small">들고 있는 주식, 거래, 가격 그래프, 매매 시작·멈춤</span>
+              <span className="faint small">들고 있는 주식, 거래, 가격 그래프{demo ? '' : ', 매매 시작·멈춤'}</span>
             </div>
           </>
         ) : (

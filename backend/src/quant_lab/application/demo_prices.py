@@ -60,7 +60,7 @@ SPECS = (
     Spec("VOO", date(2010, 9, 9), 100, beta=1.0, vol=0.01),
     Spec("QQQ", date(2006, 1, 3), 40, beta=1.2, drift=0.03, vol=0.06),
     Spec("NVDA", date(2006, 1, 3), 2, beta=1.8, drift=0.16, vol=0.35),
-    Spec("GLD", date(2006, 1, 3), 50, beta=0.1, drift=0.05, vol=0.14),
+    Spec("GLD", date(2006, 1, 3), 50, beta=0.1, drift=0.03, vol=0.14),
     Spec("EWY", date(2006, 1, 3), 40, beta=1.0, drift=-0.03, vol=0.15),
     Spec("EWJ", date(2006, 1, 3), 50, beta=0.8, drift=-0.02, vol=0.10),
     # SOXL의 기초 지수 (화면에는 보이지 않는다)
@@ -74,14 +74,14 @@ HIDDEN = {"SEMI"}
 LEVERAGE = {s.symbol: s.leverage for s in SPECS if s.leverage > 1}
 
 
-MARKET_CAGR = 0.095  # 급락·하락장을 모두 거치고도 시장 전체가 해마다 오르는 정도
+# 급락·하락장이 아닌 평소 날의 하루 오름 (로그). 2006~2026 전체 시장이 연 9~10% 오르게 맞췄다.
+# 기간 전체에서 거꾸로 계산하지 않고 상수로 두어, 기간을 늘려도 지난 값이 바뀌지 않는다.
+CALM_DRIFT = 0.00084
 
 
-def _market(sessions: Sequence[date], rng: random.Random) -> list[float]:
-    """시장 전체의 하루 로그 수익률. 연 15% 정도 흔들리고, 급락·하락장 때는 정해진 만큼 빠진다.
-
-    나머지(평소) 날들은 전체 기간이 연 MARKET_CAGR가 되도록 오른다 (급락 뒤 회복).
-    """
+def _market(sessions: Sequence[date], seed: int) -> list[float]:
+    """시장 전체의 하루 로그 수익률. 연 15% 정도 흔들리고, 급락·하락장 때는 정해진 만큼 빠진다."""
+    rng = random.Random(f"{seed}-market")
     daily = [rng.gauss(0, 0.15 / math.sqrt(DAYS_PER_YEAR)) for _ in sessions]
     shocked: set[int] = set()
     for shock in SHOCKS:
@@ -94,22 +94,19 @@ def _market(sessions: Sequence[date], rng: random.Random) -> list[float]:
         for i in idx:
             daily[i] += (need - have) / len(idx)
         shocked.update(idx)
-    calm = [i for i in range(len(sessions)) if i not in shocked]
-    if calm:
-        target = math.log(1 + MARKET_CAGR) * len(sessions) / DAYS_PER_YEAR
-        lift = (target - sum(daily)) / len(calm)
-        for i in calm:
-            daily[i] += lift
-    return daily
+    return [r if i in shocked else r + CALM_DRIFT for i, r in enumerate(daily)]
 
 
 def demo_bars(sessions: Sequence[date], seed: int = 7) -> dict[str, list[DailyBar]]:
-    """종목별 예시 일봉. sessions는 미국 거래일 (오름차순)."""
-    rng = random.Random(seed)
-    market = _market(sessions, rng)
+    """종목별 예시 일봉. sessions는 미국 거래일 (오름차순).
+
+    종목마다 따로 난수를 써서, 기간을 뒤로 늘려도 앞의 값은 그대로다.
+    """
+    market = _market(sessions, seed)
     returns: dict[str, list[float]] = {}
     for spec in SPECS:
         if spec.base is None:
+            rng = random.Random(f"{seed}-{spec.symbol}")
             noise = spec.vol / math.sqrt(DAYS_PER_YEAR)
             returns[spec.symbol] = [
                 spec.beta * m + spec.drift / DAYS_PER_YEAR + rng.gauss(0, noise) for m in market
@@ -126,6 +123,7 @@ def demo_bars(sessions: Sequence[date], seed: int = 7) -> dict[str, list[DailyBa
     for spec in SPECS:
         if spec.symbol in HIDDEN:
             continue
+        rng = random.Random(f"{seed}-{spec.symbol}-bars")
         bars: list[DailyBar] = []
         close = spec.start_price
         for d, r in zip(sessions, returns[spec.symbol], strict=True):
@@ -135,8 +133,7 @@ def demo_bars(sessions: Sequence[date], seed: int = 7) -> dict[str, list[DailyBa
             close = prev * math.exp(r) if bars else prev
             # 시가는 전날 종가 근처, 고가·저가는 시가·종가 바깥으로 조금
             open_ = prev * math.exp(rng.gauss(0, 0.003)) if bars else close
-            wick = abs(rng.gauss(0, 0.006))
-            high = max(open_, close) * (1 + wick)
+            high = max(open_, close) * (1 + abs(rng.gauss(0, 0.006)))
             low = min(open_, close) * (1 - abs(rng.gauss(0, 0.006)))
             bars.append(
                 DailyBar(
