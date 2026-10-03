@@ -339,7 +339,7 @@ h3 {
 }
 .stack {
   display: grid;
-  gap: 14px;
+  gap: 16px;
 }
 .muted {
   color: var(--muted);
@@ -462,7 +462,7 @@ button.seg.active {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 10px 8px;
 }
 input,
 select {
@@ -1476,8 +1476,12 @@ button.switcher-btn:hover:not(:disabled) {
   font-size: 13px;
   color: var(--muted);
 }
+/* 섹션 안의 요약·버튼 줄·선택지 줄이 서로 붙지 않게 */
 .set-body {
   min-width: 0;
+  display: grid;
+  gap: 16px;
+  align-content: start;
 }
 .save-bar {
   display: flex;
