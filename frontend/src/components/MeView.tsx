@@ -6,7 +6,7 @@ import { DAYS, DEPOSITS, DIP, HOT, START, STYLES, answersOf, describe, stepsOf, 
 import { suggestName } from '../basket'
 import { endMeEdit, goTo, selectBot, useMeEdit } from '../selectedBot'
 import { isMeBot } from '../strategies'
-import { useDemo } from '../demo'
+import { useDemo, usePriceWord } from '../demo'
 import { toConfig, toDraft } from '../botConfig'
 import { EquityChart } from './BacktestView'
 import { ParallelWorlds } from './Parallel'
@@ -90,6 +90,7 @@ function Result({
   })
   const bots = useQuery({ queryKey: ['bots'], queryFn: api.bots })
   const demo = useDemo()
+  const priceWord = usePriceWord()
   const start = useMutation({
     mutationFn: async () => {
       const taken = (bots.data ?? []).map((b) => b.name)
@@ -147,7 +148,7 @@ function Result({
       {error ? (
         <div className="alert">계산하지 못했어요: {error.message}</div>
       ) : !data || !m ? (
-        <div className="line-empty">실제 가격으로 계산하는 중…</div>
+        <div className="line-empty">{priceWord}으로 계산하는 중…</div>
       ) : (
         <>
           <div className="me-worlds">
@@ -173,7 +174,7 @@ function Result({
           )}
           <EquityChart detail={data} />
           <p className="faint small">
-            둘 다 같은 날 같은 돈({money(m.contributed ?? m.initial_cash)})을 넣었어요. 실제 가격으로 계산했고, 재미로 보는
+            둘 다 같은 날 같은 돈({money(m.contributed ?? m.initial_cash)})을 넣었어요. {priceWord}으로 계산했고, 재미로 보는
             비교예요.
           </p>
         </>
@@ -224,6 +225,7 @@ function Result({
 
 export function MeView() {
   const qc = useQueryClient()
+  const priceWord = usePriceWord()
   // 규칙 바꾸기 대상은 처음 열 때 한 번만 읽는다 (아래 정리로 전역 값이 풀려도 유지).
   const [editId] = useState(useMeEdit())
   const editing = qc.getQueryData<Bot[]>(['bots'])?.find((b) => b.id === editId && isMeBot(b))
@@ -285,7 +287,7 @@ export function MeView() {
             </li>
           </ul>
           <p className="me-preview">
-            다 답하면 지난 {YEARS}년을 실제 가격으로 계산해 <b>나처럼 했다면</b>과 <b>매달 그냥 샀다면</b>을 나란히
+            다 답하면 지난 {YEARS}년을 {priceWord}으로 계산해 <b>나처럼 했다면</b>과 <b>매달 그냥 샀다면</b>을 나란히
             보여드려요.
           </p>
           <div className="me-nav">
