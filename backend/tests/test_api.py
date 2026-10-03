@@ -239,3 +239,16 @@ def test_cloudflare_access_guard(client: TestClient, monkeypatch: pytest.MonkeyP
     )
     ok = client.get("/api/strategies", headers={**cf, "cf-access-jwt-assertion": good})
     assert ok.status_code == 200
+
+
+def test_follow_plan(client: TestClient, session: Session, bot_id: int) -> None:
+    # 따라 하기: 다음 입금일·종목별로 살 금액·조건 가격 (지금 가격이 이어진다면)
+    params = {"deposit": 500, "day": 1, "dip": 10, "hot": 10, "high": 10, "sma": 5}
+    body = {"name": "me", "symbol": "QQQ", "strategy": "dip_saver", "params": params}
+    me = client.post("/api/bots", json={**body, "initial_cash": "500"}).json()
+    plan = client.get(f"/api/bots/{me['id']}/plan").json()
+    assert plan["deposit_date"] > plan["as_of"] and plan["deposit"] == "500"
+    (qqq,) = plan["symbols"]
+    assert Decimal(qqq["dip_price"]) < Decimal(qqq["close"])
+    assert Decimal(qqq["buy"]) + Decimal(qqq["save"]) > 0
+    assert client.get(f"/api/bots/{bot_id}/plan").status_code == 400  # 나 카피 봇만

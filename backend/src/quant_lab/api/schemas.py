@@ -87,6 +87,7 @@ class OrderView(BaseModel):
     commission: Decimal | None
     realized_pnl: Decimal | None
     note: str | None
+    budget: Decimal | None = None  # 이 주문에 쓸 돈 (모으기 전략)
 
 
 class RunView(BaseModel):
@@ -259,6 +260,34 @@ class BacktestRequest(BaseModel):
     initial_cash: Decimal | None = None  # 없으면 $10,000 (모으기 전략은 한 달 입금액)
     commission_rate: Decimal = Decimal("0.001")
     slippage_bps: Decimal = Decimal(5)
+
+
+class SymbolPlanView(BaseModel):
+    symbol: str
+    weight: int
+    close: Decimal
+    state: str  # dip · hot · wait · normal
+    dip_price: Decimal
+    hot_price: Decimal | None
+    buy: Decimal
+    save: Decimal
+
+
+class ReserveItemView(BaseModel):
+    month: str
+    symbol: str
+    amount: Decimal
+
+
+class PlanView(BaseModel):
+    """따라 하기: 나 카피 봇이 다음에 할 일 (지금 가격이 이어진다면)."""
+
+    as_of: date
+    deposit_date: date
+    deposit: Decimal
+    symbols: list[SymbolPlanView]
+    reserve: Decimal
+    reserve_items: list[ReserveItemView]
 
 
 class ParallelRequest(BaseModel):

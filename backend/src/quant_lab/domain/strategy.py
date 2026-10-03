@@ -278,6 +278,9 @@ class DipSaver:
     high: int = 252
     sma: int = 200
     regular: int = 1  # 1: 매달 산다, 0: 떨어졌을 때만 산다 (넣은 돈은 그때까지 모아 둔다)
+    # 1이면 새 돈을 비율보다 덜 들고 있는 종목부터 산다 (팔지 않는 비율 맞추기).
+    # 평행세계의 "비율 맞추는 나"에만 쓰고, 0이면 params에 넣지 않는다 (기존 봇·프리셋 그대로).
+    rebalance: int = 0
     name: ClassVar[str] = "dip_saver"
 
     def __post_init__(self) -> None:
@@ -285,8 +288,8 @@ class DipSaver:
             raise ValueError("deposit은 양수, day는 1~28이어야 합니다")
         if self.dip <= 0 or self.hot < 0 or self.high <= 1 or self.sma <= 1:
             raise ValueError("dip은 양수, hot은 0 이상, high, sma는 2 이상이어야 합니다")
-        if self.regular not in (0, 1):
-            raise ValueError("regular는 0(떨어졌을 때만) 또는 1(매달)이어야 합니다")
+        if self.regular not in (0, 1) or self.rebalance not in (0, 1):
+            raise ValueError("regular·rebalance는 0 또는 1이어야 합니다")
 
     @property
     def params(self) -> dict[str, int]:
@@ -298,7 +301,7 @@ class DipSaver:
             "high": self.high,
             "sma": self.sma,
             "regular": self.regular,
-        }
+        } | ({"rebalance": 1} if self.rebalance else {})
 
     @property
     def warmup(self) -> int:

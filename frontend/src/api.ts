@@ -85,6 +85,7 @@ export type Order = {
   commission: Money | null
   realized_pnl: Money | null
   note: string | null
+  budget?: Money | null // 이 주문에 쓸 돈 (나처럼 투자)
 }
 
 export type Run = {
@@ -212,6 +213,26 @@ export type ParallelRequest = {
   initial_cash?: string
 }
 
+// 따라 하기: 나 카피 봇이 다음에 할 일 (지금 가격이 이어진다면)
+export type SymbolPlan = {
+  symbol: string
+  weight: number
+  close: Money
+  state: 'dip' | 'hot' | 'wait' | 'normal'
+  dip_price: Money // 이 가격 이하면 모아 둔 돈까지 몰아 산다
+  hot_price: Money | null // 이 가격 이상이면 그달은 쉰다
+  buy: Money
+  save: Money
+}
+export type Plan = {
+  as_of: string
+  deposit_date: string
+  deposit: Money
+  symbols: SymbolPlan[]
+  reserve: Money
+  reserve_items: { month: string; symbol: string; amount: Money }[]
+}
+
 export type ActivityItem = { id: number; at: string; icon: string; title: string; body: string; level: string }
 
 export type BacktestMetrics = {
@@ -315,6 +336,7 @@ export const botApi = {
   create: (body: BotCreate) => request<Bot>('/api/bots', json('POST', body)),
   updateConfig: (botId: number, body: BotConfig) => request<Bot>(`/api/bots/${botId}/config`, json('PUT', body)),
   parallel: (botId: number) => request<Parallel>(`/api/bots/${botId}/parallel`),
+  plan: (botId: number) => request<Plan | null>(`/api/bots/${botId}/plan`),
   updateSymbols: (botId: number, symbols: SymbolWeight[]) => request<Bot>(`/api/bots/${botId}/symbols`, json('PUT', { symbols })),
   rename: (botId: number, name: string) => request<Bot>(`/api/bots/${botId}`, json('PATCH', { name })),
   reset: (botId: number) => request<Bot>(`/api/bots/${botId}/reset`, { method: 'POST' }),
