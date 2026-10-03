@@ -8,7 +8,12 @@ git fetch --quiet origin main
 git checkout --quiet main
 git pull --quiet --ff-only origin main
 
-docker compose -f deploy/compose.prod.yaml build
-docker compose -f deploy/compose.prod.yaml up -d --remove-orphans
-docker compose -f deploy/compose.prod.yaml ps
+# 도메인 접속(Cloudflare Tunnel)은 토큰 파일이 있을 때만 켠다 (N7).
+compose="docker compose -f deploy/compose.prod.yaml"
+if [ -f .secrets/cloudflared.env ]; then
+  compose="$compose --profile tunnel"
+fi
+$compose build
+$compose up -d --remove-orphans
+$compose ps
 echo "배포 완료: $(git log -1 --format='%h %s')"

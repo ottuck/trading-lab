@@ -6,7 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#fbfbfc" />
     <!-- 홈 화면에 추가하면 주소창 없이 앱처럼 열린다 (PWA) -->
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- Cloudflare Access 뒤에서도 설치되게 로그인 쿠키를 함께 보낸다 (N7) -->
+    <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
