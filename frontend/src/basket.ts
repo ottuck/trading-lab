@@ -21,12 +21,10 @@ export function basketLabel(all: SymbolWeight[] | null | undefined, fallback: st
   return symbols.map((s) => `${s.symbol} ${s.weight}%`).join(' · ')
 }
 
-const SHORT: Record<string, string> = { sma_cross: 'sma', trend_filter: '200', rsi2: 'rsi', donchian: 'high', dip_saver: 'me' }
-
-/** 봇 이름 제안: 'qqq-voo-me' (겹치면 -2, -3) */
+/** 봇 이름 제안: 나 카피 봇은 '도플갱어 봇', 그 밖은 'QQQ 봇' (겹치면 '도플갱어 봇 2') */
 export function suggestName(symbols: string[], strategy: string, taken: string[]) {
-  const base = `${symbols.join('-').toLowerCase()}-${SHORT[strategy] ?? strategy}`
+  const base = strategy === 'dip_saver' ? '도플갱어 봇' : `${symbols[0] ?? ''} 봇`
   let name = base
-  for (let i = 2; taken.includes(name); i++) name = `${base}-${i}`
+  for (let i = 2; taken.includes(name); i++) name = `${base} ${i}`
   return name
 }

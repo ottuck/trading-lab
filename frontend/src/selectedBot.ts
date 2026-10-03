@@ -30,10 +30,10 @@ function subscribe(l: () => void) {
   return () => listeners.delete(l)
 }
 
-/** 고른 봇. 없거나 지워졌으면 첫 번째 봇. */
-export function useSelectedBot<T extends { id: number }>(bots: T[]): T {
+/** 고른 봇. 없거나 지워졌으면 나 카피 봇(나처럼 투자), 그것도 없으면 첫 번째 봇. */
+export function useSelectedBot<T extends { id: number; strategy: string }>(bots: T[]): T {
   const id = useSyncExternalStore(subscribe, () => selected)
-  return bots.find((b) => b.id === id) ?? bots[0]
+  return bots.find((b) => b.id === id) ?? bots.find((b) => b.strategy === 'dip_saver') ?? bots[0]
 }
 
 /** "새 봇 만들기" 요청. 시험해 보기 결과에서 오면 종목·전략이 미리 채워진다. */
@@ -65,4 +65,29 @@ export function useNewBotSeed(): NewBotSeed | null {
 /** 화면 이동 (#dashboard, #backtest, #settings, #me) */
 export function goTo(page: string) {
   location.hash = page
+}
+
+/** 나 카피하기(#me)를 기존 나 카피 봇의 규칙 바꾸기로 연다. #me를 떠나면 풀린다. */
+let meEdit: number | null = null
+const meEditListeners = new Set<() => void>()
+
+export function startMeEdit(botId: number) {
+  meEdit = botId
+  meEditListeners.forEach((l) => l())
+  location.hash = 'me'
+}
+
+export function endMeEdit() {
+  meEdit = null
+  meEditListeners.forEach((l) => l())
+}
+
+export function useMeEdit(): number | null {
+  return useSyncExternalStore(
+    (l) => {
+      meEditListeners.add(l)
+      return () => meEditListeners.delete(l)
+    },
+    () => meEdit,
+  )
 }

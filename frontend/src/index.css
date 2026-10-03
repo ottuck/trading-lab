@@ -1567,7 +1567,7 @@ button.switcher-btn:hover:not(:disabled) {
   font-size: 12px;
 }
 
-/* 질문으로 나 만들기 (#me): 가운데 좁은 단, 질문 하나씩. 고르는 버튼은 크게. */
+/* 나 카피하기 (#me): 가운데 좁은 단, 질문 하나씩. 고르는 버튼은 크게. */
 .me {
   max-width: 600px;
   margin: 0 auto;
@@ -1693,16 +1693,6 @@ button.switcher-btn:hover:not(:disabled) {
 .me-world .sub {
   font-size: 13px;
   color: var(--muted);
-}
-.me-empty {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.me-empty p {
-  margin: 4px 0 0;
 }
 @media (max-width: 420px) {
   .me-worlds {
@@ -1883,23 +1873,6 @@ button.switcher-btn:hover:not(:disabled) {
   gap: 8px 12px;
   margin-top: 8px;
 }
-.me-invite {
-  display: grid;
-  gap: 6px;
-  margin-top: 12px;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card);
-  font-size: 13px;
-}
-.me-invite p {
-  margin: 0;
-  color: var(--muted);
-}
-.me-invite button {
-  justify-self: start;
-}
 button.link.back {
   margin-bottom: 8px;
   font-size: 13px;
@@ -1920,4 +1893,144 @@ button.link.back {
   .me-home .home-side {
     order: 0;
   }
+}
+
+/* 나 카피 봇이 없을 때 홈 첫 화면 */
+.me-start {
+  display: grid;
+  gap: 14px;
+  padding: 8px 0 24px;
+  max-width: 640px;
+}
+.me-start h1 {
+  margin: 0;
+  font-size: clamp(26px, 4.4vw, 36px);
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+.me-start .lead {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.me-start-steps {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  counter-reset: step;
+}
+.me-start-steps li {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  counter-increment: step;
+}
+.me-start-steps li::before {
+  content: counter(step);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.me-start-steps b {
+  font-weight: 600;
+}
+.me-start-steps span {
+  font-size: 13px;
+  color: var(--muted);
+}
+.me-start-go {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 6px;
+}
+.bot-list-head.sub {
+  border-top: 1px solid var(--border);
+}
+.bot-list-empty {
+  padding: 4px 16px 14px;
+  font-size: 13px;
+  color: var(--faint);
+}
+@media (max-width: 640px) {
+  .me-start-steps {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 시험해 보기: 나처럼 투자가 주력, 유명 전략은 참고용 */
+.bt-modes {
+  display: grid;
+  gap: 14px;
+}
+.bt-main {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  text-align: left;
+}
+.bt-main .eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.bt-main .title {
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.bt-main .desc {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.bt-main.active {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+.bt-refs {
+  display: grid;
+  gap: 8px;
+}
+.bt-refs .label {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.bt-ref-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.bt-ref-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.bt-mine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+/* 한국어는 낱말 중간에서 줄을 바꾸지 않는다 ("봇 / 이" 방지). 긴 영문·숫자는 넘치면 끊는다. */
+body {
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }

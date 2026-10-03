@@ -180,7 +180,6 @@ export const api = {
 export type StrategyInfo = {
   name: string
   nickname: string
-  emoji: string
   summary: string
   risk: string
   trades: string
@@ -192,7 +191,7 @@ export type StrategyInfo = {
   choices: { key: string; label: string; options: { value: number; label: string }[]; hint: string; requires: string }[]
 }
 
-// 평행세계의 나 (나처럼 모으기 전용, 저장하지 않음)
+// 평행세계의 나 (나처럼 투자 전용, 저장하지 않음)
 export type World = {
   key: string // me(나), dca(매달 그냥 사기), 그 밖은 규칙을 하나 바꾼 나
   title: string

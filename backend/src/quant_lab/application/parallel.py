@@ -1,7 +1,7 @@
 """평행세계의 나 (N4): 내 규칙을 하나씩 바꾼 "다른 나"들을 같은 일봉으로 함께 계산한다.
 
 저장된 봇이 아니라 그때그때 계산하고 저장하지 않는다. 점수·등수는 매기지 않는다 (project.md 1절).
-나처럼 모으기(dip_saver) 전용이다.
+나처럼 투자(dip_saver) 전용이다.
 """
 
 from dataclasses import dataclass
