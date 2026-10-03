@@ -9,6 +9,7 @@ import { Term } from './Help'
 import { goTo, startNewBot } from '../selectedBot'
 import { ParallelWorlds } from './Parallel'
 import { PresetFields } from './PresetFields'
+import { StrategyGlyph } from './StrategyGlyph'
 import { activeOf, basketLabel } from '../basket'
 import { BasketPicker, SymbolPicker } from './SymbolPicker'
 
@@ -44,9 +45,12 @@ function StrategyModes({ list, value, onChange }: { list: StrategyInfo[]; value:
     <div className="bt-modes">
       {me && (
         <button className={`bt-main ${value === me.name ? 'active' : ''}`} aria-pressed={value === me.name} onClick={() => onChange(me.name)}>
-          <span className="eyebrow">나 카피 봇</span>
-          <span className="title">{me.nickname}</span>
-          <span className="desc">{me.summary}</span>
+          <span className="bt-main-text">
+            <span className="eyebrow">나 카피 봇</span>
+            <span className="title">{me.nickname}</span>
+            <span className="desc">{me.summary}</span>
+          </span>
+          <StrategyGlyph name={me.name} className="bt-main-glyph" />
         </button>
       )}
       <div className="bt-refs">
@@ -59,9 +63,12 @@ function StrategyModes({ list, value, onChange }: { list: StrategyInfo[]; value:
           ))}
         </div>
         {ref && (
-          <p className="bt-ref-desc">
-            {ref.summary} <span className="faint">위험 {ref.risk} · 거래 {ref.trades}</span>
-          </p>
+          <div className="bt-ref-desc">
+            <StrategyGlyph name={ref.name} />
+            <p>
+              {ref.summary} <span className="faint">위험 {ref.risk} · 거래 {ref.trades}</span>
+            </p>
+          </div>
         )}
       </div>
     </div>
