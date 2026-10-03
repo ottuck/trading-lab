@@ -892,9 +892,66 @@ function MeStart() {
         <button className="primary" onClick={() => goTo('me')}>
           나 카피하기
         </button>
-        <span className="faint small">실제 계좌는 연결하지 않아요</span>
+        <span className="muted small">1분이면 끝나요. 다 만들면 이 아래가 내 화면으로 채워져요 · 실제 계좌는 연결하지 않아요</span>
       </div>
+      <MePreview />
     </section>
+  )
+}
+
+/** 나 카피 봇을 만들면 홈이 어떻게 바뀌는지 보여주는 예시 화면 (숫자는 예시, 누를 수 없음). */
+function MePreview() {
+  const worlds = [
+    { title: '나', sub: '지금 규칙 그대로', value: '$12,480', rate: '+15.6%', me: true },
+    { title: '매달 그냥 사는 나', sub: '규칙 없이 넣을 때마다 바로 사요', value: '$12,106', rate: '+12.1%' },
+    { title: '떨어졌을 때만 사는 나', sub: '매달 사기 → 떨어졌을 때만 사기', value: '$12,931', rate: '+19.7%' },
+  ]
+  return (
+    <div className="me-preview-wrap">
+      <div className="me-preview-head">
+        <span className="pill">예시</span>
+        <span className="muted small">나 카피 봇을 만들면 홈이 이렇게 바뀌어요</span>
+      </div>
+      <div className="me-preview-card" aria-hidden="true">
+        <div className="me-vs">
+          <div>
+            <div className="label legend">
+              <i className="pw-mine" />
+              나처럼 했을 때
+            </div>
+            <div className="hero-value">$12,480</div>
+            <div className="hero-delta rise">넣은 돈보다 +15.6%</div>
+          </div>
+          <div className="vs-other">
+            <div className="label legend">
+              <i className="bench" />
+              매달 그냥 샀다면
+            </div>
+            <div className="value tnum">$12,106</div>
+            <div className="small rise">넣은 돈보다 +12.1%</div>
+          </div>
+        </div>
+        <p className="me-preview-digest">9월에 나 카피 봇은 사지 않고 모아 뒀어요. 고점에도 안 쉬는 나는 $1,350어치 샀어요.</p>
+        <svg className="me-preview-chart" viewBox="0 0 600 120" preserveAspectRatio="none">
+          <path d="M0 112 C80 104 140 92 200 84 S300 76 340 58 S440 40 480 30 S560 14 600 8" fill="none" stroke="var(--accent)" strokeWidth="2" />
+          <path d="M0 114 C80 106 140 96 200 88 S300 82 340 66 S440 48 480 36 S560 22 600 16" fill="none" stroke="var(--text)" strokeWidth="2" />
+        </svg>
+        <div className="pw-list">
+          {worlds.map((w) => (
+            <div key={w.title} className={`pw-item ${w.me ? 'pw-mine' : ''}`}>
+              <div>
+                <div className="title">{w.title}</div>
+                <div className="sub">{w.sub}</div>
+              </div>
+              <div className="r">
+                <div className="value tnum">{w.value}</div>
+                <div className="sub">넣은 돈보다 {w.rate}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }
 

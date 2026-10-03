@@ -9,20 +9,23 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
 
 from quant_lab.adapters.market_calendar import get_calendar
 from quant_lab.adapters.telegram import TelegramClient
-from quant_lab.adapters.toss.client import TossClient
+from quant_lab.adapters.toss.client import StockInfo, TossClient
 from quant_lab.application.backtesting import backtest_symbol
 from quant_lab.application.bar_sync import sync_daily_bars
+from quant_lab.application.demo_prices import DEMO_START, LEVERAGE, demo_bars
+from quant_lab.application.dry_run import latest_completed_session
 from quant_lab.application.replay import replay_bot
 from quant_lab.config import get_settings
 from quant_lab.domain.bars import outlier_limit
 from quant_lab.domain.bot import CommandKind
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.domain.strategy import STRATEGIES
+from quant_lab.persistence.bars import upsert_daily_bars
 from quant_lab.persistence.bots import (
     create_bot,
     delete_bot,
@@ -32,7 +35,8 @@ from quant_lab.persistence.bots import (
     load_account,
 )
 from quant_lab.persistence.db import get_engine
-from quant_lab.persistence.models import SimOrderRow
+from quant_lab.persistence.market_info import upsert_instruments
+from quant_lab.persistence.models import DailyBarRow, SimOrderRow
 
 
 def _toss_client() -> TossClient:
@@ -229,6 +233,45 @@ def cmd_replay(args: argparse.Namespace) -> int:
     return 0 if same else 1
 
 
+def cmd_seed_demo(args: argparse.Namespace) -> int:
+    """포트폴리오 데모 DB에 예시 시세를 넣는다 (D1). 토스 시세가 있는 DB에는 넣지 않는다."""
+    now = datetime.now(UTC)
+    calendar = get_calendar()
+    end = latest_completed_session(calendar, now)
+    sessions = calendar.sessions(DEMO_START, end)
+    bars = demo_bars(sessions, seed=args.seed)
+    with sessionmaker(get_engine())() as session:
+        real = session.scalar(
+            select(func.count()).select_from(DailyBarRow).where(DailyBarRow.source != "demo")
+        )
+        if real:
+            print(f"이 DB에는 토스 등 실제 시세 {real}건이 있어 예시 시세를 넣지 않습니다.")
+            print("데모 전용 DB(DATABASE_URL)를 지정하세요.")
+            return 1
+        for rows in bars.values():
+            upsert_daily_bars(session, rows, "demo", now)
+        upsert_instruments(
+            session,
+            [
+                StockInfo(
+                    symbol=s,
+                    english_name=f"{s} (예시)",
+                    market="DEMO",
+                    security_type="ETF" if s != "NVDA" else "STOCK",
+                    status="ACTIVE",
+                    currency="USD",
+                    leverage_factor=Decimal(LEVERAGE[s]) if s in LEVERAGE else None,
+                )
+                for s in bars
+            ],
+            now,
+        )
+        session.commit()
+    total = sum(len(v) for v in bars.values())
+    print(f"예시 시세 {len(bars)}종목 {total}봉 ({sessions[0]} ~ {end}, seed={args.seed})")
+    return 0
+
+
 def _telegram() -> TelegramClient:
     settings = get_settings()
     if settings.telegram_bot_token is None:
@@ -290,6 +333,10 @@ def build_parser() -> argparse.ArgumentParser:
     command.add_argument("bot_id", type=int)
     command.add_argument("kind", choices=[k.value for k in CommandKind])
     command.set_defaults(func=cmd_bot_command)
+
+    demo = sub.add_parser("seed-demo", help="데모 DB에 예시 시세 넣기 (토스 데이터 없음)")
+    demo.add_argument("--seed", type=int, default=7)
+    demo.set_defaults(func=cmd_seed_demo)
 
     rp = sub.add_parser("replay", help="저장된 일봉으로 정기 평가를 재생하고 백테스트와 비교")
     rp.add_argument("symbol", type=str.upper)
