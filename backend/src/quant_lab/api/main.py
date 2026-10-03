@@ -2,23 +2,46 @@ import mimetypes
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Response, status
+from fastapi import Depends, FastAPI, Request, Response, status
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from starlette.middleware.base import RequestResponseEndpoint
 
 from quant_lab import __version__
+from quant_lab.api.access import AccessGuard
 from quant_lab.api.routes import router
 from quant_lab.api.schemas import HealthResponse, WorkerStatus
 from quant_lab.config import get_settings
 from quant_lab.persistence.db import get_session
 from quant_lab.persistence.heartbeat import latest_heartbeat
 
-# 접근 제어는 Tailscale이 맡는다 (공개 포트 없음, project.md 6절).
+# 접근 제어는 Tailscale과 Cloudflare Access가 맡는다 (공개 포트 없음, project.md 6절).
 # 공개 인터넷에 직접 노출하지 않는다.
 app = FastAPI(title="Quant Lab", version=__version__)
 app.include_router(router)
+
+_settings = get_settings()
+access = (
+    AccessGuard(_settings.cf_access_team, _settings.cf_access_aud)
+    if _settings.cf_access_team and _settings.cf_access_aud
+    else None
+)
+
+
+@app.middleware("http")
+async def cloudflare_access(request: Request, call_next: RequestResponseEndpoint) -> Response:
+    """도메인(Cloudflare)으로 온 요청은 Access 로그인 토큰이 있어야 한다 (Tailscale은 그대로)."""
+    if access is not None and "cf-ray" in request.headers:
+        token = request.headers.get("cf-access-jwt-assertion") or request.cookies.get(
+            "CF_Authorization"
+        )
+        if not await run_in_threadpool(access.allows, token):
+            return JSONResponse({"detail": "로그인이 필요해요"}, status_code=403)
+    return await call_next(request)
 
 
 @app.get("/api/health")

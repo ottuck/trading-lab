@@ -2,6 +2,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
 
+import jwt
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -211,3 +212,30 @@ def test_parallel_worlds(client: TestClient, bot_id: int) -> None:
     assert [len(w["recent"]) for w in worlds.values()] == [2] * len(worlds)
     assert sum(Decimal(r["bought"]) for r in worlds["me"]["recent"]) > 0
     assert client.get("/api/backtests").json() == []
+
+
+def test_cloudflare_access_guard(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    # 도메인(Cloudflare, cf-ray 헤더)으로 온 요청은 Access 토큰이 있어야 한다. Tailscale은 그대로
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    from quant_lab.api import main
+    from quant_lab.api.access import AccessGuard
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    guard = AccessGuard("me", "aud-tag")
+    signing = type("Key", (), {"key": key.public_key()})()
+    monkeypatch.setattr(guard.jwks, "get_signing_key_from_jwt", lambda _token: signing)
+    monkeypatch.setattr(main, "access", guard)
+    claims = {"aud": "aud-tag", "iss": guard.issuer, "email": "me@example.com"}
+    good = jwt.encode(claims, key, algorithm="RS256")
+    bad = jwt.encode({**claims, "aud": "other"}, key, algorithm="RS256")
+
+    cf = {"cf-ray": "1"}
+    assert client.get("/api/strategies").status_code == 200  # Tailscale
+    assert client.get("/api/strategies", headers=cf).status_code == 403
+    assert (
+        client.get("/api/strategies", headers={**cf, "cf-access-jwt-assertion": bad}).status_code
+        == 403
+    )
+    ok = client.get("/api/strategies", headers={**cf, "cf-access-jwt-assertion": good})
+    assert ok.status_code == 200
