@@ -1979,8 +1979,9 @@ button.link.back {
   gap: 14px;
 }
 .bt-main {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
   width: 100%;
   padding: 16px 18px;
   border: 1px solid var(--border);
@@ -2021,10 +2022,20 @@ button.link.back {
   gap: 6px;
 }
 .bt-ref-desc {
-  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
   font-size: 13px;
   line-height: 1.6;
   color: var(--muted);
+}
+.bt-ref-desc .glyph {
+  flex: 0 0 120px;
+  height: 42px;
+}
+.bt-ref-desc p {
+  margin: 0;
+  min-width: 0;
 }
 .bt-mine {
   display: flex;
@@ -2037,4 +2048,45 @@ button.link.back {
 body {
   word-break: keep-all;
   overflow-wrap: break-word;
+}
+
+/* 전략 규칙 그림 (StrategyGlyph) */
+.glyph {
+  display: block;
+  width: 100%;
+  max-width: 160px;
+  height: 44px;
+}
+.pick .glyph {
+  margin-bottom: 10px;
+}
+.bt-main-text {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.bt-main-glyph {
+  flex: 0 0 160px;
+  height: 56px;
+}
+@media (max-width: 640px) {
+  .bt-main {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .bt-main-glyph {
+    flex-basis: auto;
+    height: 48px;
+  }
+  .bt-ref-desc {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .bt-ref-desc .glyph {
+    flex: none;
+    width: 140px;
+    height: 42px;
+  }
 }
