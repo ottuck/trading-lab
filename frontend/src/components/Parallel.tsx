@@ -15,9 +15,12 @@ function diff(me: Record<string, number>, other: Record<string, number> | null):
     regular: (v) => (v ? '매달 사기' : '떨어졌을 때만 사기'),
     hot: (v) => (v ? `+${v}%에 쉬기` : '고점에도 사기'),
     dip: (v) => `-${v}%에 몰아 사기`,
+    rebalance: (v) => (v ? '새 돈으로 비율 맞추기' : '비율대로 사기'),
   }
-  const key = Object.keys(said).find((k) => (me[k] ?? 1) !== (other[k] ?? 1))
-  return key ? `${said[key](me[key] ?? 1)} → ${said[key](other[key] ?? 1)}` : ''
+  const base: Record<string, number> = { regular: 1, rebalance: 0 } // 예전 봇에 없는 값의 기본
+  const of = (p: Record<string, number>, k: string) => p[k] ?? base[k] ?? 1
+  const key = Object.keys(said).find((k) => of(me, k) !== of(other, k))
+  return key ? `${said[key](of(me, key))} → ${said[key](of(other, key))}` : ''
 }
 
 function Chart({ me, other }: { me: World; other: World }) {

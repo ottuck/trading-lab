@@ -2120,3 +2120,123 @@ body {
 .me-preview-card .pw-item {
   padding: 10px 6px;
 }
+
+/* 따라 하기: 다음에 할 일 (날짜·종목별 할 일·조건까지 거리·모아 둔 돈) */
+.plan {
+  display: grid;
+  gap: 14px;
+}
+.plan-soon {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--rise-soft);
+  font-size: 14px;
+}
+.plan-when {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.plan-when .date {
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.plan-rows {
+  display: grid;
+  border-top: 1px solid var(--border);
+}
+.plan-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+.plan-sym {
+  font-size: 13px;
+  font-weight: 600;
+}
+.plan-act {
+  margin: 2px 0;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.plan-dist {
+  display: grid;
+  gap: 8px;
+}
+.plan-track {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface);
+}
+.plan-track .zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.plan-track .zone.dip {
+  border-radius: 3px 0 0 3px;
+  background: var(--rise-soft);
+}
+.plan-track .zone.hot {
+  border-radius: 0 3px 3px 0;
+  background: var(--neutral-soft);
+}
+.plan-track .now {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border: 2px solid var(--card);
+  border-radius: 50%;
+  background: var(--text);
+}
+.plan-dist-text {
+  display: grid;
+  gap: 2px;
+  color: var(--muted);
+}
+.plan-dist-text b {
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.plan-reserve {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--surface);
+}
+.plan-reserve-head {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+}
+.plan-reserve ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--muted);
+}
+.plan-reserve li {
+  display: flex;
+  justify-content: space-between;
+}
+.plan-reserve p {
+  margin: 0;
+}
+@media (max-width: 640px) {
+  .plan-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}

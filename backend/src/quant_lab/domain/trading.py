@@ -145,9 +145,22 @@ def _basket(
             raise ValueError(f"{strategy.name}은 여러 종목을 다룰 수 없는 전략입니다")
         by_spend[signal.spend].append(symbol)
 
+    rebalance = bool(getattr(strategy, "rebalance", 0))
+    closes = {s: history[-1].close for s, (history, _) in signals.items()}
+
     def share(amount: Decimal, symbols: list[str]) -> dict[str, Decimal]:
         total = sum(weights[s] for s in symbols)
-        return {s: amount * weights[s] / total for s in symbols} if total else {}
+        if not total:
+            return {}
+        if rebalance and amount > 0:
+            # 비율 맞추기(팔지 않음): 새 돈을 비율보다 덜 들고 있는 종목부터 채운다
+            held = {s: pf.qty(s) * closes[s] for s in symbols}
+            goal = sum(held.values(), Decimal(0)) + amount
+            need = {s: max(Decimal(0), goal * weights[s] / total - held[s]) for s in symbols}
+            gap = sum(need.values(), Decimal(0))
+            if gap > 0:
+                return {s: amount * need[s] / gap for s in symbols}
+        return {s: amount * weights[s] / total for s in symbols}
 
     budgets: dict[str, Decimal] = {}
     if deposit > 0:
