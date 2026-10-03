@@ -35,7 +35,6 @@ class Choice:
 class StrategyInfo:
     name: str
     nickname: str
-    emoji: str
     summary: str
     risk: str  # 낮음·보통·높음
     trades: str  # 거래 빈도를 쉬운 말로
@@ -48,7 +47,6 @@ CATALOG: dict[str, StrategyInfo] = {
     "sma_cross": StrategyInfo(
         name="sma_cross",
         nickname="느긋한 추세 타기",
-        emoji="🐢",
         summary="큰 상승 흐름이 이어지는 동안만 들고 있어요. 자주 사고팔지 않고, 큰 하락장을 피하는 데 강해요.",
         risk="낮음",
         trades="1년에 1번 안팎",
@@ -60,7 +58,6 @@ CATALOG: dict[str, StrategyInfo] = {
     "trend_filter": StrategyInfo(
         name="trend_filter",
         nickname="200일선 지킴이",
-        emoji="🛡️",
         summary="주가가 지난 200일 평균보다 위에 있을 때만 들고 있어요. 단순하지만, 오르내림이 잦으면 자주 사고팔아요.",
         risk="보통",
         trades="1년에 몇 번",
@@ -72,7 +69,6 @@ CATALOG: dict[str, StrategyInfo] = {
     "rsi2": StrategyInfo(
         name="rsi2",
         nickname="급락 줍줍",
-        emoji="🎯",
         summary="오르는 흐름 속에서 짧게 크게 떨어지면 사고, 반등하면 바로 팔아요. 들고 있는 기간이 짧아요.",
         risk="낮음",
         trades="한 달에 몇 번",
@@ -81,7 +77,6 @@ CATALOG: dict[str, StrategyInfo] = {
     "donchian": StrategyInfo(
         name="donchian",
         nickname="신고가 올라타기",
-        emoji="🚀",
         summary="최근 최고가를 넘어서면 사고, 최근 최저가 아래로 내려가면 팔아요. 강한 상승을 잘 타지만 헛신호도 있어요.",
         risk="보통",
         trades="1년에 여러 번",
@@ -92,8 +87,7 @@ CATALOG: dict[str, StrategyInfo] = {
     ),
     "dip_saver": StrategyInfo(
         name="dip_saver",
-        nickname="나처럼 모으기",
-        emoji="🐷",
+        nickname="나처럼 투자",
         summary=(
             "매달 월급날 돈을 넣고 사 모아요. 많이 올랐을 땐 현금으로 모아 두고, "
             "1년 최고가보다 크게 떨어지면 모아 둔 돈까지 다 사요. 팔지 않아요."
@@ -166,7 +160,7 @@ def subj(word: str) -> str:
 
 def nickname(strategy: str) -> str:
     info = CATALOG.get(strategy)
-    return f"{info.emoji} {info.nickname}" if info else strategy
+    return info.nickname if info else strategy
 
 
 def _usd(value: Any) -> str:

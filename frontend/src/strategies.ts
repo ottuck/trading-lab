@@ -9,7 +9,7 @@ export function useStrategies() {
 }
 
 export function strategyTitle(info: StrategyInfo | undefined, fallback: string) {
-  return info ? `${info.emoji} ${info.nickname}` : fallback
+  return info ? info.nickname : fallback
 }
 
 /** 파라미터가 같은지. DB(JSONB)는 키 순서를 바꿔 저장하므로 문자열이 아니라 키별로 비교한다. */
@@ -34,5 +34,5 @@ export const SLIPPAGE_CHOICES = [
   { bps: '0', label: '이상적으로', hint: '본 가격 그대로' },
 ]
 
-/** 나 카피 봇 (나처럼 모으기). 있으면 홈 첫 화면이 "나 vs 매달 그냥 사기"와 평행세계의 나가 된다. */
+/** 나 카피 봇 (나처럼 투자). 있으면 홈 첫 화면이 "나 vs 매달 그냥 사기"와 평행세계의 나가 된다. */
 export const isMeBot = (b: { strategy: string }) => b.strategy === 'dip_saver'

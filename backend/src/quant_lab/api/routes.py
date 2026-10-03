@@ -743,7 +743,6 @@ def strategies() -> list[StrategyInfo]:
             StrategyInfo(
                 name=name,
                 nickname=info.nickname,
-                emoji=info.emoji,
                 summary=info.summary,
                 risk=info.risk,
                 trades=info.trades,
@@ -879,10 +878,10 @@ def parallel(session: SessionDep, body: ParallelRequest) -> ParallelView:
 
 @router.get("/bots/{bot_id}/parallel")
 def bot_parallel(session: SessionDep, bot_id: int) -> ParallelView:
-    """운영 중인 나처럼 모으기 봇의 평행세계: 첫 판단일부터 지금 규칙으로 다시 계산한다."""
+    """운영 중인 나처럼 투자 봇의 평행세계: 첫 판단일부터 지금 규칙으로 다시 계산한다."""
     bot = _require_bot(session, bot_id)
     if bot.strategy != "dip_saver":
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "나처럼 모으기 봇만 볼 수 있어요")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "나 카피 봇만 볼 수 있어요")
     first = session.scalar(
         select(func.min(DecisionRow.session_date)).where(DecisionRow.bot_id == bot_id)
     )

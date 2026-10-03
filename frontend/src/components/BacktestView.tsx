@@ -1,13 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ColorType, createChart, LineSeries, type Time } from 'lightweight-charts'
 import { useEffect, useRef, useState } from 'react'
-import { backtestApi, type BacktestDetail, type StrategyInfo, type SymbolWeight } from '../api'
+import { api, backtestApi, type BacktestDetail, type StrategyInfo, type SymbolWeight } from '../api'
 import { money, percent, shares, signedMoney, tone } from '../format'
-import { useStrategies } from '../strategies'
+import { isMeBot, useStrategies } from '../strategies'
 import { cssVar, useTheme } from '../theme'
 import { Term } from './Help'
-import { startNewBot } from '../selectedBot'
-import { StrategyPicker } from './StrategyPicker'
+import { goTo, startNewBot } from '../selectedBot'
 import { ParallelWorlds } from './Parallel'
 import { PresetFields } from './PresetFields'
 import { activeOf, basketLabel } from '../basket'
@@ -36,6 +35,39 @@ const created = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month
 
 type Choice = { symbol: string; strategy: string; symbols?: SymbolWeight[] | null }
 
+/** 나처럼 투자가 주력, 유명 전략들은 아래 참고용 작은 목록. */
+function StrategyModes({ list, value, onChange }: { list: StrategyInfo[]; value: string; onChange: (name: string) => void }) {
+  const me = list.find((s) => s.accumulates)
+  const refs = list.filter((s) => !s.accumulates)
+  const ref = refs.find((s) => s.name === value)
+  return (
+    <div className="bt-modes">
+      {me && (
+        <button className={`bt-main ${value === me.name ? 'active' : ''}`} aria-pressed={value === me.name} onClick={() => onChange(me.name)}>
+          <span className="eyebrow">나 카피 봇</span>
+          <span className="title">{me.nickname}</span>
+          <span className="desc">{me.summary}</span>
+        </button>
+      )}
+      <div className="bt-refs">
+        <span className="label">유명 전략 참고</span>
+        <div className="bt-ref-list">
+          {refs.map((s) => (
+            <button key={s.name} className={`seg ${s.name === value ? 'active' : ''}`} aria-pressed={s.name === value} onClick={() => onChange(s.name)}>
+              {s.nickname}
+            </button>
+          ))}
+        </div>
+        {ref && (
+          <p className="bt-ref-desc">
+            {ref.summary} <span className="faint">위험 {ref.risk} · 거래 {ref.trades}</span>
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function RunForm({
   choice,
   onChoice,
@@ -47,6 +79,8 @@ function RunForm({
 }) {
   const qc = useQueryClient()
   const { list, byName } = useStrategies()
+  const { data: bots } = useQuery({ queryKey: ['bots'], queryFn: api.bots })
+  const meBot = bots?.find(isMeBot)
   // 전략마다 고른 프리셋 값을 기억한다. 고르지 않았으면 기본값.
   const [picked, setPicked] = useState<Record<string, Record<string, number>>>({})
   const { symbol, strategy } = choice
@@ -79,10 +113,27 @@ function RunForm({
     <section className="bt-form">
       <div className="block-head">
         <h2>과거로 시험해 보기</h2>
-        <span className="sub">그 전략을 예전부터 따라 했다면 어땠을지 실제 가격으로 계산해요</span>
+        <span className="sub">예전부터 그렇게 했다면 어땠을지 실제 가격으로 계산해요</span>
       </div>
       <div className="stack">
-        <StrategyPicker list={list} value={strategy} onChange={setStrategy} />
+        <StrategyModes list={list} value={strategy} onChange={setStrategy} />
+        {info?.accumulates && (
+          <div className="bt-mine">
+            {meBot && (
+              <button
+                onClick={() => {
+                  setPicked({ ...picked, [strategy]: meBot.params })
+                  setBasket(activeOf(meBot.symbols))
+                }}
+              >
+                {meBot.name} 규칙 불러오기
+              </button>
+            )}
+            <button className="link" onClick={() => goTo('me')}>
+              질문으로 내 규칙 정하기 (나 카피하기)
+            </button>
+          </div>
+        )}
         {info && <PresetFields info={info} params={params} onChange={(p) => setPicked({ ...picked, [strategy]: p })} />}
         {info?.accumulates ? (
           <BasketPicker value={basket} onChange={setBasket} />
@@ -359,7 +410,7 @@ export function BacktestView() {
   const currentInfo = list?.find((b) => b.id === current)
   // 양식의 선택(전략·종목)은 아래에 보이는 결과와 맞춘다. 직접 바꾸면 그 선택을 따른다.
   const [picked, setPicked] = useState<Choice | null>(null)
-  const choice = picked ?? (currentInfo ? { symbol: currentInfo.symbol, strategy: currentInfo.strategy, symbols: activeOf(currentInfo.symbols ?? []) } : { symbol: 'QQQ', strategy: 'sma_cross' })
+  const choice = picked ?? (currentInfo ? { symbol: currentInfo.symbol, strategy: currentInfo.strategy, symbols: activeOf(currentInfo.symbols ?? []) } : { symbol: 'QQQ', strategy: 'dip_saver', symbols: [{ symbol: 'QQQ', weight: 50 }, { symbol: 'VOO', weight: 50 }] })
   const show = (id: string) => {
     setSelected(id)
     setPicked(null)

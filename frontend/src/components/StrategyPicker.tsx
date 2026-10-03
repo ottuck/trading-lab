@@ -15,7 +15,7 @@ export function StrategyPicker({
       {list.map((s) => (
         <button key={s.name} className={`pick ${s.name === value ? 'active' : ''}`} onClick={() => onChange(s.name)}>
           <div className="pick-title">
-            {s.emoji} {s.nickname}
+            {s.nickname}
           </div>
           <div className="pick-desc">{s.summary}</div>
           <div className="pick-meta">

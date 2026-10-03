@@ -10,13 +10,16 @@ type Props = { draft: Draft; onChange: (d: Draft) => void }
 export function StrategyFields({ draft, onChange }: Props) {
   const { list, byName } = useStrategies()
   const info = byName[draft.strategy]
+  // 나 카피 봇은 전략을 바꾸지 않고 내 규칙만 고친다. 다른 봇은 유명 전략 중에서 고른다.
   return (
     <div className="stack">
-      <StrategyPicker
-        list={list}
-        value={draft.strategy}
-        onChange={(name) => onChange({ ...draft, strategy: name, params: byName[name]?.default_params ?? {} })}
-      />
+      {!info?.accumulates && (
+        <StrategyPicker
+          list={list.filter((s) => !s.accumulates)}
+          value={draft.strategy}
+          onChange={(name) => onChange({ ...draft, strategy: name, params: byName[name]?.default_params ?? {} })}
+        />
+      )}
       {info && <PresetFields info={info} params={draft.params} onChange={(params) => onChange({ ...draft, params })} custom />}
     </div>
   )

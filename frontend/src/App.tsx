@@ -8,7 +8,6 @@ import { HelpButton } from './components/Help'
 import { MeView } from './components/MeView'
 import { SettingsView } from './components/SettingsView'
 import { ago } from './format'
-import { isMeBot } from './strategies'
 
 const TABS = {
   dashboard: '홈',
@@ -17,7 +16,7 @@ const TABS = {
 } as const
 type Tab = keyof typeof TABS
 
-// 탭 밖의 화면: 질문으로 나 만들기 (#me), 봇 하나 자세히 보기 (#bot, 홈 탭)
+// 탭 밖의 화면: 나 카피하기 (#me), 봇 하나 자세히 보기 (#bot, 홈 탭)
 type Page = Tab | 'me' | 'bot'
 
 function useHashTab(): [Page, (t: Tab) => void] {
@@ -99,18 +98,7 @@ export default function App() {
       </div>
       <main>
         {bots.error && <div className="alert">봇 정보를 불러오지 못했습니다: {bots.error.message}</div>}
-        {tab === 'dashboard' && bots.data && !bots.data.length && (
-          <section className="card me-empty">
-            <div>
-              <b>나처럼 투자하는 봇을 만들어 볼까요?</b>
-              <p className="muted">질문 몇 개에 답하면 내 투자 습관을 복사한 봇이 만들어져요.</p>
-            </div>
-            <button className="primary" onClick={() => (location.hash = 'me')}>
-              질문으로 나 만들기
-            </button>
-          </section>
-        )}
-        {tab === 'dashboard' && !!bots.data?.length && (bots.data.some(isMeBot) ? <MeHome bots={bots.data} /> : <Home bots={bots.data} />)}
+        {tab === 'dashboard' && bots.data && <MeHome bots={bots.data} />}
         {tab === 'bot' && !!bots.data?.length && <Home bots={bots.data} />}
         {tab === 'backtest' && <BacktestView />}
         {tab === 'me' && <MeView />}

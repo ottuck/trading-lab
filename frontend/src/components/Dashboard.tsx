@@ -283,6 +283,7 @@ function Overview({ bot }: { bot: Bot }) {
   const when = hover != null && points[hover] ? md(points[hover].date) : whole ? '시작 이후' : `지난 ${range.label}`
   const state = STATE[bot.state]
   const near = 0.005 * (mine.base || 1)
+  const me = isMeBot(bot)
 
   return (
     <>
@@ -343,23 +344,25 @@ function Overview({ bot }: { bot: Bot }) {
       {points.length > 1 && (
         <div className="eq-compare">
           <span className="legend">
-            <i className={rising ? 'mine up' : 'mine down'} />이 봇 {percent(ratio(mine))}
+            <i className={rising ? 'mine up' : 'mine down'} />
+            {me ? '나처럼' : '이 봇'} {percent(ratio(mine))}
           </span>
           <span className="legend">
             <i className="bench" />
-            <Term k="그냥 들고 있었다면">그냥 보유</Term> {money(String(end.b))} ({percent(ratio(hold))})
+            {me ? '매달 그냥 사기' : <Term k="그냥 들고 있었다면">그냥 보유</Term>} {money(String(end.b))} ({percent(ratio(hold))})
           </span>
           <span className="legend">
             <i className="paid" />
             <Term k="넣은 돈" /> {money(String(end.c))}
           </span>
-          <span className="compare-verdict">
+          {/* 나 카피 봇은 판정하지 않는다 (평가가 아니라 구경, project.md 1절) */}
+          {!me && <span className="compare-verdict">
             {mine.gain - hold.gain > near
               ? '그냥 들고 있을 때보다 나아요'
               : hold.gain - mine.gain > near
                 ? '그냥 들고 있는 게 더 나았어요'
                 : '그냥 들고 있을 때와 비슷해요'}
-          </span>
+          </span>}
         </div>
       )}
       {leveraged.map(([symbol, factor]) => (
@@ -716,7 +719,7 @@ function BotItem({ bot, active, onPick }: { bot: Bot; active: boolean; onPick: (
 
 const parallelKey = (bot: Bot) => ['parallel', bot.id, JSON.stringify(bot.params), JSON.stringify(bot.symbols)]
 
-/** 나처럼 모으기 봇: 시작한 뒤로 규칙을 하나씩 바꿨다면 (고르면 다음 판단부터 그 규칙으로). */
+/** 나처럼 투자 봇: 시작한 뒤로 규칙을 하나씩 바꿨다면 (고르면 다음 판단부터 그 규칙으로). */
 function BotParallel({ bot }: { bot: Bot }) {
   const qc = useQueryClient()
   return (
@@ -734,31 +737,29 @@ function BotParallel({ bot }: { bot: Bot }) {
   )
 }
 
-/** 오른쪽 봇 목록. 나 카피 봇이 없으면 만들기를 권한다. */
-function BotSide({ bots, current, onPick }: { bots: Bot[]; current: Bot; onPick: (b: Bot) => void }) {
+/** 오른쪽 봇 목록: 나 카피 봇이 위, 다른 전략 봇은 아래 묶음. */
+function BotSide({ bots, current, onPick }: { bots: Bot[]; current?: Bot; onPick: (b: Bot) => void }) {
+  const mine = bots.filter(isMeBot)
+  const others = bots.filter((b) => !isMeBot(b))
+  const row = (b: Bot) => <BotItem key={b.id} bot={b} active={b.id === current?.id} onPick={() => onPick(b)} />
   return (
     <aside className="home-side">
       <div className="bot-list">
         <div className="bot-list-head">
-          내 봇
+          나 카피 봇
           <button className="link" onClick={() => goTo('me')}>
-            나 만들기
+            나 카피하기
           </button>
+        </div>
+        {mine.length ? mine.map(row) : <div className="bot-list-empty">아직 없어요</div>}
+        <div className="bot-list-head sub">
+          다른 전략 봇
           <button className="link" onClick={() => startNewBot()}>
             + 새 봇
           </button>
         </div>
-        {bots.map((b) => (
-          <BotItem key={b.id} bot={b} active={b.id === current.id} onPick={() => onPick(b)} />
-        ))}
+        {others.length ? others.map(row) : <div className="bot-list-empty">유명한 전략을 따라 하는 봇이에요</div>}
       </div>
-      {!bots.some(isMeBot) && (
-        <div className="me-invite">
-          <b>나 카피 봇이 아직 없어요</b>
-          <p>내 투자 습관을 복사한 봇을 만들면 홈이 &quot;나 vs 매달 그냥 사기&quot;와 평행세계의 나로 바뀌어요.</p>
-          <button onClick={() => goTo('me')}>질문으로 나 만들기</button>
-        </div>
-      )}
       <div className="side-note">10초마다 새로 불러와요.</div>
     </aside>
   )
@@ -803,10 +804,10 @@ function MeHero({ bot }: { bot: Bot }) {
   return (
     <section className="me-hero">
       <div className="bot-line">
-        <span className="name">나 카피 봇</span>
+        <span className="name">{bot.name}</span>
         <span className={`dot ${state.dot}`}>{state.label}</span>
         <span>
-          · {bot.name} · {basketLabel(bot.symbols, bot.symbol)}
+          {bot.name.includes('나 카피') ? '' : ' · 나 카피 봇'} · {basketLabel(bot.symbols, bot.symbol)}
         </span>
       </div>
       <div className="me-vs">
@@ -863,37 +864,79 @@ function MonthDigest({ bot }: { bot: Bot }) {
   )
 }
 
-/** 홈 첫 화면 (나 카피 봇이 있을 때). 고른 봇이 나 카피 봇이 아니면 첫 나 카피 봇을 보여준다. */
+/** 나 카피 봇이 아직 없을 때 홈 첫 화면: 무엇을 하는지 세 단계로 보여주고 나 카피하기로 이끈다. */
+function MeStart() {
+  return (
+    <section className="me-start">
+      <p className="me-eyebrow">나 카피 봇</p>
+      <h1>내가 투자하는 방식 그대로, 봇이 대신 해 보면 어떨까요?</h1>
+      <p className="lead">
+        질문 몇 개로 내 투자 습관을 복사해요. 지난 10년을 &quot;나처럼 했다면&quot;과 &quot;매달 그냥 샀다면&quot;으로 나란히 보여주고,
+        그다음부터는 봇이 매일 나 대신 모의 투자를 해요.
+      </p>
+      <ol className="me-start-steps">
+        <li>
+          <b>나 카피하기</b>
+          <span>질문 4~6개, 1분이면 끝나요</span>
+        </li>
+        <li>
+          <b>지난 10년 보기</b>
+          <span>나처럼 했다면 vs 매달 그냥 샀다면</span>
+        </li>
+        <li>
+          <b>평행세계의 나</b>
+          <span>규칙을 하나씩 바꾼 다른 나들과 나란히</span>
+        </li>
+      </ol>
+      <div className="me-start-go">
+        <button className="primary" onClick={() => goTo('me')}>
+          나 카피하기
+        </button>
+        <span className="faint small">실제 계좌는 연결하지 않아요</span>
+      </div>
+    </section>
+  )
+}
+
+/** 홈 첫 화면은 늘 나 카피 봇 자리다. 고른 봇이 나 카피 봇이 아니면 첫 나 카피 봇, 없으면 시작 화면. */
 export function MeHome({ bots }: { bots: Bot[] }) {
-  const selected = useSelectedBot(bots)
-  const bot = isMeBot(selected) ? selected : bots.find(isMeBot)!
+  const selected = useSelectedBot(bots) as Bot | undefined
+  const bot = selected && isMeBot(selected) ? selected : bots.find(isMeBot)
   return (
     <div className="home me-home">
-      <div className="home-main" key={bot.id}>
-        <MeHero bot={bot} />
-        <MonthDigest bot={bot} />
-        <BotParallel bot={bot} />
-        <Decision bot={bot} />
-        <div className="me-more">
-          <button
-            onClick={() => {
-              selectBot(bot.id)
-              goTo('bot')
-            }}
-          >
-            자세히 보기
-          </button>
-          <span className="faint small">들고 있는 주식, 거래, 가격 그래프, 매매 시작·멈춤</span>
-        </div>
+      <div className="home-main" key={bot?.id ?? 'start'}>
+        {bot ? (
+          <>
+            <MeHero bot={bot} />
+            <MonthDigest bot={bot} />
+            <BotParallel bot={bot} />
+            <Decision bot={bot} />
+            <div className="me-more">
+              <button
+                onClick={() => {
+                  selectBot(bot.id)
+                  goTo('bot')
+                }}
+              >
+                자세히 보기
+              </button>
+              <span className="faint small">들고 있는 주식, 거래, 가격 그래프, 매매 시작·멈춤</span>
+            </div>
+          </>
+        ) : (
+          <MeStart />
+        )}
       </div>
-      <BotSide
-        bots={bots}
-        current={bot}
-        onPick={(b) => {
-          selectBot(b.id)
-          if (!isMeBot(b)) goTo('bot')
-        }}
-      />
+      {bots.length > 0 && (
+        <BotSide
+          bots={bots}
+          current={bot}
+          onPick={(b) => {
+            selectBot(b.id)
+            if (!isMeBot(b)) goTo('bot')
+          }}
+        />
+      )}
     </div>
   )
 }
