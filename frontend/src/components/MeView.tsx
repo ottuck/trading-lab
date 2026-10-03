@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
-import { api, backtestApi, botApi } from '../api'
+import { useEffect, useState } from 'react'
+import { api, backtestApi, botApi, type Bot } from '../api'
 import { money, percent } from '../format'
-import { DAYS, DEPOSITS, DIP, HOT, START, STYLES, describe, stepsOf, toParams, type Answers, type Option } from '../me'
+import { DAYS, DEPOSITS, DIP, HOT, START, STYLES, answersOf, describe, stepsOf, toParams, type Answers, type Option } from '../me'
 import { suggestName } from '../basket'
-import { goTo, selectBot } from '../selectedBot'
+import { endMeEdit, goTo, selectBot, useMeEdit } from '../selectedBot'
+import { isMeBot } from '../strategies'
+import { toConfig, toDraft } from '../botConfig'
 import { EquityChart } from './BacktestView'
 import { ParallelWorlds } from './Parallel'
 import { BasketPicker } from './SymbolPicker'
@@ -53,7 +55,17 @@ function Question({ n, of, title, hint, children }: { n: number; of: number; tit
   )
 }
 
-function Result({ answers, onEdit, onAdopt }: { answers: Answers; onEdit: () => void; onAdopt: (p: Record<string, number>) => void }) {
+function Result({
+  answers,
+  editing,
+  onEdit,
+  onAdopt,
+}: {
+  answers: Answers
+  editing?: Bot
+  onEdit: () => void
+  onAdopt: (p: Record<string, number>) => void
+}) {
   const qc = useQueryClient()
   const params = toParams(answers)
   const body = {
@@ -100,6 +112,21 @@ function Result({ answers, onEdit, onAdopt }: { answers: Answers; onEdit: () => 
     },
     onSuccess: (bot) => {
       void qc.invalidateQueries({ queryKey: ['bots'] })
+      selectBot(bot.id)
+      goTo('dashboard')
+    },
+  })
+  // 질문 다시 하기: 같은 나 카피 봇의 규칙(과 종목)을 바꾼다. 다음 판단부터 적용된다.
+  const change = useMutation({
+    mutationFn: async (bot: Bot) => {
+      await botApi.updateConfig(bot.id, { ...toConfig(toDraft(bot), bot), params })
+      const before = bot.symbols.filter((s) => s.weight > 0)
+      if (JSON.stringify(before) !== JSON.stringify(answers.symbols)) await botApi.updateSymbols(bot.id, answers.symbols)
+      return bot
+    },
+    onSuccess: (bot) => {
+      void qc.invalidateQueries({ queryKey: ['bots'] })
+      endMeEdit()
       selectBot(bot.id)
       goTo('dashboard')
     },
@@ -167,20 +194,36 @@ function Result({ answers, onEdit, onAdopt }: { answers: Answers; onEdit: () => 
             자세히 보기
           </button>
         )}
-        <button className="primary" disabled={start.isPending || !data} onClick={() => start.mutate()}>
-          {start.isPending ? '만드는 중…' : '이 나로 모의 투자 시작'}
-        </button>
+        {editing ? (
+          <button className="primary" disabled={change.isPending || !data} onClick={() => change.mutate(editing)}>
+            {change.isPending ? '바꾸는 중…' : `${editing.name} 규칙 바꾸기`}
+          </button>
+        ) : (
+          <button className="primary" disabled={start.isPending || !data} onClick={() => start.mutate()}>
+            {start.isPending ? '만드는 중…' : '이 나로 모의 투자 시작'}
+          </button>
+        )}
       </div>
-      {start.error && <div className="bad small">{start.error.message}</div>}
-      <p className="faint small">모의 투자는 실제 계좌와 상관없어요. 시작하면 이번 달 넣는 돈으로 바로 시작해요.</p>
+      {(start.error ?? change.error) && <div className="bad small">{(start.error ?? change.error)?.message}</div>}
+      <p className="faint small">
+        {editing
+          ? '바꾸면 다음 판단부터 이 규칙으로 해요. 지금까지의 기록은 그대로예요.'
+          : '모의 투자는 실제 계좌와 상관없어요. 시작하면 이번 달 넣는 돈으로 바로 시작해요.'}
+      </p>
     </>
   )
 }
 
 export function MeView() {
-  // 0: 소개, 1~n: 질문(답에 따라 4~6개), n+1: 결과
-  const [at, setAt] = useState(0)
-  const [a, setA] = useState<Answers>(START)
+  const qc = useQueryClient()
+  // 규칙 바꾸기 대상은 처음 열 때 한 번만 읽는다 (아래 정리로 전역 값이 풀려도 유지).
+  const [editId] = useState(useMeEdit())
+  const editing = qc.getQueryData<Bot[]>(['bots'])?.find((b) => b.id === editId && isMeBot(b))
+  // #me를 떠나면 규칙 바꾸기 모드를 푼다.
+  useEffect(() => endMeEdit, [])
+  // 0: 소개, 1~n: 질문(답에 따라 4~6개), n+1: 결과. 규칙 바꾸기는 소개 없이 첫 질문부터.
+  const [at, setAt] = useState(editing ? 1 : 0)
+  const [a, setA] = useState<Answers>(() => (editing ? answersOf(editing) : START))
   const [customDeposit, setCustomDeposit] = useState('')
   const steps = stepsOf(a)
   const step = at >= 1 && at <= steps.length ? steps[at - 1] : null
@@ -323,6 +366,7 @@ export function MeView() {
       {at > steps.length && (
         <Result
           answers={a}
+          editing={editing}
           onEdit={() => setAt(1)}
           onAdopt={(p) => {
             // 고른 다른 나의 규칙으로 바꾸고 처음부터 다시 보여준다 (종목·날짜는 그대로).

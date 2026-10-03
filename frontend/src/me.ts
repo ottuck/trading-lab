@@ -1,6 +1,6 @@
 // 나 카피하기 (N3, 질문으로 나 만들기): 쉬운 질문의 답을 "나처럼 투자"(dip_saver) 규칙 값으로 바꾼다.
 // 판단은 언제나 규칙 함수가 한다. 여기서는 값만 채운다 (project.md 1절 "AI의 역할은 질문 → 규칙 값까지").
-import type { SymbolWeight } from './api'
+import type { Bot, SymbolWeight } from './api'
 
 export type Answers = {
   symbols: SymbolWeight[]
@@ -56,6 +56,19 @@ export const DIP: Option[] = [
 ]
 
 export const START: Answers = { symbols: [], regular: 1, deposit: 1350, day: 25, hot: 15, dip: 10 }
+
+/** 이미 있는 나 카피 봇의 규칙 → 답 (질문 다시 하기) */
+export function answersOf(bot: Bot): Answers {
+  const p = bot.params
+  return {
+    symbols: bot.symbols.filter((s) => s.weight > 0),
+    regular: p.regular ?? 1,
+    deposit: p.deposit ?? START.deposit,
+    day: p.day ?? START.day,
+    hot: p.hot ?? START.hot,
+    dip: p.dip ?? START.dip,
+  }
+}
 
 /** 답 → dip_saver 파라미터 (high·sma는 고정) */
 export function toParams(a: Answers): Record<string, number> {

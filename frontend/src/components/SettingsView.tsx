@@ -2,8 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import { api, botApi, type Bot, type SymbolWeight } from '../api'
 import { ago, money, shares } from '../format'
-import { closeNewBot, selectBot, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
-import { sameParams, useStrategies } from '../strategies'
+import { closeNewBot, selectBot, startMeEdit, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
+import { isMeBot, sameParams, useStrategies } from '../strategies'
+import { answersOf, describe } from '../me'
 import { toConfig, toDraft, type Draft } from '../botConfig'
 import { useDismiss } from '../useDismiss'
 import { StrategyFields, TradeFields } from './BotConfigFields'
@@ -241,6 +242,20 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
   const changing = !sameStrategy(draft, bot)
   return (
     <>
+      {isMeBot(bot) ? (
+        <Section title="내 규칙" desc="나 카피하기로 정한 규칙이에요. 바꾸면 다음 판단부터 적용되고, 지금까지의 기록은 그대로예요.">
+          <ul className="me-summary">
+            {describe(answersOf(bot)).map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          <div className="controls">
+            <button onClick={() => startMeEdit(bot.id)}>질문 다시 하기</button>
+            <span className="faint small">또는 아래에서 바로 고칠 수 있어요</span>
+          </div>
+          <StrategyFields draft={draft} onChange={setDraft} />
+        </Section>
+      ) : (
       <Section title="전략" desc="언제 사고팔지 정해요. 돌아가는 중에도 바꿀 수 있고, 다음 판단부터 적용돼요.">
         <StrategyFields draft={draft} onChange={setDraft} />
         {changing && Number(bot.account.qty) > 0 && (
@@ -250,6 +265,7 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
           </div>
         )}
       </Section>
+      )}
       <Section title="체결과 투자 금액" desc="모의 체결을 얼마나 보수적으로 볼지, 한 번에 얼마까지 넣을지 정해요.">
         <TradeFields draft={draft} onChange={setDraft} />
       </Section>
