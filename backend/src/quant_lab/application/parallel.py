@@ -31,8 +31,11 @@ class World:
     recent: list[tuple[str, Decimal]]  # 지난달·이번 달("YYYY-MM")에 산 금액 (월간 정리용)
 
 
-def variants(params: dict[str, int]) -> list[tuple[str, str, dict[str, int]]]:
-    """내 규칙에서 한 가지씩만 바꾼 나들. 나와 규칙이 같아지는 것은 뺀다."""
+def variants(params: dict[str, int], multi: bool = False) -> list[tuple[str, str, dict[str, int]]]:
+    """내 규칙에서 한 가지씩만 바꾼 나들. 나와 규칙이 같아지는 것은 뺀다.
+
+    multi(종목이 여럿)면 새 돈으로 비율을 맞추는 나도 넣는다.
+    """
     out: list[tuple[str, str, dict[str, int]]] = []
 
     def add(key: str, title: str, **change: int) -> None:
@@ -50,6 +53,8 @@ def variants(params: dict[str, int]) -> list[tuple[str, str, dict[str, int]]]:
         add("monthly", "매달 꾸준히 사는 나", regular=1)
     add("patient", "-20%까지 참는 나", dip=20)
     add("eager", "-5%에 바로 사는 나", dip=5)
+    if multi and not params.get("rebalance"):
+        add("rebalance", "비율 맞추는 나", rebalance=1)
     return out
 
 
@@ -120,7 +125,7 @@ def parallel_worlds(
             _recent(m.end, [(p.session_date, p.deposit) for p in base.equity]),
         ),
     ]
-    for key, title, other in variants(me.params):
+    for key, title, other in variants(me.params, multi=len(weights) > 1):
         strategy = DipSaver(**other)
         result = run_backtest(series, strategy, initial_cash, costs, RiskLimits(), weights=weights)
         worlds.append(_world(key, title, strategy.params, result))

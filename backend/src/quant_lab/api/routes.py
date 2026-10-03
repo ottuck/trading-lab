@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from quant_lab.adapters.market_calendar import get_calendar
 from quant_lab.api.schemas import (
     AccountView,
     ActivityItem,
@@ -33,6 +34,7 @@ from quant_lab.api.schemas import (
     OrderView,
     ParallelRequest,
     ParallelView,
+    PlanView,
     PositionView,
     PresetView,
     RunView,
@@ -45,6 +47,7 @@ from quant_lab.api.schemas import (
 from quant_lab.application.backtesting import backtest_symbol
 from quant_lab.application.messages import CATALOG, action_phrase, decision_reason, event_message
 from quant_lab.application.parallel import World, parallel_worlds
+from quant_lab.application.plan import follow_plan
 from quant_lab.config import get_settings
 from quant_lab.domain.portfolio import CostModel, Portfolio, RiskLimits, affordable_qty
 from quant_lab.domain.strategy import STRATEGIES, DipSaver, Strategy, deposit_plan
@@ -874,6 +877,18 @@ def parallel(session: SessionDep, body: ParallelRequest) -> ParallelView:
     except (TypeError, ValueError) as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     return _parallel_view(worlds)
+
+
+@router.get("/bots/{bot_id}/plan")
+def bot_plan(session: SessionDep, bot_id: int) -> PlanView | None:
+    """따라 하기: 다음 입금일에 할 일, 조건까지 거리, 모아 둔 돈의 내력 (나 카피 봇만)."""
+    bot = _require_bot(session, bot_id)
+    if bot.strategy != "dip_saver":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "나 카피 봇만 볼 수 있어요")
+    plan = follow_plan(session, bot, get_calendar())
+    if plan is None:
+        return None
+    return PlanView.model_validate(plan, from_attributes=True)
 
 
 @router.get("/bots/{bot_id}/parallel")

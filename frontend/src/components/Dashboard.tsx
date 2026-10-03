@@ -23,6 +23,7 @@ import { useDismiss } from '../useDismiss'
 import { activeOf, basketLabel } from '../basket'
 import { LeverageNotice } from './SymbolPicker'
 import { ParallelWorlds } from './Parallel'
+import { NextPlan } from './NextPlan'
 import { toConfig, toDraft } from '../botConfig'
 
 const STATE: Record<BotState, { label: string; dot: string }> = {
@@ -965,6 +966,7 @@ export function MeHome({ bots }: { bots: Bot[] }) {
         {bot ? (
           <>
             <MeHero bot={bot} />
+            <NextPlan bot={bot} />
             <MonthDigest bot={bot} />
             <BotParallel bot={bot} />
             <Decision bot={bot} />
