@@ -2,6 +2,8 @@
 # 비밀값은 저장소 안 .secrets/에 둔다 (.gitignore·.dockerignore로 제외, 경로는 이 파일 기준).
 #   env      : POSTGRES_PASSWORD, DATABASE_URL (api·worker·migrate·db)
 #   worker.env : TOSS_CLIENT_ID, TOSS_CLIENT_SECRET, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, HEARTBEAT_PING_URL (worker만)
+#   env (선택) : CF_ACCESS_TEAM, CF_ACCESS_AUD — 도메인으로 온 요청의 Access 토큰을 api가 한 번 더 확인
+#   cloudflared.env (선택) : TUNNEL_TOKEN — 있으면 deploy.sh가 tunnel 프로필을 켠다 (도메인 접속, N7)
 name: quant-lab-prod
 
 x-app: &app
@@ -64,6 +66,18 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+
+  # 도메인 접속 (N7, project.md 6절): 서버에서 Cloudflare로 밖으로만 연결한다 (공개 포트 0개).
+  # 대시보드의 Public Hostname은 http://api:8000 으로 둔다. 앞단의 Access가 본인 이메일만 들인다.
+  cloudflared:
+    image: cloudflare/cloudflared:2026.9.3
+    command: ["tunnel", "--no-autoupdate", "run"]
+    env_file: ../.secrets/cloudflared.env
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   db-data:

@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     # stored: DB에 저장된 봉만 사용 (토스 호출 없음, 로컬 기본값). toss: 운영 서버.
     worker_market_source: Literal["stored", "toss"] = "stored"
 
+    # Cloudflare Access (N7). 둘 다 있으면 Cloudflare를 거쳐 온 요청은 Access 토큰을 확인한다.
+    cf_access_team: str | None = None  # <team>.cloudflareaccess.com의 <team>
+    cf_access_aud: str | None = None  # Access 애플리케이션의 Audience(AUD) 태그
+
     # 빌드된 프론트엔드 위치. 있으면 API 서버가 함께 제공한다.
     frontend_dist: Path = REPO_ROOT / "frontend" / "dist"
 
