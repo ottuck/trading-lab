@@ -6,3 +6,8 @@ export function useDemo(): boolean {
   const { data } = useQuery({ queryKey: ['health'], queryFn: api.health })
   return !!data?.demo
 }
+
+/** 계산에 쓴 가격을 부르는 말. 데모는 예시 시세라 "실제 가격"이라고 쓰지 않는다. */
+export function usePriceWord(): string {
+  return useDemo() ? '예시 가격' : '실제 가격'
+}

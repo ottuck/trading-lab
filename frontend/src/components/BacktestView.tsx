@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api, backtestApi, type BacktestDetail, type StrategyInfo, type SymbolWeight } from '../api'
 import { money, percent, shares, signedMoney, tone } from '../format'
 import { isMeBot, useStrategies } from '../strategies'
-import { useDemo } from '../demo'
+import { useDemo, usePriceWord } from '../demo'
 import { cssVar, useTheme } from '../theme'
 import { Term } from './Help'
 import { goTo, startNewBot } from '../selectedBot'
@@ -97,6 +97,7 @@ function RunForm({
   const { list, byName } = useStrategies()
   const { data: bots } = useQuery({ queryKey: ['bots'], queryFn: api.bots })
   const meBot = bots?.find(isMeBot)
+  const priceWord = usePriceWord()
   // 전략마다 고른 프리셋 값을 기억한다. 고르지 않았으면 기본값.
   const [picked, setPicked] = useState<Record<string, Record<string, number>>>({})
   const { symbol, strategy } = choice
@@ -129,7 +130,7 @@ function RunForm({
     <section className="bt-form">
       <div className="block-head">
         <h2>과거로 시험해 보기</h2>
-        <span className="sub">예전부터 그렇게 했다면 어땠을지 실제 가격으로 계산해요</span>
+        <span className="sub">예전부터 그렇게 했다면 어땠을지 {priceWord}으로 계산해요</span>
       </div>
       <div className="stack">
         <StrategyModes list={list} value={strategy} onChange={setStrategy} />
@@ -264,7 +265,8 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
           </div>
         )}
       </div>
-      <p className="bt-verdict">
+      {/* 나처럼 투자는 판정하지 않는다 (평가가 아니라 구경, project.md 1절) */}
+      {!monthly && <p className="bt-verdict">
         <span className={`mark ${won ? 'rise' : 'fall'}`} />
         <span>
           {monthly
@@ -277,7 +279,7 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
           {smallerDrop &&
             `${won ? '게다가' : '대신'} 가장 크게 떨어진 폭은 ${abs(m.max_drawdown)}로, ${bench}(${abs(m.benchmark_max_drawdown)})보다 작았어요.`}
         </span>
-      </p>
+      </p>}
 
       <EquityChart detail={data} />
       <div className="eq-foot">
