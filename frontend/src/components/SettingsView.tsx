@@ -164,7 +164,7 @@ function NameField({ bot }: { bot: Bot }) {
   })
   const changed = name.trim() !== bot.name
   return (
-    <Section title="이름" desc="봇 목록과 텔레그램 알림에 보이는 이름이에요.">
+    <Section title="이름" desc="봇 목록과 기록에 보이는 이름이에요.">
       <div className="controls">
         <input id="bot-name" value={name} onChange={(e) => setName(e.target.value)} size={18} aria-label="봇 이름" />
         <button disabled={!changed || !name.trim() || rename.isPending} onClick={() => rename.mutate()}>
@@ -196,32 +196,32 @@ function DangerZone({ bot, others }: { bot: Bot; others: Bot[] }) {
       `${bot.name}의 모의 잔고를 ${money(bot.account.initial_cash)}로 되돌리고 판단·거래 기록을 모두 지울까요?\n` +
         '설정과 실행 상태는 그대로예요. 되돌릴 수 없어요.',
     )
+  // 따로 상자로 묶지 않고 다른 설정과 같은 줄로 둔다. 되돌릴 수 없음은 누를 때 확인 메시지로 알린다.
   return (
-    <div className="danger-box">
-      <div className="danger-row">
-        <div>
-          <div className="title">처음부터 다시 시작</div>
-          <p>모의 잔고를 시작 금액 {money(bot.account.initial_cash)}로 되돌리고 판단·거래 기록을 지워요. 설정은 그대로예요.</p>
+    <>
+      <Section
+        title="처음부터 다시 시작"
+        desc={`모의 잔고를 시작 금액 ${money(bot.account.initial_cash)}로 되돌리고 판단·거래 기록을 지워요. 설정은 그대로예요.`}
+      >
+        <div className="controls">
+          <button disabled={reset.isPending} onClick={() => confirmReset() && reset.mutate()}>
+            다시 시작
+          </button>
         </div>
-        <button disabled={reset.isPending} onClick={() => confirmReset() && reset.mutate()}>
-          다시 시작
-        </button>
-      </div>
-      <div className="danger-row">
-        <div>
-          <div className="title">봇 삭제</div>
-          <p>이 봇과 모든 기록을 지워요. 되돌릴 수 없어요.</p>
+      </Section>
+      <Section title="봇 삭제" desc="이 봇과 모든 기록을 지워요.">
+        <div className="controls">
+          <button
+            className="danger"
+            disabled={remove.isPending}
+            onClick={() => window.confirm(`${bot.name}의 모든 기록을 지울까요? 되돌릴 수 없어요.`) && remove.mutate()}
+          >
+            봇 삭제
+          </button>
+          {error && <span className="bad small">{error.message}</span>}
         </div>
-        <button
-          className="danger"
-          disabled={remove.isPending}
-          onClick={() => window.confirm(`${bot.name} 봇과 모든 기록을 지울까요? 되돌릴 수 없어요.`) && remove.mutate()}
-        >
-          봇 삭제
-        </button>
-      </div>
-      {error && <div className="danger-row bad small">{error.message}</div>}
-    </div>
+      </Section>
+    </>
   )
 }
 
@@ -279,7 +279,6 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
       <SymbolsField key={bot.symbols.map((s) => `${s.symbol}${s.weight}`).join()} bot={bot} />
       <NameField key={bot.name} bot={bot} />
       <History botId={bot.id} />
-      <h2 className="danger-title">되돌릴 수 없는 동작</h2>
       <DangerZone bot={bot} others={others} />
     </>
   )

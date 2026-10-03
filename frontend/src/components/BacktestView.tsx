@@ -55,6 +55,22 @@ function StrategyModes({ list, value, onChange }: { list: StrategyInfo[]; value:
       )}
       <div className="bt-refs">
         <span className="label">유명 전략 참고</span>
+        {/* 그림과 설명이 위, 고르는 버튼이 아래. 아직 안 골랐어도 자리를 잡아 두어 버튼이 움직이지 않게 한다. */}
+        <div className={`bt-ref-desc ${ref ? '' : 'empty'}`}>
+          {ref ? (
+            <>
+              <StrategyGlyph name={ref.name} />
+              <div>
+                <div className="title">{ref.nickname}</div>
+                <p>
+                  {ref.summary} <span className="faint">위험 {ref.risk} · 거래 {ref.trades}</span>
+                </p>
+              </div>
+            </>
+          ) : (
+            <p>유명한 투자법을 고르면 언제 사고파는지 그림으로 보여드려요. 나처럼 투자와 비교해 볼 때 써요.</p>
+          )}
+        </div>
         <div className="bt-ref-list">
           {refs.map((s) => (
             <button key={s.name} className={`seg ${s.name === value ? 'active' : ''}`} aria-pressed={s.name === value} onClick={() => onChange(s.name)}>
@@ -62,14 +78,6 @@ function StrategyModes({ list, value, onChange }: { list: StrategyInfo[]; value:
             </button>
           ))}
         </div>
-        {ref && (
-          <div className="bt-ref-desc">
-            <StrategyGlyph name={ref.name} />
-            <p>
-              {ref.summary} <span className="faint">위험 {ref.risk} · 거래 {ref.trades}</span>
-            </p>
-          </div>
-        )}
       </div>
     </div>
   )
