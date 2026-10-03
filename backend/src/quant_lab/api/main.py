@@ -32,6 +32,22 @@ access = (
 )
 
 
+# 데모에서 받는 바꾸기 요청: 계산만 하는 것 (시험해 보기는 저장하되 오래된 것은 지운다)
+DEMO_ALLOWED = {("POST", "/api/backtests"), ("POST", "/api/parallel")}
+
+
+@app.middleware("http")
+async def demo_read_only(request: Request, call_next: RequestResponseEndpoint) -> Response:
+    """데모(D2)는 보기·계산만. 봇 만들기·명령·설정 바꾸기는 막는다."""
+    if (
+        _settings.demo_mode
+        and request.method not in ("GET", "HEAD", "OPTIONS")
+        and (request.method, request.url.path) not in DEMO_ALLOWED
+    ):
+        return JSONResponse({"detail": "데모에서는 바꿀 수 없어요"}, status_code=403)
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def cloudflare_access(request: Request, call_next: RequestResponseEndpoint) -> Response:
     """도메인(Cloudflare)으로 온 요청은 Access 로그인 토큰이 있어야 한다 (Tailscale은 그대로)."""
@@ -51,7 +67,7 @@ def health(response: Response, session: Annotated[Session, Depends(get_session)]
         beat = latest_heartbeat(session)
     except SQLAlchemyError:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-        return HealthResponse(version=__version__, db="down", worker=None)
+        return HealthResponse(version=__version__, db="down", worker=None, demo=_settings.demo_mode)
 
     if beat is None:
         worker = WorkerStatus(alive=False, worker_id=None, last_seen_at=None)
@@ -60,7 +76,7 @@ def health(response: Response, session: Annotated[Session, Depends(get_session)]
         limit = timedelta(seconds=get_settings().worker_heartbeat_interval_s * 3)
         alive = datetime.now(UTC) - beat.last_seen_at <= limit
         worker = WorkerStatus(alive=alive, worker_id=beat.worker_id, last_seen_at=beat.last_seen_at)
-    return HealthResponse(version=__version__, db="ok", worker=worker)
+    return HealthResponse(version=__version__, db="ok", worker=worker, demo=_settings.demo_mode)
 
 
 # 빌드된 화면이 있으면 같은 서버에서 제공한다 (운영 이미지). API 경로 뒤에 둔다.

@@ -6,6 +6,7 @@ import { DAYS, DEPOSITS, DIP, HOT, START, STYLES, answersOf, describe, stepsOf, 
 import { suggestName } from '../basket'
 import { endMeEdit, goTo, selectBot, useMeEdit } from '../selectedBot'
 import { isMeBot } from '../strategies'
+import { useDemo } from '../demo'
 import { toConfig, toDraft } from '../botConfig'
 import { EquityChart } from './BacktestView'
 import { ParallelWorlds } from './Parallel'
@@ -88,6 +89,7 @@ function Result({
     retry: false,
   })
   const bots = useQuery({ queryKey: ['bots'], queryFn: api.bots })
+  const demo = useDemo()
   const start = useMutation({
     mutationFn: async () => {
       const taken = (bots.data ?? []).map((b) => b.name)
@@ -194,7 +196,11 @@ function Result({
             자세히 보기
           </button>
         )}
-        {editing ? (
+        {demo ? (
+          <button className="primary" onClick={() => goTo('dashboard')}>
+            예시 나 카피 봇 보기
+          </button>
+        ) : editing ? (
           <button className="primary" disabled={change.isPending || !data} onClick={() => change.mutate(editing)}>
             {change.isPending ? '바꾸는 중…' : `${editing.name} 규칙 바꾸기`}
           </button>
@@ -206,7 +212,9 @@ function Result({
       </div>
       {(start.error ?? change.error) && <div className="bad small">{(start.error ?? change.error)?.message}</div>}
       <p className="faint small">
-        {editing
+        {demo
+          ? '데모에서는 봇을 만들 수 없어요. 홈에서 이렇게 만든 예시 나 카피 봇이 2년째 돌고 있는 모습을 볼 수 있어요.'
+          : editing
           ? '바꾸면 다음 판단부터 이 규칙으로 해요. 지금까지의 기록은 그대로예요.'
           : '모의 투자는 실제 계좌와 상관없어요. 시작하면 이번 달 넣는 돈으로 바로 시작해요.'}
       </p>
