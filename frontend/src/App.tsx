@@ -17,7 +17,7 @@ const TABS = {
 } as const
 type Tab = keyof typeof TABS
 
-// 탭 밖의 화면: 질문으로 나 만들기 (#me), 봇 하나 자세히 보기 (#bot, 홈 탭)
+// 탭 밖의 화면: 나 카피하기 (#me), 봇 하나 자세히 보기 (#bot, 홈 탭)
 type Page = Tab | 'me' | 'bot'
 
 function useHashTab(): [Page, (t: Tab) => void] {
@@ -106,7 +106,7 @@ export default function App() {
               <p className="muted">질문 몇 개에 답하면 내 투자 습관을 복사한 봇이 만들어져요.</p>
             </div>
             <button className="primary" onClick={() => (location.hash = 'me')}>
-              질문으로 나 만들기
+              나 카피하기
             </button>
           </section>
         )}

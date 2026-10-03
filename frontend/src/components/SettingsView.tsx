@@ -73,7 +73,7 @@ function Switcher({ bots, current, creating }: { bots: Bot[]; current?: Bot; cre
               location.hash = 'me'
             }}
           >
-            질문으로 나 만들기
+            나 카피하기
           </button>
         </div>
       )}

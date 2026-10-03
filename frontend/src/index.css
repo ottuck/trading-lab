@@ -1567,7 +1567,7 @@ button.switcher-btn:hover:not(:disabled) {
   font-size: 12px;
 }
 
-/* 질문으로 나 만들기 (#me): 가운데 좁은 단, 질문 하나씩. 고르는 버튼은 크게. */
+/* 나 카피하기 (#me): 가운데 좁은 단, 질문 하나씩. 고르는 버튼은 크게. */
 .me {
   max-width: 600px;
   margin: 0 auto;

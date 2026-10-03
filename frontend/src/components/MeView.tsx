@@ -9,7 +9,7 @@ import { EquityChart } from './BacktestView'
 import { ParallelWorlds } from './Parallel'
 import { BasketPicker } from './SymbolPicker'
 
-/* 질문으로 나 만들기: 한 화면에 질문 하나씩 (토스식). 답하면 바로 다음 질문으로 넘어가고,
+/* 나 카피하기: 한 화면에 질문 하나씩 (토스식). 답하면 바로 다음 질문으로 넘어가고,
    마지막에 쉬운 말 요약과 "나처럼 10년 했다면 vs 매달 그냥 사기"를 보여준 뒤 봇으로 시작한다. */
 
 const YEARS = 10

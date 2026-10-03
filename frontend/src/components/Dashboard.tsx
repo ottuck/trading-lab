@@ -716,7 +716,7 @@ function BotItem({ bot, active, onPick }: { bot: Bot; active: boolean; onPick: (
 
 const parallelKey = (bot: Bot) => ['parallel', bot.id, JSON.stringify(bot.params), JSON.stringify(bot.symbols)]
 
-/** 나처럼 모으기 봇: 시작한 뒤로 규칙을 하나씩 바꿨다면 (고르면 다음 판단부터 그 규칙으로). */
+/** 나처럼 투자 봇: 시작한 뒤로 규칙을 하나씩 바꿨다면 (고르면 다음 판단부터 그 규칙으로). */
 function BotParallel({ bot }: { bot: Bot }) {
   const qc = useQueryClient()
   return (
@@ -742,7 +742,7 @@ function BotSide({ bots, current, onPick }: { bots: Bot[]; current: Bot; onPick:
         <div className="bot-list-head">
           내 봇
           <button className="link" onClick={() => goTo('me')}>
-            나 만들기
+            나 카피하기
           </button>
           <button className="link" onClick={() => startNewBot()}>
             + 새 봇
@@ -756,7 +756,7 @@ function BotSide({ bots, current, onPick }: { bots: Bot[]; current: Bot; onPick:
         <div className="me-invite">
           <b>나 카피 봇이 아직 없어요</b>
           <p>내 투자 습관을 복사한 봇을 만들면 홈이 &quot;나 vs 매달 그냥 사기&quot;와 평행세계의 나로 바뀌어요.</p>
-          <button onClick={() => goTo('me')}>질문으로 나 만들기</button>
+          <button onClick={() => goTo('me')}>나 카피하기</button>
         </div>
       )}
       <div className="side-note">10초마다 새로 불러와요.</div>

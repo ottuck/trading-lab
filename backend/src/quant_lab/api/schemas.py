@@ -228,7 +228,6 @@ class StrategyInfo(BaseModel):
 
     name: str
     nickname: str
-    emoji: str
     summary: str
     risk: str
     trades: str
@@ -263,7 +262,7 @@ class BacktestRequest(BaseModel):
 
 
 class ParallelRequest(BaseModel):
-    """평행세계의 나 (나처럼 모으기 전용). 시작 금액이 없으면 한 달 입금액."""
+    """평행세계의 나 (나처럼 투자 전용). 시작 금액이 없으면 한 달 입금액."""
 
     symbol: str = ""
     symbols: list[SymbolWeight] | None = None
