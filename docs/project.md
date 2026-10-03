@@ -156,7 +156,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | DB | PostgreSQL 17 (로컬·운영 모두 컨테이너) | 같은 버전으로 개발·운영 |
 | 프론트엔드 | React, TypeScript, Vite, oxlint, TanStack Query·Lightweight Charts(Phase 4) | polling·캐시, 금융 차트 |
 | 실행 | Docker Compose | 로컬 → Lightsail → OCI/홈서버로 그대로 이동 |
-| 접근 | Tailscale (`tailscale serve`로 HTTPS). **마일스톤 2 끝에 도메인 + Cloudflare Tunnel·Access로 옮긴다** (6절) | 공개 포트 0개, MWP에 로그인 구현 불필요 |
+| 접근 | **`https://app.trading-lab.me`** (Cloudflare Tunnel + Access, 본인 이메일만, 2026-10-03~). Tailscale(`tailscale serve`)은 관리용·예비 경로로 남긴다 (6절) | 공개 포트 0개, MWP에 로그인 구현 불필요 |
 | CI | GitHub Actions (`.github/workflows/ci.yml`): ruff, mypy, pytest(+PostgreSQL 17 서비스), oxlint, tsc·vite build | PR과 `dev`·`main` push |
 
 ## 6. 인프라와 운영
@@ -216,6 +216,10 @@ Tailscale 앱 없이 폰·다른 PC에서 주소만으로 들어오기 위해 **
 | API 이중 확인 | Access가 막지만 정책 실수로 열리는 일에 대비해, api가 **Cloudflare를 거쳐 온 요청(`cf-ray` 헤더)**은 Access 토큰(`Cf-Access-Jwt-Assertion` 헤더 또는 `CF_Authorization` 쿠키, RS256)을 팀 공개 키와 AUD 태그로 확인하고 없으면 403 (`api/access.py`). Tailscale로 온 요청은 그대로 둔다. `.secrets/env`에 `CF_ACCESS_TEAM`·`CF_ACCESS_AUD`가 있을 때만 켜진다 |
 | PWA | Access 뒤에서는 매니페스트 요청에도 로그인 쿠키가 필요하므로 `<link rel="manifest" crossorigin="use-credentials">` |
 | 확인 | Access 로그인 없이 도메인으로 열면 화면·API 모두 막히는지, 서버 공인 IP로 직접 들어오는 경로가 없는지 |
+
+**연결 완료 (2026-10-03):** 주소 `https://app.trading-lab.me`, Zero Trust 팀 `nameless-fire-1e28` (팀 이름은 고유해야 해서 자동 이름을 그대로 쓴다), Access 앱 `app`(정책 `Quant Lab`: 본인 이메일 하나, 세션 1개월, 로그인은 일회용 코드), 터널 `quant-lab`(Public hostname → `http://api:8000`). 확인한 것: 로그인 없이 `/`·`/api/*`·매니페스트 모두 Access 로그인으로 넘어감(앱 ID가 `CF_ACCESS_AUD`와 같음), Cloudflare를 거친 것처럼 꾸민 요청은 토큰 없거나 가짜면 api가 403, api는 `127.0.0.1:8000`에만 열림(공개 포트 0개), 폰(Tailscale 끔)·노트북에서 로그인 후 정상, Tailscale 주소도 그대로 동작.
+
+**Tailscale은 이제 필요할 때만:** 도메인 접속은 Tailscale과 상관없이 인터넷으로 된다 (폰에서 Tailscale을 꺼 둬도 된다. 확인할 때 끈 것은 Tailscale 없이도 열리는지 보려고). 서버 PC의 Tailscale은 관리용·예비 경로로 켜 둔다. **나중에 Lightsail 같은 서버로 옮기면** Cloudflare One 앱(기기 전체 트래픽을 보내는 회사용 클라이언트)보다 **Access 브라우저 SSH**(같은 터널, 같은 이메일 정책)로 관리 접속까지 옮겨 Tailscale을 뺄 수 있다. 그때 정한다.
 
 **연결 순서 (2026-10-03 준비 완료, 계정·결제 단계는 사용자가 한다):**
 
@@ -302,7 +306,7 @@ npm --prefix frontend run dev
 | 나 카피 봇의 종목 수 | **결정: 최대 10개** (2026-10-02) | 평소 가장 많이 사는 종목부터 고르게 하고, 10개보다 적게(보통 2~5개) 고르도록 안내한다. 수십 개 종목을 사고파는 사용자는 대상이 아니다 |
 | 여러 종목 봇 | **결정·구현: 봇 하나 = 계좌 하나, 최대 10개 종목** (2026-10-02) | 모으기 전략만. 종목별 비율(합 100), 현금 공유. **만든 뒤 종목·비율 바꾸기** (2026-10-03, 설정 → 종목과 비율, `PUT /api/bots/{id}/symbols`): 다음 판단부터 적용하고 바꾼 기록은 `config_change` 이벤트로 남긴다. 모으기 전략에서 뺀 종목을 들고 있으면(또는 주문 예정이면) `symbols`에 **비율 0**으로 남겨 시세·평가에는 쓰고 더 사지 않는다 (팔지 않음). 팔고 사는 전략은 들고 있는 종목을 뺄 수 없다 (팔 기회를 잃으므로). 바꾼 뒤에는 그 봇의 DRY RUN이 처음 조건의 백테스트와 달라진다. 한 종목 봇은 지금과 같게 동작 (재생 = 백테스트 일치 테스트) |
 | 모의 체결 수량 | **결정·구현: 금액 기준·소수점 6자리** (2026-10-02) | 월 금액이 주가보다 적어도 그대로 산다. 토스 금액 주문(소수점 매수)과 같은 방식. 지금까지는 정수 주식 |
-| 바깥 접속 | **결정: 마일스톤 2 끝에 도메인 + Cloudflare Tunnel·Access** (2026-10-02, 사용자 결정) | 본인 이메일만 허용. 공개 포트 0개 유지. 6절 |
+| 바깥 접속 | **결정·완료: 도메인 + Cloudflare Tunnel·Access** (2026-10-02 결정, 2026-10-03 연결, `app.trading-lab.me`) | 본인 이메일만 허용. 공개 포트 0개 유지. 6절 |
 | 누구나 쓰는 서비스 | **아이디어로만 기록** (2026-10-02, 사용자 결정) | 시세 소스·실제 기록 입력·로그인을 갈아엎는 큰 작업이라 지금은 하지 않는다. 하게 되면 12절대로 |
 | 백테스트 엔진 | **제안: 자체 엔진 유지** (2026-10-01, 사용자 확인 대기) | QuantConnect LEAN(Docker)은 검토 후 보류. 판단·체결 함수를 백테스트와 DRY RUN이 공유하는 구조(replay 일치 검증)를 지키기 위해서다. 장중·다종목·복잡한 주문으로 넓힐 때 연구용 교차 검증 도구로 다시 검토 |
 
@@ -357,7 +361,7 @@ MWP는 "실거래 경로 없이 정기 모의 운영을 사람 손 없이 돌린
 | 서버·Worker·DB가 각각 1개다 (이중화 없음) | 서버 장애 시 그동안의 판단이 빠진다 | Healthchecks로 감지. 모의 운영에는 충분하다고 판단 |
 | 백업은 서버 cron에서만 돌고, 복원은 아직 해 보지 않았다. 로컬 리허설 중에는 백업이 없다 | 리허설 기간 DB를 잃으면 모의 기록이 사라진다 | 서버 이전 후 복원 연습 (Phase 5) |
 | 텔레그램 알림을 기본으로 껐다 (2026-10-02). Worker·PC가 멈추는 것은 외부 heartbeat(Healthchecks, 기본 영어)만 알린다 | 판단 실패·데이터 문제는 앱을 열어야 보인다 | 실거래 단계(마일스톤 3)에서 알림을 다시 검토. 한국어 webhook 설정 방법은 6절 |
-| 화면에 로그인이 없다 | tailnet에 들어온 기기면 누구나 봇을 시작·중지할 수 있다 | 공개 포트 없이 Tailscale로만 연다. 마일스톤 2 끝에 Cloudflare Access(본인 이메일)로 바꾼다 (6절) |
+| 화면에 로그인이 없다 | 앱 자체에는 로그인이 없다 | 도메인은 Cloudflare Access(본인 이메일 일회용 코드)가 앞에서 막고 API도 Access 토큰을 다시 확인한다. Tailscale 경로는 tailnet 기기만 (6절) |
 | 실거래 경로가 없다 | 모의 결과와 실제 체결의 차이는 아직 검증하지 못했다 | 실거래는 별도 게이트 (roadmap) |
 
 ## 12. 서비스화 아이디어 (계획 아님, 2026-10-02)
