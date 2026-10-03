@@ -4,6 +4,7 @@
 #   worker.env : TOSS_CLIENT_ID, TOSS_CLIENT_SECRET, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, HEARTBEAT_PING_URL (worker만)
 #   env (선택) : CF_ACCESS_TEAM, CF_ACCESS_AUD — 도메인으로 온 요청의 Access 토큰을 api가 한 번 더 확인
 #   cloudflared.env (선택) : TUNNEL_TOKEN — 있으면 deploy.sh가 tunnel 프로필을 켠다 (도메인 접속, N7)
+#   demo.env (선택) : 있으면 deploy.sh가 포트폴리오 데모(compose.demo.yaml)도 띄운다 (D3)
 name: quant-lab-prod
 
 x-app: &app
@@ -75,9 +76,15 @@ services:
     env_file: ../.secrets/cloudflared.env
     restart: unless-stopped
     profiles: ["tunnel"]
+    # edge: 포트폴리오 데모(demo-api)와만 함께 쓰는 네트워크. 운영 DB·Worker는 여기에 없다.
+    networks: [default, edge]
     depends_on:
       api:
         condition: service_healthy
+
+networks:
+  edge:
+    name: quant-lab-edge
 
 volumes:
   db-data:
