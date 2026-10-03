@@ -6,6 +6,7 @@ export type Health = {
   version: string
   db: 'ok' | 'down'
   worker: { alive: boolean; worker_id: string | null; last_seen_at: string | null } | null
+  demo?: boolean // 예시 데이터로 보는 공개 데모
 }
 
 /** 종목과 비율(%). 봇의 비율 합은 100이다. */

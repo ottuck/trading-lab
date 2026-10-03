@@ -85,6 +85,44 @@
         "QL_API_URL": "http://127.0.0.1:8002"
       },
       "port": 5175
+    },
+    {
+      "name": "api-portfolio",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run",
+        "--directory",
+        "backend",
+        "uvicorn",
+        "quant_lab.api.main:app",
+        "--port",
+        "8003"
+      ],
+      "env": {
+        "DATABASE_URL": "postgresql+psycopg://quant:quant@localhost:5432/quant_lab_portfolio",
+        "DEMO_MODE": "true"
+      },
+      "port": 8003
+    },
+    {
+      "name": "frontend-portfolio",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5176",
+        "--strictPort",
+        "--host",
+        "127.0.0.1"
+      ],
+      "env": {
+        "QL_API_URL": "http://localhost:8003"
+      },
+      "port": 5176
     }
   ]
 }

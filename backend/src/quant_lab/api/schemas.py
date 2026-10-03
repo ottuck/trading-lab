@@ -201,6 +201,7 @@ class HealthResponse(BaseModel):
     version: str
     db: Literal["ok", "down"]
     worker: WorkerStatus | None
+    demo: bool = False  # 예시 데이터로 보는 공개 데모
 
 
 class PresetView(BaseModel):

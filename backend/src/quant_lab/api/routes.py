@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from quant_lab.adapters.market_calendar import get_calendar
@@ -84,6 +84,7 @@ from quant_lab.persistence.models import (
 )
 
 router = APIRouter(prefix="/api")
+DEMO_BACKTESTS = 30  # 데모에서 남기는 시험해 보기 결과 수
 SessionDep = Annotated[Session, Depends(get_session)]
 
 
@@ -834,6 +835,11 @@ def run_backtest(session: SessionDep, body: BacktestRequest) -> BacktestDetail:
     except (TypeError, ValueError) as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     assert run.saved_id is not None
+    if get_settings().demo_mode:
+        # 공개 데모는 누구나 시험해 보므로 최근 것만 남긴다
+        keep = select(BacktestRow.id).order_by(BacktestRow.created_at.desc()).limit(DEMO_BACKTESTS)
+        session.execute(delete(BacktestRow).where(BacktestRow.id.not_in(keep)))
+        session.commit()
     return backtest(session, run.saved_id)
 
 

@@ -8,6 +8,7 @@ import { HelpButton } from './components/Help'
 import { MeView } from './components/MeView'
 import { SettingsView } from './components/SettingsView'
 import { ago } from './format'
+import { useDemo } from './demo'
 
 const TABS = {
   dashboard: '홈',
@@ -35,6 +36,12 @@ function useHashTab(): [Page, (t: Tab) => void] {
 
 function SystemStatus() {
   const { data, error } = useQuery({ queryKey: ['health'], queryFn: api.health })
+  if (data?.demo)
+    return (
+      <span className="dot demo" title="예시 데이터로 보는 데모">
+        <span className="status-text">데모</span>
+      </span>
+    )
   if (error)
     return (
       <span className="dot bad">
@@ -66,6 +73,7 @@ function NewYorkClock() {
 export default function App() {
   const [tab, setTab] = useHashTab()
   const bots = useQuery({ queryKey: ['bots'], queryFn: api.bots })
+  const demo = useDemo()
 
   return (
     <>
@@ -73,7 +81,7 @@ export default function App() {
         <header className="topbar">
           <Brand />
           <nav className="tabs">
-            {(Object.keys(TABS) as Tab[]).map((t) => {
+            {(Object.keys(TABS) as Tab[]).filter((t) => !(demo && t === 'settings')).map((t) => {
               // 봇 자세히 보기(#bot)는 홈 탭 안의 화면이다.
               const on = t === tab || (t === 'dashboard' && tab === 'bot')
               return (
@@ -96,13 +104,19 @@ export default function App() {
           </div>
         </header>
       </div>
+      {demo && (
+        <div className="demo-bar">
+          <b>예시 데이터로 보는 데모예요.</b> 가격은 실제가 아니고, 봇을 만들거나 바꿀 수는 없어요. 나 카피하기와 시험해 보기는
+          마음껏 해 보세요.
+        </div>
+      )}
       <main>
         {bots.error && <div className="alert">봇 정보를 불러오지 못했습니다: {bots.error.message}</div>}
         {tab === 'dashboard' && bots.data && <MeHome bots={bots.data} />}
         {tab === 'bot' && !!bots.data?.length && <Home bots={bots.data} />}
         {tab === 'backtest' && <BacktestView />}
         {tab === 'me' && <MeView />}
-        {tab === 'settings' && bots.data && <SettingsView bots={bots.data} />}
+        {tab === 'settings' && !demo && bots.data && <SettingsView bots={bots.data} />}
       </main>
     </>
   )

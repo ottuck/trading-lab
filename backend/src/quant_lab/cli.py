@@ -6,7 +6,7 @@ import logging
 import sys
 from collections import Counter
 from collections.abc import Sequence
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -22,7 +22,7 @@ from quant_lab.application.dry_run import latest_completed_session
 from quant_lab.application.replay import replay_bot
 from quant_lab.config import get_settings
 from quant_lab.domain.bars import outlier_limit
-from quant_lab.domain.bot import CommandKind
+from quant_lab.domain.bot import BotState, CommandKind
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.domain.strategy import STRATEGIES
 from quant_lab.persistence.bars import upsert_daily_bars
@@ -36,7 +36,7 @@ from quant_lab.persistence.bots import (
 )
 from quant_lab.persistence.db import get_engine
 from quant_lab.persistence.market_info import upsert_instruments
-from quant_lab.persistence.models import DailyBarRow, SimOrderRow
+from quant_lab.persistence.models import DailyBarRow, DecisionRow, SimOrderRow
 
 
 def _toss_client() -> TossClient:
@@ -269,7 +269,59 @@ def cmd_seed_demo(args: argparse.Namespace) -> int:
         session.commit()
     total = sum(len(v) for v in bars.values())
     print(f"예시 시세 {len(bars)}종목 {total}봉 ({sessions[0]} ~ {end}, seed={args.seed})")
+    if args.bots:
+        _seed_demo_bots(end, now)
     return 0
+
+
+# 데모 홈에 미리 돌고 있는 예시 봇: (이름, 전략, 파라미터, 종목·비율, 시작 금액)
+DEMO_BOTS: tuple[tuple[str, str, dict[str, int], dict[str, int], Decimal], ...] = (
+    (
+        "나 카피 봇",
+        "dip_saver",
+        {"deposit": 1350, "day": 25, "dip": 10, "hot": 15, "high": 252, "sma": 200, "regular": 1},
+        {"QQQ": 50, "VOO": 50},
+        Decimal(1350),
+    ),
+    ("QQQ 봇", "sma_cross", {}, {"QQQ": 100}, Decimal(10_000)),
+    ("TQQQ 봇", "trend_filter", {}, {"TQQQ": 100}, Decimal(10_000)),
+)
+
+
+def _seed_demo_bots(end: date, now: datetime) -> None:
+    """예시 봇을 2년 전부터 정기 평가로 돌려 둔다. 이미 있으면 마지막 판단 다음 날부터 이어서."""
+    make_session = sessionmaker(get_engine())
+    calendar = get_calendar()
+    start = calendar.sessions(date(end.year - 2, end.month, 1), end)[0]
+    for name, strategy_name, params, weights, cash in DEMO_BOTS:
+        strategy = STRATEGIES[strategy_name](**params)
+        with make_session() as session:
+            bot = next((b for b in list_bots(session) if b.name == name), None)
+            if bot is None:
+                bot = create_bot(
+                    session,
+                    name=name,
+                    symbol=next(iter(weights)),
+                    strategy=strategy.name,
+                    params=strategy.params,
+                    initial_cash=cash,
+                    costs=CostModel(commission_rate=Decimal("0.001"), slippage_bps=Decimal(5)),
+                    limits=RiskLimits(),
+                    now=now,
+                    weights=weights,
+                )
+                first = start
+            else:
+                last = session.scalar(
+                    select(func.max(DecisionRow.session_date)).where(DecisionRow.bot_id == bot.id)
+                )
+                first = (last or start) + timedelta(days=1)
+            bot.state = BotState.RUNNING
+            session.commit()
+            bot_id = bot.id
+        if first <= end:
+            outcomes = replay_bot(make_session, bot_id, calendar, first, end)
+            print(f"  {name}: {first} ~ {end} 평가 {len(outcomes)}회")
 
 
 def _telegram() -> TelegramClient:
@@ -336,6 +388,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     demo = sub.add_parser("seed-demo", help="데모 DB에 예시 시세 넣기 (토스 데이터 없음)")
     demo.add_argument("--seed", type=int, default=7)
+    demo.add_argument("--no-bots", dest="bots", action="store_false", help="예시 봇은 만들지 않음")
     demo.set_defaults(func=cmd_seed_demo)
 
     rp = sub.add_parser("replay", help="저장된 일봉으로 정기 평가를 재생하고 백테스트와 비교")

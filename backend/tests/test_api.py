@@ -252,3 +252,18 @@ def test_follow_plan(client: TestClient, session: Session, bot_id: int) -> None:
     assert Decimal(qqq["dip_price"]) < Decimal(qqq["close"])
     assert Decimal(qqq["buy"]) + Decimal(qqq["save"]) > 0
     assert client.get(f"/api/bots/{bot_id}/plan").status_code == 400  # 나 카피 봇만
+
+
+def test_demo_mode_is_read_only(
+    client: TestClient, bot_id: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 데모(D2): 보기·계산은 되고, 봇 만들기·명령·설정 바꾸기는 막는다
+    from quant_lab.api import main
+
+    monkeypatch.setattr(main._settings, "demo_mode", True)
+    assert client.get("/api/health").json()["demo"] is True
+    assert client.get("/api/bots").status_code == 200
+    params = {"deposit": 500, "day": 1, "dip": 10, "hot": 10, "high": 10, "sma": 5}
+    assert client.post("/api/parallel", json={"symbol": "QQQ", "params": params}).status_code == 200
+    assert client.post(f"/api/bots/{bot_id}/commands", json={"kind": "STOP"}).status_code == 403
+    assert client.delete(f"/api/bots/{bot_id}").status_code == 403
