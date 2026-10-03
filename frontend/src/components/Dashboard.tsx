@@ -807,7 +807,7 @@ function MeHero({ bot }: { bot: Bot }) {
         <span className="name">{bot.name}</span>
         <span className={`dot ${state.dot}`}>{state.label}</span>
         <span>
-          · 나 카피 봇 · {basketLabel(bot.symbols, bot.symbol)}
+          {bot.name.includes('나 카피') ? '' : ' · 나 카피 봇'} · {basketLabel(bot.symbols, bot.symbol)}
         </span>
       </div>
       <div className="me-vs">
