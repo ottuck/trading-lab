@@ -56,7 +56,8 @@
 
 ```mermaid
 flowchart LR
-    ME[내 브라우저·폰] -->|Tailscale HTTPS| API
+    ME[내 브라우저·폰] -->|app.trading-lab.me<br/>Cloudflare Access| CF[Cloudflare Tunnel]
+    CF --> API
     subgraph VM[Lightsail 서울 · 고정 IP · Docker Compose]
         API[api<br/>FastAPI + React 정적 파일] <--> DB[(PostgreSQL 17)]
         WORKER[worker<br/>수집·판단·모의 체결] <--> DB
@@ -64,7 +65,7 @@ flowchart LR
     WORKER -->|고정 송신 IP · 읽기 전용| TOSS[토스증권 Open API]
 ```
 
-- 공개 인바운드 포트가 없습니다. 화면과 SSH는 Tailscale로만 접근합니다.
+- 공개 인바운드 포트가 없습니다. 화면은 도메인(Cloudflare Tunnel이 밖으로만 연결, Access로 본인 이메일만)으로, 관리용 SSH는 Tailscale로 접근합니다.
 - API와 Worker는 **DB를 통해서만** 대화합니다. 화면의 명령은 `commands` 테이블에 쌓이고 Worker가 15초 안에 처리합니다.
 - `domain` 계층은 FastAPI·httpx·SQLAlchemy를 import하지 않습니다 (테스트로 강제).
 
@@ -91,7 +92,7 @@ Worker 평가 1회
 | --- | --- |
 | Backend | Python 3.14, uv, FastAPI, Pydantic v2, SQLAlchemy 2, Alembic, psycopg 3, httpx, pandas, exchange_calendars |
 | Frontend | React, TypeScript, Vite, TanStack Query, Lightweight Charts |
-| Infra | Docker Compose, PostgreSQL 17, AWS Lightsail(Terraform), Tailscale |
+| Infra | Docker Compose, PostgreSQL 17, AWS Lightsail(Terraform), Cloudflare Tunnel·Access, Tailscale |
 | 품질 | pytest(핵심 불변식 위주), ruff, mypy strict, oxlint, GitHub Actions, `alembic check` |
 
 ## 로컬 실행
@@ -140,7 +141,7 @@ npm run lint && npm run build
 
 ## 운영 배포
 
-서울 리전 VM 1대에서 Docker Compose로 실행하고, 화면은 Tailscale로만 엽니다. 단계별 절차는 [project.md 6절](docs/project.md).
+서울 리전 VM 1대에서 Docker Compose로 실행하고, 화면은 Cloudflare Access 뒤의 도메인으로 엽니다. 단계별 절차는 [project.md 6절](docs/project.md).
 
 ```bash
 cd infra/lightsail && terraform apply   # 서버·고정 IP·자동 스냅샷 (AWS 자격 증명 필요)
