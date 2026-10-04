@@ -55,6 +55,8 @@ class LiveOverview:
     per_order: Decimal
     per_month: Decimal
     ratios: list[str]  # 고를 수 있는 비율 이름 (1/100, 1/10)
+    shortfall: list[dict[str, str]]  # 실제 계좌 대조: 보유가 봇이 산 수량보다 적은 종목
+    checked_at: datetime | None  # 마지막 대조 시각
     orders: list[LiveOrderInfo]  # 최근 실제 주문 (승인 기다림이 먼저)
 
 
@@ -73,6 +75,8 @@ def overview(session: Session) -> LiveOverview:
         per_order=limits.per_order,
         per_month=limits.per_month,
         ratios=list(RATIOS),
+        shortfall=list(row.shortfall or []) if row else [],
+        checked_at=row.checked_at if row else None,
         orders=[
             LiveOrderInfo(
                 o.id,

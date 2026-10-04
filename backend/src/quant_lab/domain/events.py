@@ -30,6 +30,7 @@ class EventKind(StrEnum):
     LIVE_ORDER = "live_order"  # 실제 주문 상태가 바뀜 (실거래 R2)
     LIVE_CONTROL = "live_control"  # 비상 중지·재개
     NOTIFY_TEST = "notify_test"  # 화면의 "테스트 메시지 보내기"
+    LIVE_RECONCILE = "live_reconcile"  # 실제 계좌 대조 결과가 바뀜 (부족 생김·풀림)
 
 
 class SkipReason(StrEnum):
@@ -116,6 +117,16 @@ class LiveOrderData(TypedDict):
     ]  # 건너뜀(domain/live.py SkipReason)·거절(domain/broker.py RejectReason)
     filled_qty: NotRequired[str]
     auto: NotRequired[bool]  # 사람에게 묻지 않고 자동으로 내기로 함
+
+
+class ShortfallItem(TypedDict):
+    symbol: str
+    held: str  # 실제 계좌 보유 수량
+    bought: str  # 봇이 실제로 사서 체결된 수량 합계
+
+
+class LiveReconcileData(TypedDict):
+    shortfall: list[ShortfallItem]  # 비어 있으면 다시 맞음
 
 
 class LiveControlData(TypedDict):

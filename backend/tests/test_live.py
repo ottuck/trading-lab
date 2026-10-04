@@ -9,18 +9,27 @@ import pytest
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from quant_lab.application.live import LiveDesk
+from quant_lab.application.live import LiveDesk, check_holdings
 from quant_lab.application.live_admin import approve
 from quant_lab.domain.broker import (
     AccountOrder,
+    AccountSnapshot,
     AmountOrder,
     BrokerError,
+    Holding,
     OrderStatus,
 )
 from quant_lab.domain.live import AUTO_AFTER, LiveState
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.persistence.bots import create_bot
-from quant_lab.persistence.models import BotRow, DecisionRow, LiveOrderRow, RunRow, SimOrderRow
+from quant_lab.persistence.models import (
+    BotRow,
+    DecisionRow,
+    EventRow,
+    LiveOrderRow,
+    RunRow,
+    SimOrderRow,
+)
 from tests.fakes import WeekdayCalendar
 
 SIGNAL = date(2026, 10, 1)  # 목요일 판단 → 금요일에 산다
@@ -176,3 +185,32 @@ def test_small_shares_are_carried_until_they_reach_the_minimum(
     first, second = session.scalars(select(LiveOrderRow).order_by(LiveOrderRow.id))
     assert (first.state, first.reason, first.carried_into) == ("SKIPPED", "carried", second.id)
     assert (second.state, second.amount) == (LiveState.WAITING_APPROVAL, Decimal("1.00"))
+
+
+def test_account_with_fewer_shares_than_bot_bought_goes_back_to_approval(
+    make_session: Callable[[], Session], session: Session
+) -> None:
+    bot = live_bot(session, streak=AUTO_AFTER)
+    session.add(
+        LiveOrderRow(
+            bot_id=bot.id, symbol="VOO", signal_date=SIGNAL, trade_date=TRADE,
+            amount=Decimal("3.37"), key="ql-x", state=LiveState.FILLED,
+            filled_qty=Decimal("0.0048"), created_at=OPEN, updated_at=OPEN,
+        )
+    )  # fmt: skip
+    session.commit()
+
+    def snap(qty: str) -> AccountSnapshot:
+        holding = Holding("VOO", "VOO", "USD", Decimal(qty), Decimal(1), Decimal(1), Decimal(1))
+        return AccountSnapshot("test", Decimal(0), Decimal(0), [holding], [])
+
+    later = OPEN + timedelta(hours=1)
+    check_holdings(session, snap("0.0050"), later)  # 직접 산 주식이 섞여 더 많으면 맞음
+    check_holdings(session, snap("0.0020"), later)  # 봇이 산 것보다 적다
+    check_holdings(session, snap("0.0020"), later)  # 같은 부족은 한 번만 알린다
+    session.commit()
+
+    session.refresh(bot)
+    assert bot.live_streak == 0  # 다시 승인부터
+    kinds = session.scalars(select(EventRow.kind).where(EventRow.kind == "live_reconcile")).all()
+    assert len(kinds) == 1

@@ -373,9 +373,11 @@ class LiveControlRow(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)  # 늘 1
     halted: Mapped[bool] = mapped_column(Boolean, server_default="false")
     halted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    trader: Mapped[str | None] = mapped_column(
-        String(20)
-    )  # 켜져 있으면 출처 코드, 꺼져 있으면 NULL
+    # 실거래 스위치가 켜져 있으면 출처 코드, 꺼져 있으면 NULL
+    trader: Mapped[str | None] = mapped_column(String(20))
+    # 실제 계좌 대조: 보유가 봇이 산 수량보다 적은 종목 [{symbol, held, bought}]. 맞으면 NULL
+    shortfall: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 

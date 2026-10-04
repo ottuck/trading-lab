@@ -72,3 +72,21 @@ def order_key(bot_id: int, symbol: str, signal_date: date) -> str:
     """판단 키(봇·종목·판단일)에서 만든 중복 방지 키. 같은 판단의 주문은 늘 같은 키다."""
     safe = "".join(c if c.isalnum() else "_" for c in symbol)
     return f"ql-{bot_id}-{safe}-{signal_date:%Y%m%d}"[:36]
+
+
+QTY_TOLERANCE = Decimal("0.000001")  # 소수점 6자리 반올림 차이
+
+
+def holding_shortfalls(
+    held: dict[str, Decimal], bought: dict[str, Decimal]
+) -> dict[str, tuple[Decimal, Decimal]]:
+    """실제 계좌 보유가 봇이 실제로 산 수량보다 적은 종목 → (보유, 봇이 산 수량).
+
+    실제 계좌에는 직접 산 주식이 섞일 수 있어 "같은지"가 아니라 "적지 않은지"만 본다.
+    봇은 사기만 하므로 적다면 기록이 틀렸거나, 사람이 직접 팔았거나, 계좌에 문제가 있는 것이다.
+    """
+    return {
+        symbol: (held.get(symbol, Decimal(0)), qty)
+        for symbol, qty in sorted(bought.items())
+        if held.get(symbol, Decimal(0)) + QTY_TOLERANCE < qty
+    }

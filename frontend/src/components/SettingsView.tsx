@@ -402,6 +402,15 @@ function HaltSection() {
           {live.halted ? '멈춤 중 · 새 실제 주문을 보내지 않아요' : '실제 주문을 내고 있어요'}
         </span>
       </div>
+      {live.shortfall.length > 0 ? (
+        <div className="notice">
+          실제 계좌에 봇이 산 것보다 적게 있어요:{' '}
+          {live.shortfall.map((s) => `${s.symbol} ${shares(s.held)}주 (봇이 산 ${shares(s.bought)}주)`).join(', ')}. 직접
+          파셨다면 괜찮아요. 맞을 때까지 실제 주문은 매번 승인을 받아요.
+        </div>
+      ) : (
+        live.checked_at && <div className="faint small">{ago(live.checked_at)} 실제 계좌와 맞춰 봤어요 · 봇 기록과 맞아요</div>
+      )}
     </Section>
   )
 }
