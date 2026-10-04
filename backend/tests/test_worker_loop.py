@@ -1,12 +1,12 @@
 from collections.abc import Callable
-from datetime import UTC, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 
 import pytest
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from quant_lab.adapters.toss.client import Quote, StockInfo
+from quant_lab.adapters.toss.client import AccountSnapshot, Quote, StockInfo
 from quant_lab.application.market import StoredMarket
 from quant_lab.domain.bars import DailyBar
 from quant_lab.domain.bot import BotState, CommandKind
@@ -20,6 +20,7 @@ from quant_lab.persistence.models import (
     InstrumentRow,
     LiveBarRow,
     QuoteRow,
+    TossAccountRow,
 )
 from quant_lab.worker.loop import Worker, release_worker_lock, try_acquire_worker_lock
 from tests.fakes import WeekdayCalendar, make_bars
@@ -138,3 +139,27 @@ def test_live_quotes_only_for_bot_symbols_in_trading_hours(
     assert session.get_one(QuoteRow, "QQQ").price == Decimal("123.45")
     assert session.get_one(InstrumentRow, "QQQ").leverage_factor == 3
     assert session.get_one(LiveBarRow, "QQQ").close == 123
+
+
+def test_account_read_hourly_and_keeps_last_value_on_failure(
+    make_session: Callable[[], Session], session: Session
+) -> None:
+    clock = [NOW]
+    calls: list[date] = []
+
+    def read(since: date) -> AccountSnapshot:
+        calls.append(since)
+        if len(calls) > 1:
+            raise RuntimeError("HTTP 403 edge-blocked")
+        return AccountSnapshot(Decimal("12.5"), Decimal("10000"), [], [])
+
+    worker = Worker(make_session, StoredMarket(), CAL, now=lambda: clock[0], account=read)
+    worker.refresh_account()
+    worker.refresh_account()  # 한 시간 안에는 다시 읽지 않는다
+    clock[0] = NOW + timedelta(hours=1)
+    worker.refresh_account()
+
+    assert len(calls) == 2
+    row = session.scalars(select(TossAccountRow)).one()
+    assert row.cash_usd == Decimal("12.5") and row.fetched_at == NOW
+    assert row.error == "HTTP 403 edge-blocked" and row.error_at == clock[0]

@@ -1,7 +1,7 @@
 """토스증권 Open API 읽기 전용 클라이언트.
 
 - 토큰은 이 클라이언트 하나가 발급·보유한다 (클라이언트당 유효 토큰 1개, docs/tossApi.md).
-- 계좌·주문 API는 구현하지 않는다 (project.md 3절 원칙 1).
+- 계좌는 읽기만 한다 (실거래 R1). 주문을 내는 API는 구현하지 않는다 (project.md 3절 원칙 1).
 """
 
 import logging
@@ -59,6 +59,42 @@ class Quote:
     symbol: str
     price: Decimal
     quoted_at: datetime  # 마지막 체결 시각 (데이마켓·프리·정규·애프터 모두 포함)
+
+
+@dataclass(frozen=True, slots=True)
+class Holding:
+    symbol: str
+    name: str
+    currency: str
+    quantity: Decimal
+    average_price: Decimal
+    last_price: Decimal
+    market_value: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class AccountOrder:
+    """주문 1건 = 1행 (나눠 체결되면 합산). 주문 조회에는 clientOrderId가 없다 (tossApi.md 5절)."""
+
+    order_id: str
+    symbol: str
+    side: str  # BUY | SELL
+    status: str  # PENDING, FILLED, CANCELED ...
+    currency: str
+    ordered_at: datetime
+    order_amount: Decimal | None  # 금액 주문의 금액 (USD)
+    filled_quantity: Decimal
+    filled_amount: Decimal | None
+
+
+@dataclass(frozen=True, slots=True)
+class AccountSnapshot:
+    """실제 토스 계좌 읽기 결과. 계좌번호는 담지 않는다."""
+
+    cash_usd: Decimal  # 미수 없는 현금 기준 매수 가능 금액
+    cash_krw: Decimal
+    holdings: list[Holding]
+    orders: list[AccountOrder]  # 진행 중 + 최근 종료 주문, 최신순
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +157,7 @@ class TossClient:
         self._now = now
         self._sleep = sleep
         self._token: _Token | None = None
+        self._account: int | None = None
         self.last_rate_limit: dict[str, str] = {}
 
     def close(self) -> None:
@@ -154,12 +191,13 @@ class TossClient:
 
     # --- 공통 요청 ---
 
-    def _get(self, path: str, params: Mapping[str, Any]) -> Any:
+    def _get(self, path: str, params: Mapping[str, Any], *, account: bool = False) -> Any:
         reissued = False
         for attempt in range(MAX_ATTEMPTS):
-            resp = self._http.get(
-                path, params=params, headers={"Authorization": f"Bearer {self._bearer()}"}
-            )
+            headers = {"Authorization": f"Bearer {self._bearer()}"}
+            if account:
+                headers["X-Tossinvest-Account"] = str(self._account_seq())
+            resp = self._http.get(path, params=params, headers=headers)
             self.last_rate_limit = {
                 k: v for k, v in resp.headers.items() if k.lower().startswith("x-ratelimit")
             }
@@ -247,3 +285,74 @@ class TossClient:
         params = {"date": day.isoformat()} if day else {}
         result: dict[str, Any] = self._get("/api/v1/market-calendar/US", params)
         return result
+
+    # --- 계좌 (읽기 전용) ---
+
+    def _account_seq(self) -> int:
+        """계좌 헤더 값. 종합매매 계좌가 하나라 첫 계좌를 쓴다 (tossApi.md 9절)."""
+        if self._account is None:
+            accounts = self._get("/api/v1/accounts", {})
+            if not accounts:
+                raise TossError(404, "no-account", "토스 계좌가 없습니다", None)
+            self._account = int(accounts[0]["accountSeq"])
+        return self._account
+
+    def buying_power(self, currency: str) -> Decimal:
+        result = self._get("/api/v1/buying-power", {"currency": currency}, account=True)
+        return Decimal(result["cashBuyingPower"])
+
+    def holdings(self) -> list[Holding]:
+        result = self._get("/api/v1/holdings", {}, account=True)
+        return [
+            Holding(
+                symbol=h["symbol"],
+                name=h["name"],
+                currency=h["currency"],
+                quantity=Decimal(h["quantity"]),
+                average_price=Decimal(h["averagePurchasePrice"]),
+                last_price=Decimal(h["lastPrice"]),
+                market_value=Decimal(h["marketValue"]["amount"]),
+            )
+            for h in result["items"]
+        ]
+
+    def orders(self, status: str, since: date, max_pages: int = 5) -> list[AccountOrder]:
+        """since(KST 주문일) 이후 주문. OPEN은 한 번에 전부, CLOSED는 100건씩 이어서 읽는다."""
+        params: dict[str, Any] = {"status": status, "from": since.isoformat(), "limit": 100}
+        out: list[AccountOrder] = []
+        for _ in range(max_pages):
+            page = self._get("/api/v1/orders", params, account=True)
+            out += [_to_order(o) for o in page["orders"]]
+            if status == "OPEN" or not page.get("hasNext") or not page.get("nextCursor"):
+                break
+            params["cursor"] = page["nextCursor"]
+        return out
+
+    def account_snapshot(self, since: date) -> AccountSnapshot:
+        orders = self.orders("OPEN", since) + self.orders("CLOSED", since)
+        orders.sort(key=lambda o: o.ordered_at, reverse=True)
+        return AccountSnapshot(
+            cash_usd=self.buying_power("USD"),
+            cash_krw=self.buying_power("KRW"),
+            holdings=self.holdings(),
+            orders=orders,
+        )
+
+
+def _decimal_or_none(value: str | None) -> Decimal | None:
+    return Decimal(value) if value is not None else None
+
+
+def _to_order(raw: Mapping[str, Any]) -> AccountOrder:
+    execution = raw.get("execution") or {}
+    return AccountOrder(
+        order_id=str(raw["orderId"]),
+        symbol=raw["symbol"],
+        side=raw["side"],
+        status=raw["status"],
+        currency=raw["currency"],
+        ordered_at=datetime.fromisoformat(raw["orderedAt"]),
+        order_amount=_decimal_or_none(raw.get("orderAmount")),
+        filled_quantity=Decimal(execution.get("filledQuantity") or "0"),
+        filled_amount=_decimal_or_none(execution.get("filledAmount")),
+    )

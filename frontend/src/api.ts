@@ -59,6 +59,17 @@ export type Instrument = {
   live_at: string | null
 }
 
+/** 실제 토스 계좌를 마지막으로 읽은 결과 (실거래 R1). 읽기를 켜지 않았으면 null. */
+export type TossAccount = {
+  cash_usd: Money | null
+  cash_krw: Money | null
+  holdings: { symbol: string; name: string; currency: string; qty: Money; avg_price: Money; last_price: Money; value: Money }[]
+  orders: { symbol: string; side: 'BUY' | 'SELL'; status: string; currency: string; ordered_at: string; amount: Money | null; qty: Money }[]
+  fetched_at: string | null
+  error: string | null
+  error_at: string | null
+}
+
 export type Decision = {
   id: number
   symbol: string
@@ -171,6 +182,7 @@ export const api = {
     request<EventItem[]>(`/api/events?limit=200${level ? `&level=${level}` : ''}`),
   bars: (symbol: string) => request<Bar[]>(`/api/bars/${symbol}?limit=750`),
   instruments: () => request<Instrument[]>('/api/instruments'),
+  tossAccount: () => request<TossAccount | null>('/api/toss-account'),
   command: (botId: number, kind: CommandKind) =>
     request<{ id: number }>(`/api/bots/${botId}/commands`, {
       method: 'POST',

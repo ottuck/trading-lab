@@ -118,6 +118,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 8. Worker가 멈춰 있던 동안의 거래일은 소급 판단하지 않고 `missed_sessions` 경고만 남긴다.
 9. 봇 평가와 별도로 30분마다 관심 종목(`WATCHLIST_SYMBOLS`, 기본 10종목) 일봉이 최신 완료 거래일까지 있는지 보고, 뒤처진 종목만 증분 동기화한다 (백테스트 데이터 최신화). 실패는 경고만 남긴다.
 10. 토스 모드에서는 하루 한 번 관심·봇 종목 정보(레버리지 배수)를, 미국 거래 시간(뉴욕 일 20:00~금 20:00, 데이마켓 포함) 중 30초마다 봇 종목 현재가와 진행 중 일봉(`/candles` 최신 1개)을 받아 저장한다. 화면 표시용이라 실패해도 로그만 남긴다.
+11. **실제 토스 계좌 읽기 (실거래 R1, 2026-10-04~):** `TOSS_ACCOUNT_ENABLED=true`(토스 모드에서만)이면 한 시간마다 주문 가능 금액(달러·원, `buying-power`)·보유(`holdings`)·최근 30일 주문(`orders` 진행 중 + 종료)을 같은 토스 클라이언트로 읽어 `toss_account`에 덮어쓴다. 계좌번호와 원본 응답은 저장하지 않는다. 실패하면 마지막 값은 두고 실패 시각만 적어 화면(설정 "토스 계좌")에 "허용 IP를 확인해 주세요"로 보여준다. 주문은 내지 않는다.
 
 봇 상태(`STOPPED`, `RUNNING`, `PAUSED`, `ERROR`)는 Worker 프로세스의 생존과 별개다. 명령: `START`(→ RUNNING, 즉시 1회 평가), `PAUSE`(RUNNING → PAUSED), `STOP`, `RUN_ONCE`(상태는 그대로 두고 1회 평가). 화면에는 "멈추기(`PAUSE`) / 시작(`START`)"만 둔다. `STOP`과 `RUN_ONCE`는 일반 사용자에게 차이가 없거나(판단은 하루 한 번 자동) 헷갈려서 API·CLI에만 남긴다. 화면에서는 `PAUSED`와 `STOPPED`를 모두 "멈춤"으로 보여준다.
 
@@ -140,6 +141,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | `events` | 심각도별 기록 (텔레그램 알림·최근 활동의 원본) |
 | `instruments` | 종목명, 유형, 레버리지 배수 (토스 `/stocks`, 하루 한 번) |
 | `quotes` | 종목별 최신 현재가 1행 (`price`, `quoted_at`). 화면 "지금 가치"용, 판단에는 안 씀 |
+| `toss_account` | 실제 토스 계좌를 마지막으로 읽은 결과 1행 (실거래 R1): 주문 가능 금액(달러·원), 보유·최근 주문(JSONB, 금액은 문자열), 읽은 시각, 마지막 실패. 모의 봇 기록과 섞지 않는다 |
 | `live_bars` | 종목별 진행 중 일봉 1행. API `/bars`가 완료 봉보다 새 날짜일 때만 `live: true`로 끝에 붙인다. `daily_bars`와 섞지 않는다 |
 | `worker_heartbeat` | Worker 마지막 생존 시각, 버전 |
 
@@ -170,7 +172,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | 비용 | 약 $12/월 (공인 IPv4 포함 번들. 생성 시 서울 리전 가격 확인). Tailscale·GitHub 비공개 저장소는 무료 |
 | 고정 IP | Lightsail Static IP를 붙이고 그 IP를 토스 허용 IP에 등록 |
 | 방화벽 | 처음엔 Lightsail 콘솔 브라우저 SSH(22번, 콘솔 대역만)만 허용. Tailscale SSH가 동작하면 인바운드 전부 차단 |
-| 비밀값 | **저장소 안 `.secrets/`** (`.gitignore`·`.dockerignore`로 제외, 로컬·서버 같은 위치): `env`(DB 비밀번호·`DATABASE_URL`, 부트스트랩이 생성)와 `worker.env`(토스 키·텔레그램·`HEARTBEAT_PING_URL`, **worker 컨테이너에만** 주입). 둘 다 권한 600. 개발용 실행은 루트 `.env`를 쓴다. **토스 키 만료 2027-09-28** (발급 2026-09-28, 1년). 만료 전 WTS에서 재발급하고 `worker.env` 교체 |
+| 비밀값 | **저장소 안 `.secrets/`** (`.gitignore`·`.dockerignore`로 제외, 로컬·서버 같은 위치): `env`(DB 비밀번호·`DATABASE_URL`, 부트스트랩이 생성)와 `worker.env`(토스 키·`TOSS_ACCOUNT_ENABLED`·텔레그램·`HEARTBEAT_PING_URL`, **worker 컨테이너에만** 주입). 둘 다 권한 600. 개발용 실행은 루트 `.env`를 쓴다. **토스 키 만료 2027-09-28** (발급 2026-09-28, 1년). 만료 전 WTS에서 재발급하고 `worker.env` 교체 |
 | 서버 생성 | Terraform(`infra/lightsail`). 콘솔에서 손으로 만들지 않는다 |
 | 배포 (MWP) | 서버에서 `bash deploy/deploy.sh`: `main` pull → 이미지 빌드(프론트 포함 단일 이미지) → `compose up -d`. 데모도 같은 이미지라 이때 함께 바뀐다(따로 배포하지 않음). `index.html`은 `no-cache`, 해시 붙은 `assets/`는 오래 캐시해 배포 뒤 바로 새 화면이 보인다. 저장소는 읽기 전용 deploy key로 받음. Compose 프로젝트 이름은 `quant-lab-prod` |
 | 마이그레이션 | `migrate` 일회성 서비스가 성공해야 api·worker가 시작 (`depends_on: service_completed_successfully`) |

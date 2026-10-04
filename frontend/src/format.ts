@@ -6,6 +6,12 @@ export function money(value: string | null | undefined): string {
   return value == null ? '—' : usd.format(Number(value))
 }
 
+const krw = new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' })
+
+export function won(value: string | null | undefined): string {
+  return value == null ? '—' : krw.format(Number(value))
+}
+
 export function signedMoney(value: string | null | undefined): string {
   if (value == null) return '—'
   const n = Number(value)

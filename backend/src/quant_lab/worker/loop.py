@@ -2,12 +2,13 @@
 
 import logging
 from collections.abc import Callable, Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import Connection, func, select
 from sqlalchemy.orm import Session
 
+from quant_lab.adapters.toss.client import AccountSnapshot
 from quant_lab.application.dry_run import (
     EvaluationOutcome,
     Trigger,
@@ -26,12 +27,16 @@ from quant_lab.persistence.bars import latest_session_date
 from quant_lab.persistence.bots import add_event, bot_weights, get_bot, set_bot_state
 from quant_lab.persistence.market_info import upsert_instruments, upsert_live_bars, upsert_quotes
 from quant_lab.persistence.models import BotRow, CommandRow
+from quant_lab.persistence.toss_account import save_error, save_snapshot
 
 # 같은 DB에 Worker가 둘 뜨지 않게 하는 PostgreSQL advisory lock 키 ("QLAB")
 WORKER_LOCK_KEY = 0x514C4142
 WATCHLIST_CHECK_INTERVAL = timedelta(minutes=30)
 QUOTE_INTERVAL = timedelta(seconds=30)
 INSTRUMENT_INTERVAL = timedelta(days=1)
+ACCOUNT_INTERVAL = timedelta(hours=1)
+ACCOUNT_ORDER_DAYS = 30  # 화면에 보여줄 최근 주문 기간
+KST = ZoneInfo("Asia/Seoul")
 NEW_YORK = ZoneInfo("America/New_York")
 
 log = logging.getLogger(__name__)
@@ -76,6 +81,7 @@ class Worker:
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
         watchlist: Sequence[str] = (),
         live: LiveSource | None = None,
+        account: Callable[[date], AccountSnapshot] | None = None,
     ) -> None:
         self.make_session = make_session
         self.market = market
@@ -83,6 +89,8 @@ class Worker:
         self.now = now
         self.watchlist = list(watchlist)
         self.live = live
+        self.account = account
+        self._account_at: datetime | None = None
         self._watchlist_checked_at: datetime | None = None
         self._watchlist_failing: set[str] = set()
         self._quotes_at: datetime | None = None
@@ -112,7 +120,32 @@ class Worker:
         outcomes += self.run_due_bots()
         self.sync_watchlist()
         self.refresh_live()
+        self.refresh_account()
         return outcomes
+
+    def refresh_account(self) -> None:
+        """실제 토스 계좌를 한 시간마다 읽어 저장한다 (실거래 R1, 읽기만).
+
+        판단·모의 체결과 무관하다. 실패하면 마지막 값은 두고 실패만 적는다 (알림 없음).
+        """
+        if self.account is None:
+            return
+        now = self.now()
+        if self._account_at is not None and now - self._account_at < ACCOUNT_INTERVAL:
+            return
+        self._account_at = now
+        since = now.astimezone(KST).date() - timedelta(days=ACCOUNT_ORDER_DAYS)
+        try:
+            snap = self.account(since)
+        except Exception as exc:
+            log.warning("토스 계좌 읽기 실패: %s", exc)
+            with self.make_session() as session:
+                save_error(session, str(exc), now)
+                session.commit()
+            return
+        with self.make_session() as session:
+            save_snapshot(session, snap, now)
+            session.commit()
 
     def refresh_live(self) -> None:
         """화면용 종목 정보(하루 한 번)와 봇 종목 현재가·진행 중 일봉(거래 시간 중 30초마다).

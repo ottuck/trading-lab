@@ -41,6 +41,7 @@ from quant_lab.api.schemas import (
     StrategyInfo,
     SymbolsUpdate,
     SymbolWeight,
+    TossAccountView,
     WorldPoint,
     WorldView,
 )
@@ -81,6 +82,7 @@ from quant_lab.persistence.models import (
     QuoteRow,
     RunRow,
     SimOrderRow,
+    TossAccountRow,
 )
 
 router = APIRouter(prefix="/api")
@@ -736,6 +738,15 @@ def instruments(session: SessionDep) -> list[InstrumentView]:
         )
         for s in watch
     ]
+
+
+@router.get("/toss-account")
+def toss_account(session: SessionDep) -> TossAccountView | None:
+    """실제 토스 계좌 (Worker가 한 시간마다 읽은 값). 읽기를 켜지 않았으면 null."""
+    row = session.get(TossAccountRow, 1)
+    if row is None:
+        return None
+    return TossAccountView.model_validate(row, from_attributes=True)
 
 
 @router.get("/strategies")
