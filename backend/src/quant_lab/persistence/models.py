@@ -339,6 +339,7 @@ class LiveOrderRow(Base):
     """
 
     __tablename__ = "live_orders"
+    __table_args__ = (Index("ix_live_orders_state", "state"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     bot_id: Mapped[int | None] = mapped_column(ForeignKey("bots.id", ondelete="SET NULL"))
