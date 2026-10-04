@@ -42,7 +42,7 @@ Base URL: `https://openapi.tossinvest.com`, WebSocket: `wss://openapi-ws.tossinv
 | `GET /api/v1/prices` | 현재가 (최대 200종목) | `MARKET_DATA` 15 |
 | `GET /api/v1/stocks` | 종목 정보 (상장 상태, 레버리지 배수 등) | `STOCK` 5 |
 | `GET /api/v1/market-calendar/US` | 미국 장 운영 시간 | `MARKET_INFO` 3 |
-| `GET /api/v1/exchange-rate` | KRW↔USD 환율 (화면 표시용, 선택) | `MARKET_INFO` 3 |
+| `GET /api/v1/exchange-rate` | KRW↔USD 환율 (화면 원화 보기, W1). `baseCurrency`·`quoteCurrency` 필수. 응답 `rate` = **살 때 환율**, `midRate` = **매매기준율**, `basisPoint` = 둘의 차이, `validFrom`~`validUntil` = 보통 1분. 1분마다 바뀌는 참고용 표시 환율이라 실제 주문 때 적용되는 환율과 다를 수 있다 (명세 v1.2.19, 2026-10-04). 화면 환산에는 `midRate`를 쓴다 | `MARKET_INFO` 3 |
 | `GET /api/v1/commissions` | 매매 수수료율 (비용 가정 근거) | `ORDER_INFO` 6 · 계좌 헤더 필요 |
 
 한도는 사전 공지 없이 바뀔 수 있다. 모든 응답의 `X-RateLimit-Limit/Remaining/Reset` 헤더를 기록하고, `429`면 `Retry-After`만큼 기다린 뒤 지수 백오프와 jitter를 적용한다.

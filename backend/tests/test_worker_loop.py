@@ -9,7 +9,13 @@ from sqlalchemy.orm import Session, sessionmaker
 from quant_lab.application.market import StoredMarket
 from quant_lab.domain.bars import DailyBar
 from quant_lab.domain.bot import BotState, CommandKind
-from quant_lab.domain.broker import AccountSnapshot, BrokerAccessError, Instrument, Quote
+from quant_lab.domain.broker import (
+    AccountSnapshot,
+    BrokerAccessError,
+    ExchangeRate,
+    Instrument,
+    Quote,
+)
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.persistence.bars import upsert_daily_bars
 from quant_lab.persistence.bots import create_bot, enqueue_command, get_bot
@@ -18,6 +24,7 @@ from quant_lab.persistence.models import (
     CommandRow,
     DecisionRow,
     EventRow,
+    ExchangeRateRow,
     InstrumentRow,
     LiveBarRow,
     QuoteRow,
@@ -108,6 +115,8 @@ def test_watchlist_sync_refreshes_only_stale_symbols(make_session: Callable[[], 
 
 
 class FakeLive:
+    source = "test"
+
     def __init__(self) -> None:
         self.quote_calls = 0
 
@@ -120,6 +129,9 @@ class FakeLive:
 
     def live_bars(self, symbols: list[str]) -> list[DailyBar]:
         return make_bars(symbols[0], [123])
+
+    def exchange_rate(self, base: str, quote: str) -> ExchangeRate:
+        return ExchangeRate(base, quote, Decimal("1400.5"), None, NOW)
 
 
 def test_live_quotes_only_for_bot_symbols_in_trading_hours(
@@ -139,6 +151,9 @@ def test_live_quotes_only_for_bot_symbols_in_trading_hours(
     assert session.get_one(QuoteRow, "QQQ").price == Decimal("123.45")
     assert session.get_one(InstrumentRow, "QQQ").leverage_factor == 3
     assert session.get_one(LiveBarRow, "QQQ").close == 123
+    # 원/달러는 거래 시간과 상관없이 한 시간마다, 출처 코드와 함께 (W1)
+    fx = session.get_one(ExchangeRateRow, ("USD", "KRW"))
+    assert (fx.mid_rate, fx.source, fx.fetched_at) == (Decimal("1400.5"), "test", clock[0])
 
 
 def test_account_read_hourly_and_keeps_last_value_on_failure(

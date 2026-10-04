@@ -2257,3 +2257,11 @@ body {
 .dot.demo::before {
   background: var(--accent);
 }
+/* 원화로 보기 (W1): 머리말 $ / ₩ 버튼, 큰 금액 아래 환율 안내 */
+.currency-btn {
+  font-size: 15px;
+  font-weight: 600;
+}
+.fx-note {
+  margin-top: 4px;
+}

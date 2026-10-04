@@ -50,6 +50,17 @@ class CandlePage:
     next_before: str | None  # 더 과거 페이지를 받을 커서. 없으면 끝
 
 
+@dataclass(frozen=True, slots=True)
+class ExchangeRate:
+    """1 base = mid_rate quote. 화면에서 바꿔 보기만 한다 (계산·주문은 늘 달러)."""
+
+    base: str  # USD
+    quote: str  # KRW
+    mid_rate: Decimal  # 매매기준율. 화면 환산에 쓴다
+    buy_rate: Decimal | None  # base를 살 때 환율 (참고)
+    as_of: datetime
+
+
 # --- 계좌 (읽기 전용) ---
 
 
@@ -109,6 +120,8 @@ class Broker(Protocol):
     def instruments(self, symbols: list[str]) -> list[Instrument]: ...
 
     def quotes(self, symbols: list[str]) -> list[Quote]: ...
+
+    def exchange_rate(self, base: str, quote: str) -> ExchangeRate: ...
 
     def is_regular_session(self, day: date) -> bool:
         """증권사 기준으로 day가 미국 정규장 거래일인지."""

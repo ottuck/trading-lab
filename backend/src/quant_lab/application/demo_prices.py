@@ -72,6 +72,7 @@ SPECS = (
 )
 HIDDEN = {"SEMI"}
 LEVERAGE = {s.symbol: s.leverage for s in SPECS if s.leverage > 1}
+DEMO_USD_KRW = Decimal("1400")  # 데모의 고정 예시 환율 (실제 환율 아님, W1)
 
 
 # 급락·하락장이 아닌 평소 날의 하루 오름 (로그). 2006~2026 전체 시장이 연 9~10% 오르게 맞췄다.

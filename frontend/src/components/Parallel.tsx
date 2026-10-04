@@ -2,7 +2,8 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { ColorType, createChart, LineSeries, type Time } from 'lightweight-charts'
 import { useEffect, useRef, useState } from 'react'
 import type { Parallel, World } from '../api'
-import { money, percent } from '../format'
+import { useCurrency } from '../currency'
+import { money, percent, roundMoney } from '../format'
 import { cssVar, useTheme } from '../theme'
 
 /* 평행세계의 나 (N4): 내 규칙을 하나씩 바꾼 나들을 같은 기간에 나란히 본다.
@@ -26,6 +27,7 @@ function diff(me: Record<string, number>, other: Record<string, number> | null):
 function Chart({ me, other }: { me: World; other: World }) {
   const el = useRef<HTMLDivElement>(null)
   const { theme } = useTheme()
+  const { currency, rate } = useCurrency()
   useEffect(() => {
     if (!el.current) return
     const chart = createChart(el.current, {
@@ -35,7 +37,7 @@ function Chart({ me, other }: { me: World; other: World }) {
       grid: { vertLines: { visible: false }, horzLines: { color: cssVar('--chart-grid') } },
       timeScale: { borderVisible: false, minBarSpacing: 0.01 },
       rightPriceScale: { mode: 1, borderVisible: false },
-      localization: { locale: 'ko-KR', priceFormatter: (v: number) => `$${Math.round(v).toLocaleString('en-US')}` },
+      localization: { locale: 'ko-KR', priceFormatter: roundMoney },
       handleScroll: false,
       handleScale: false,
     })
@@ -47,7 +49,7 @@ function Chart({ me, other }: { me: World; other: World }) {
     line(me, cssVar('--text'), 2)
     chart.timeScale().fitContent()
     return () => chart.remove()
-  }, [me, other, theme])
+  }, [me, other, theme, currency, rate])
   return <div ref={el} className="pw-chart" />
 }
 

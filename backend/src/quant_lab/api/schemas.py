@@ -60,6 +60,16 @@ class InstrumentView(BaseModel):
     live_at: datetime | None
 
 
+class FxView(BaseModel):
+    """화면 원화 환산용 원/달러 매매기준율 (W1). 계산·주문은 늘 달러다."""
+
+    base: str
+    quote: str
+    rate: Decimal
+    as_of: datetime
+    source: str  # 출처 코드 (demo면 예시 환율)
+
+
 class BrokerHoldingView(BaseModel):
     symbol: str
     name: str

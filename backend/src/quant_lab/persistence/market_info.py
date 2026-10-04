@@ -9,8 +9,8 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from quant_lab.domain.bars import DailyBar
-from quant_lab.domain.broker import Instrument, Quote
-from quant_lab.persistence.models import InstrumentRow, LiveBarRow, QuoteRow
+from quant_lab.domain.broker import ExchangeRate, Instrument, Quote
+from quant_lab.persistence.models import ExchangeRateRow, InstrumentRow, LiveBarRow, QuoteRow
 
 
 def upsert_instruments(session: Session, infos: Sequence[Instrument], now: datetime) -> None:
@@ -53,3 +53,19 @@ def upsert_live_bars(session: Session, bars: Sequence[DailyBar], now: datetime) 
         }
         stmt = insert(LiveBarRow).values(row)
         session.execute(stmt.on_conflict_do_update(index_elements=["symbol"], set_=stmt.excluded))
+
+
+def upsert_exchange_rate(session: Session, fx: ExchangeRate, source: str, now: datetime) -> None:
+    row = {
+        "base": fx.base,
+        "quote": fx.quote,
+        "mid_rate": fx.mid_rate,
+        "buy_rate": fx.buy_rate,
+        "as_of": fx.as_of,
+        "source": source,
+        "fetched_at": now,
+    }
+    stmt = insert(ExchangeRateRow).values(row)
+    session.execute(
+        stmt.on_conflict_do_update(index_elements=["base", "quote"], set_=stmt.excluded)
+    )

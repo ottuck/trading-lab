@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from quant_lab.application.bar_sync import SyncResult, sync_daily_bars
 from quant_lab.domain.bars import DailyBar, TradingCalendar, outlier_limit
-from quant_lab.domain.broker import Broker, Instrument, Quote
+from quant_lab.domain.broker import Broker, ExchangeRate, Instrument, Quote
 from quant_lab.persistence.market_info import leverage_of
 
 
@@ -30,6 +30,11 @@ class LiveSource(Protocol):
 
     def live_bars(self, symbols: list[str]) -> list[DailyBar]: ...
 
+    def exchange_rate(self, base: str, quote: str) -> ExchangeRate: ...
+
+    @property
+    def source(self) -> str: ...
+
 
 class BrokerMarket:
     def __init__(self, broker: Broker, calendar: TradingCalendar) -> None:
@@ -51,6 +56,13 @@ class BrokerMarket:
     def live_bars(self, symbols: list[str]) -> list[DailyBar]:
         """종목마다 가장 최근 일봉 1개 (진행 중이면 정규장 전 거래부터 채워진 값)."""
         return [b for s in symbols if (b := self.broker.latest_daily_bar(s)) is not None]
+
+    def exchange_rate(self, base: str, quote: str) -> ExchangeRate:
+        return self.broker.exchange_rate(base, quote)
+
+    @property
+    def source(self) -> str:
+        return self.broker.source
 
     def confirm_session(self, day: date) -> bool:
         return self.broker.is_regular_session(day)
