@@ -108,7 +108,7 @@ infra/lightsail/     # Terraform: Lightsail 인스턴스·Static IP·방화벽·
 compose.yaml         # 로컬 개발용 (PostgreSQL)
 ```
 
-`domain`은 FastAPI, httpx, SQLAlchemy를 import하지 않는다. 토스 어댑터(`adapters/toss`)는 조립 지점(`worker/__main__.py`, `cli.py`)만 import하고, 엔진·저장소·API는 `domain/broker.py`의 규약과 형식만 안다. 두 규칙 모두 테스트(import 검사)로 강제한다. 그래서 증권사를 바꾸려면 `Broker` 규약을 지키는 어댑터 하나를 만들고 조립 지점만 바꾸면 된다.
+`domain`은 FastAPI, httpx, SQLAlchemy를 import하지 않는다. 토스 어댑터(`adapters/toss`)는 조립 지점(`worker/__main__.py`, `cli.py`)만 import하고, 엔진·저장소·API는 `domain/broker.py`의 규약과 형식만 안다. 두 규칙 모두 테스트(import 검사)로 강제한다. 그래서 증권사를 바꾸려면 `Broker` 규약을 지키는 어댑터 하나를 만들고 조립 지점만 바꾸면 된다. **이름과 개념도 나눈다 (2026-10-04, 사용자 결정):** 엔진·저장소·API·화면 코드의 표·함수·경로 이름에 증권사 이름(toss)을 쓰지 않는다 (`broker_account`, `/api/broker-account`). 증권사별 규칙(토스 멱등 키 10분, 금액 주문 접수 시간, 오류 코드, 계좌 헤더 등)은 어댑터 안에만 두고, 엔진에는 규약의 값(접수 시간대, 멱등 유효 시간, 증권사 무관 거절 이유 코드)으로만 넘긴다. 저장 데이터에 남는 것은 출처 코드(`source`)뿐이고, 사람이 읽는 증권사 이름은 프론트엔드 `source.ts`가 정한다. 증권사 이름이 남아도 되는 곳은 어댑터, 조립 지점(Worker 진입점·CLI·설정 `TOSS_*`), 문서뿐이다.
 
 ### Worker 평가 1회의 흐름
 
@@ -127,7 +127,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 8. Worker가 멈춰 있던 동안의 거래일은 소급 판단하지 않고 `missed_sessions` 경고만 남긴다.
 9. 봇 평가와 별도로 30분마다 관심 종목(`WATCHLIST_SYMBOLS`, 기본 10종목) 일봉이 최신 완료 거래일까지 있는지 보고, 뒤처진 종목만 증분 동기화한다 (백테스트 데이터 최신화). 실패는 경고만 남긴다.
 10. 토스 모드에서는 하루 한 번 관심·봇 종목 정보(레버리지 배수)를, 미국 거래 시간(뉴욕 일 20:00~금 20:00, 데이마켓 포함) 중 30초마다 봇 종목 현재가와 진행 중 일봉(`/candles` 최신 1개)을 받아 저장한다. 화면 표시용이라 실패해도 로그만 남긴다.
-11. **실제 토스 계좌 읽기 (실거래 R1, 2026-10-04~):** `TOSS_ACCOUNT_ENABLED=true`(토스 모드에서만)이면 한 시간마다 주문 가능 금액(달러·원, `buying-power`)·보유(`holdings`)·최근 30일 주문(`orders` 진행 중 + 종료)을 같은 토스 클라이언트로 읽어 `toss_account`에 덮어쓴다. 계좌번호와 원본 응답은 저장하지 않는다. 실패하면 마지막 값은 두고 실패 시각만 적어 화면(설정 "토스 계좌")에 "허용 IP를 확인해 주세요"로 보여준다. 주문은 내지 않는다.
+11. **실제 증권사 계좌 읽기 (실거래 R1, 2026-10-04~):** 조립 지점이 계좌 읽기를 켜면(운영: `TOSS_ACCOUNT_ENABLED=true`, 토스 모드에서만) 한 시간마다 `Broker.account_snapshot`으로 주문 가능 금액(달러·원)·보유·최근 30일 주문을 읽어 `broker_account`에 덮어쓴다. 계좌번호와 원본 응답은 저장하지 않고, 출처 코드(`source`)만 남겨 화면 이름("토스증권 계좌")은 프론트엔드가 정한다. 실패하면 마지막 값은 두고 종류(`access` 권한·허용 IP / `temporary` 일시 장애)와 시각만 적는다. 주문은 내지 않는다.
 
 봇 상태(`STOPPED`, `RUNNING`, `PAUSED`, `ERROR`)는 Worker 프로세스의 생존과 별개다. 명령: `START`(→ RUNNING, 즉시 1회 평가), `PAUSE`(RUNNING → PAUSED), `STOP`, `RUN_ONCE`(상태는 그대로 두고 1회 평가). 화면에는 "멈추기(`PAUSE`) / 시작(`START`)"만 둔다. `STOP`과 `RUN_ONCE`는 일반 사용자에게 차이가 없거나(판단은 하루 한 번 자동) 헷갈려서 API·CLI에만 남긴다. 화면에서는 `PAUSED`와 `STOPPED`를 모두 "멈춤"으로 보여준다.
 
@@ -150,7 +150,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | `events` | 심각도별 기록 (텔레그램 알림·최근 활동의 원본). 종류(`EventKind`)와 종류별 `data` 형식, 판단을 미룬·멈춘 이유 코드는 `domain/events.py`가 정한다. 알림 문장은 `data`만 읽고 `message`(로그 원문)는 해석하지 않는다. 모든 종류가 문장으로 바뀌는지 테스트가 확인한다 |
 | `instruments` | 종목명, 유형, 레버리지 배수 (토스 `/stocks`, 하루 한 번) |
 | `quotes` | 종목별 최신 현재가 1행 (`price`, `quoted_at`). 화면 "지금 가치"용, 판단에는 안 씀 |
-| `toss_account` | 실제 토스 계좌를 마지막으로 읽은 결과 1행 (실거래 R1): 주문 가능 금액(달러·원), 보유·최근 주문(JSONB, 금액은 문자열), 읽은 시각, 마지막 실패. 모의 봇 기록과 섞지 않는다 |
+| `broker_account` | 실제 증권사 계좌를 마지막으로 읽은 결과 1행 (실거래 R1): 출처 코드, 주문 가능 금액(달러·원), 보유·최근 주문(JSONB, 금액은 문자열), 읽은 시각, 마지막 실패 종류. 모의 봇 기록과 섞지 않는다 |
 | `live_bars` | 종목별 진행 중 일봉 1행. API `/bars`가 완료 봉보다 새 날짜일 때만 `live: true`로 끝에 붙인다. `daily_bars`와 섞지 않는다 |
 | `worker_heartbeat` | Worker 마지막 생존 시각, 버전 |
 

@@ -83,6 +83,7 @@ class AccountOrder:
 class AccountSnapshot:
     """실제 계좌 읽기 결과. 계좌번호는 담지 않는다."""
 
+    source: str  # 증권사 출처 코드 (화면 이름은 frontend source.ts가 정한다. 예: toss)
     cash_usd: Decimal  # 미수 없는 현금 기준 매수 가능 금액
     cash_krw: Decimal
     holdings: list[Holding]
@@ -94,6 +95,8 @@ class AccountSnapshot:
 
 class Broker(Protocol):
     """시세와 계좌 읽기. 주문을 내는 메서드는 없다 (project.md 3절 원칙 1)."""
+
+    source: str  # 출처 코드. 저장한 봉·계좌에 남기고, 화면 이름은 frontend source.ts가 정한다
 
     def iter_daily_pages(self, symbol: str, since: date | None = None) -> Iterator[CandlePage]:
         """최신 일봉 페이지부터 과거로. since보다 오래된 봉이 나오면 멈춘다 (수정주가)."""

@@ -59,14 +59,15 @@ export type Instrument = {
   live_at: string | null
 }
 
-/** 실제 토스 계좌를 마지막으로 읽은 결과 (실거래 R1). 읽기를 켜지 않았으면 null. */
-export type TossAccount = {
+/** 실제 증권사 계좌를 마지막으로 읽은 결과 (실거래 R1). 읽기를 켜지 않았으면 null. */
+export type BrokerAccount = {
+  source: string | null // 출처 코드, 이름은 source.ts
   cash_usd: Money | null
   cash_krw: Money | null
   holdings: { symbol: string; name: string; currency: string; qty: Money; avg_price: Money; last_price: Money; value: Money }[]
   orders: { symbol: string; side: 'BUY' | 'SELL'; status: string; currency: string; ordered_at: string; amount: Money | null; qty: Money }[]
   fetched_at: string | null
-  error: string | null
+  error: 'access' | 'temporary' | null // 권한·허용 IP 문제 | 일시 장애
   error_at: string | null
 }
 
@@ -182,7 +183,7 @@ export const api = {
     request<EventItem[]>(`/api/events?limit=200${level ? `&level=${level}` : ''}`),
   bars: (symbol: string) => request<Bar[]>(`/api/bars/${symbol}?limit=750`),
   instruments: () => request<Instrument[]>('/api/instruments'),
-  tossAccount: () => request<TossAccount | null>('/api/toss-account'),
+  brokerAccount: () => request<BrokerAccount | null>('/api/broker-account'),
   command: (botId: number, kind: CommandKind) =>
     request<{ id: number }>(`/api/bots/${botId}/commands`, {
       method: 'POST',

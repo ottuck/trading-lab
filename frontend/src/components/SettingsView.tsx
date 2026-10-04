@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
-import { api, botApi, type Bot, type SymbolWeight, type TossAccount } from '../api'
+import { api, botApi, type Bot, type SymbolWeight, type BrokerAccount } from '../api'
 import { ago, money, shares, won } from '../format'
 import { closeNewBot, selectBot, startMeEdit, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
 import { isMeBot, sameParams, useStrategies } from '../strategies'
@@ -9,6 +9,7 @@ import { toConfig, toDraft, type Draft } from '../botConfig'
 import { useDismiss } from '../useDismiss'
 import { StrategyFields, TradeFields } from './BotConfigFields'
 import { activeOf, basketLabel, suggestName } from '../basket'
+import { sourceLabel } from '../source'
 import { BasketPicker, SymbolPicker } from './SymbolPicker'
 
 /* Vercel식 설정: 왼쪽에 섹션 제목·설명, 오른쪽에 입력. 섹션은 가는 선으로 나누고 저장은 맨 아래 하나,
@@ -237,22 +238,26 @@ function amountOf(value: string | null, currency: string) {
   return currency === 'KRW' ? won(value) : money(value)
 }
 
-function orderTitle(o: TossAccount['orders'][number]) {
+function orderTitle(o: BrokerAccount['orders'][number]) {
   const verb = o.side === 'BUY' ? '샀어요' : '팔았어요'
   const done = Number(o.qty) > 0
   return `${o.symbol} ${o.amount ? amountOf(o.amount, o.currency) + ' ' : ''}${done ? verb : o.side === 'BUY' ? '사기 주문' : '팔기 주문'}`
 }
 
-/** 실제 토스 계좌 (실거래 R1). Worker가 한 시간마다 읽은 값을 보여주기만 하고 주문은 내지 않는다. */
-function TossAccountSection() {
-  const { data } = useQuery({ queryKey: ['toss-account'], queryFn: api.tossAccount, refetchInterval: 60_000 })
+/** 실제 증권사 계좌 (실거래 R1). Worker가 한 시간마다 읽은 값을 보여주기만 하고 주문은 내지 않는다. */
+function BrokerAccountSection() {
+  const { data } = useQuery({ queryKey: ['broker-account'], queryFn: api.brokerAccount, refetchInterval: 60_000 })
   if (!data) return null
+  const name = data.source ? sourceLabel(data.source) : '증권사'
   const failing = !!data.error_at && (!data.fetched_at || data.error_at > data.fetched_at)
   return (
-    <Section title="토스 계좌" desc="실제 토스 계좌를 한 시간마다 읽어 와요. 아직 주문은 내지 않아요.">
+    <Section title={`${name} 계좌`} desc={`실제 ${name} 계좌를 한 시간마다 읽어 와요. 아직 주문은 내지 않아요.`}>
       {failing && (
         <div className="notice">
-          {ago(data.error_at)}에 계좌를 읽지 못했어요. 집 인터넷 주소가 바뀌었다면 토스 Open API의 허용 IP를 다시 등록해 주세요.
+          {ago(data.error_at)}에 계좌를 읽지 못했어요.{' '}
+          {data.error === 'access'
+            ? '연결 권한을 확인해 주세요. 집 인터넷 주소가 바뀌었다면 증권사 Open API의 허용 IP를 다시 등록해야 해요.'
+            : '잠시 연결이 안 됐어요. 한 시간 뒤에 다시 읽어요.'}
         </div>
       )}
       {data.fetched_at && (
@@ -352,7 +357,7 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
       </div>
       <SymbolsField key={bot.symbols.map((s) => `${s.symbol}${s.weight}`).join()} bot={bot} />
       <NameField key={bot.name} bot={bot} />
-      <TossAccountSection />
+      <BrokerAccountSection />
       <History botId={bot.id} />
       <DangerZone bot={bot} others={others} />
     </>

@@ -51,6 +51,8 @@ def make_bars(
 class FakeBarSource:
     """iter_daily_pages를 흉내 낸다. 최신 페이지부터 page_size씩 돌려준다."""
 
+    source = "test"
+
     def __init__(self, bars: Sequence[DailyBar], page_size: int = 200) -> None:
         self.bars = sorted(bars, key=lambda b: b.session_date)
         self.page_size = page_size
