@@ -13,6 +13,7 @@ from quant_lab.adapters.toss.client import (
     TossForbiddenError,
     to_daily_bar,
 )
+from quant_lab.domain.broker import BrokerAccessError, BrokerError
 
 TOKEN_URL = f"{BASE_URL}/oauth2/token"
 CANDLES_URL = f"{BASE_URL}/api/v1/candles"
@@ -123,12 +124,19 @@ def test_rate_limit_waits_retry_after(client: TossClient, sleeps: list[float]) -
 
 
 @respx.mock
-def test_forbidden_is_not_retried(client: TossClient) -> None:
+def test_errors_map_to_broker_kinds(client: TossClient) -> None:
     respx.post(TOKEN_URL).mock(return_value=token_response())
     route = respx.get(CANDLES_URL).mock(return_value=error_response(403, "edge-blocked"))
-    with pytest.raises(TossForbiddenError):
+    with pytest.raises(TossForbiddenError) as forbidden:
         client.daily_candles("QQQ")
-    assert route.call_count == 1
+    assert route.call_count == 1  # 재시도하지 않는다
+    assert isinstance(forbidden.value, BrokerAccessError)  # 엔진은 "멈춤"으로 처리
+
+    # 연결 실패(httpx)는 바깥으로 새지 않고 일시 장애로 바뀐다
+    route.mock(side_effect=httpx.ConnectError("down"))
+    with pytest.raises(BrokerError) as network:
+        client.daily_candles("QQQ")
+    assert not isinstance(network.value, BrokerAccessError)
 
 
 @respx.mock

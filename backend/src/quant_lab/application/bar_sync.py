@@ -14,7 +14,6 @@ from typing import Literal, Protocol
 
 from sqlalchemy.orm import Session
 
-from quant_lab.adapters.toss.client import CandlePage
 from quant_lab.domain.bars import (
     BarIssue,
     DailyBar,
@@ -22,6 +21,7 @@ from quant_lab.domain.bars import (
     check_daily_bars,
     is_completed,
 )
+from quant_lab.domain.broker import CandlePage
 from quant_lab.persistence.bars import (
     delete_daily_bars,
     latest_session_date,

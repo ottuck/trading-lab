@@ -85,8 +85,9 @@ API와 Worker는 같은 Python 패키지를 다른 진입점으로 실행한다.
 backend/
   src/quant_lab/
     domain/          # 순수 로직: 봉, 지표, 전략, 위험 규칙, 모의 체결 규칙 (외부 의존 없음)
+      broker.py      # 증권사 연결 규약(Broker)과 증권사와 무관한 시세·계좌 형식, 오류 2종
     application/     # 유스케이스: 평가 1회, 백테스트, 명령 처리
-    adapters/toss/   # 토스 HTTP 클라이언트, 토큰 관리, 응답 → 도메인 변환
+    adapters/toss/   # 토스 HTTP 클라이언트, 토큰 관리, 응답 → domain/broker 형식 변환
     adapters/sim/    # 모의 브로커
     persistence/     # SQLAlchemy 모델, 리포지토리
     api/             # FastAPI 진입점
@@ -99,7 +100,7 @@ infra/lightsail/     # Terraform: Lightsail 인스턴스·Static IP·방화벽·
 compose.yaml         # 로컬 개발용 (PostgreSQL)
 ```
 
-`domain`은 FastAPI, httpx, SQLAlchemy를 import하지 않는다. 이 규칙은 테스트(import 검사)로 강제한다.
+`domain`은 FastAPI, httpx, SQLAlchemy를 import하지 않는다. 토스 어댑터(`adapters/toss`)는 조립 지점(`worker/__main__.py`, `cli.py`)만 import하고, 엔진·저장소·API는 `domain/broker.py`의 규약과 형식만 안다. 두 규칙 모두 테스트(import 검사)로 강제한다. 그래서 증권사를 바꾸려면 `Broker` 규약을 지키는 어댑터 하나를 만들고 조립 지점만 바꾸면 된다.
 
 ### Worker 평가 1회의 흐름
 
@@ -114,7 +115,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 4. 평가 대상은 "정규장 마감 + 2시간이 지난 가장 최근 거래일"이다. 여러 종목 봇은 **모든 종목**의 그날 봉이 있고 판단 구간 검사를 통과해야 판단한다 (하나라도 아니면 전체를 미룬다: 현금을 함께 쓰므로 일부만 먼저 판단하면 백테스트와 순서가 달라진다). 토스 캘린더가 거래일이 아니라고 하거나, 그날 봉이 없거나, 판단 구간 봉에 누락·이상치가 있으면 판단 없이 `SKIPPED`를 남기고 15분 뒤 다시 시도한다.
 5. 이전 대기 주문은 판단일 다음 거래일 시가로 체결한다. 체결·판단·주문·잔고 변경은 한 트랜잭션이다.
 6. `bot_id + symbol + session_date + mode` 유일 제약과 "봇당 대기 주문 1개" 부분 유일 인덱스가 중복 모의 주문을 막는다. 같은 봉을 다시 평가하면 아무것도 하지 않는다.
-7. 허용 IP·인증 오류(토스 403·401 반복)와 예상하지 못한 오류는 봇을 `ERROR`로 바꾼다. 토스 일시 장애(429·5xx·네트워크)는 `SKIPPED` 후 재시도한다.
+7. 증권사 오류는 두 종류로만 본다. `BrokerAccessError`(허용 IP·인증, 토스 403·401 반복)와 예상하지 못한 오류는 봇을 `ERROR`로 바꾸고, 그 밖의 `BrokerError`(429·5xx·네트워크)는 `SKIPPED` 후 재시도한다. 어댑터가 httpx 오류까지 이 두 종류로 바꿔 넘긴다.
 8. Worker가 멈춰 있던 동안의 거래일은 소급 판단하지 않고 `missed_sessions` 경고만 남긴다.
 9. 봇 평가와 별도로 30분마다 관심 종목(`WATCHLIST_SYMBOLS`, 기본 10종목) 일봉이 최신 완료 거래일까지 있는지 보고, 뒤처진 종목만 증분 동기화한다 (백테스트 데이터 최신화). 실패는 경고만 남긴다.
 10. 토스 모드에서는 하루 한 번 관심·봇 종목 정보(레버리지 배수)를, 미국 거래 시간(뉴욕 일 20:00~금 20:00, 데이마켓 포함) 중 30초마다 봇 종목 현재가와 진행 중 일봉(`/candles` 최신 1개)을 받아 저장한다. 화면 표시용이라 실패해도 로그만 남긴다.
