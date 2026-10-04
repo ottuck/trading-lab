@@ -8,16 +8,16 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from quant_lab.adapters.toss.client import Quote, StockInfo
 from quant_lab.domain.bars import DailyBar
+from quant_lab.domain.broker import Instrument, Quote
 from quant_lab.persistence.models import InstrumentRow, LiveBarRow, QuoteRow
 
 
-def upsert_instruments(session: Session, infos: Sequence[StockInfo], now: datetime) -> None:
+def upsert_instruments(session: Session, infos: Sequence[Instrument], now: datetime) -> None:
     for s in infos:
         row = {
             "symbol": s.symbol,
-            "name": s.english_name,
+            "name": s.name,
             "security_type": s.security_type,
             "leverage_factor": s.leverage_factor,
             "updated_at": now,

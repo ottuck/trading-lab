@@ -6,10 +6,10 @@ import pytest
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from quant_lab.adapters.toss.client import AccountSnapshot, Quote, StockInfo
 from quant_lab.application.market import StoredMarket
 from quant_lab.domain.bars import DailyBar
 from quant_lab.domain.bot import BotState, CommandKind
+from quant_lab.domain.broker import AccountSnapshot, Instrument, Quote
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.persistence.bars import upsert_daily_bars
 from quant_lab.persistence.bots import create_bot, enqueue_command, get_bot
@@ -111,8 +111,8 @@ class FakeLive:
     def __init__(self) -> None:
         self.quote_calls = 0
 
-    def instruments(self, symbols: list[str]) -> list[StockInfo]:
-        return [StockInfo(s, s, "NASDAQ", "ETF", "ACTIVE", "USD", Decimal(3)) for s in symbols]
+    def instruments(self, symbols: list[str]) -> list[Instrument]:
+        return [Instrument(s, s, "NASDAQ", "ETF", "ACTIVE", "USD", Decimal(3)) for s in symbols]
 
     def quotes(self, symbols: list[str]) -> list[Quote]:
         self.quote_calls += 1

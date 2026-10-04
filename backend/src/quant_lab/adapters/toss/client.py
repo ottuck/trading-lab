@@ -17,6 +17,16 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from quant_lab.domain.bars import DailyBar
+from quant_lab.domain.broker import (
+    AccountOrder,
+    AccountSnapshot,
+    BrokerAccessError,
+    BrokerError,
+    CandlePage,
+    Holding,
+    Instrument,
+    Quote,
+)
 
 BASE_URL = "https://openapi.tossinvest.com"
 NEW_YORK = ZoneInfo("America/New_York")
@@ -27,7 +37,7 @@ MAX_ATTEMPTS = 4
 log = logging.getLogger(__name__)
 
 
-class TossError(Exception):
+class TossError(BrokerError):
     def __init__(self, status: int, code: str | None, message: str, request_id: str | None):
         super().__init__(f"HTTP {status} {code}: {message} (requestId={request_id})")
         self.status = status
@@ -35,72 +45,16 @@ class TossError(Exception):
         self.request_id = request_id
 
 
-class TossAuthError(TossError):
+class TossAuthError(TossError, BrokerAccessError):
     """인증 실패. token-revoked가 반복되면 다른 프로세스가 같은 client로 토큰을 발급한 것이다."""
 
 
-class TossForbiddenError(TossError):
+class TossForbiddenError(TossError, BrokerAccessError):
     """허용 IP가 아니거나 권한이 없음. 재시도하지 않는다."""
 
 
-@dataclass(frozen=True, slots=True)
-class StockInfo:
-    symbol: str
-    english_name: str
-    market: str
-    security_type: str
-    status: str
-    currency: str
-    leverage_factor: Decimal | None
-
-
-@dataclass(frozen=True, slots=True)
-class Quote:
-    symbol: str
-    price: Decimal
-    quoted_at: datetime  # 마지막 체결 시각 (데이마켓·프리·정규·애프터 모두 포함)
-
-
-@dataclass(frozen=True, slots=True)
-class Holding:
-    symbol: str
-    name: str
-    currency: str
-    quantity: Decimal
-    average_price: Decimal
-    last_price: Decimal
-    market_value: Decimal
-
-
-@dataclass(frozen=True, slots=True)
-class AccountOrder:
-    """주문 1건 = 1행 (나눠 체결되면 합산). 주문 조회에는 clientOrderId가 없다 (tossApi.md 5절)."""
-
-    order_id: str
-    symbol: str
-    side: str  # BUY | SELL
-    status: str  # PENDING, FILLED, CANCELED ...
-    currency: str
-    ordered_at: datetime
-    order_amount: Decimal | None  # 금액 주문의 금액 (USD)
-    filled_quantity: Decimal
-    filled_amount: Decimal | None
-
-
-@dataclass(frozen=True, slots=True)
-class AccountSnapshot:
-    """실제 토스 계좌 읽기 결과. 계좌번호는 담지 않는다."""
-
-    cash_usd: Decimal  # 미수 없는 현금 기준 매수 가능 금액
-    cash_krw: Decimal
-    holdings: list[Holding]
-    orders: list[AccountOrder]  # 진행 중 + 최근 종료 주문, 최신순
-
-
-@dataclass(frozen=True, slots=True)
-class CandlePage:
-    bars: list[DailyBar]  # 거래일 오름차순
-    next_before: str | None
+class TossNetworkError(BrokerError):
+    """연결·타임아웃 등 응답을 받지 못한 실패. 일시 장애로 본다."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,7 +120,8 @@ class TossClient:
     # --- 인증 ---
 
     def _issue_token(self) -> _Token:
-        resp = self._http.post(
+        resp = self._send(
+            self._http.post,
             "/oauth2/token",
             data={
                 "grant_type": "client_credentials",
@@ -191,13 +146,21 @@ class TossClient:
 
     # --- 공통 요청 ---
 
+    @staticmethod
+    def _send(method: Callable[..., httpx.Response], *args: Any, **kwargs: Any) -> httpx.Response:
+        """httpx 오류가 바깥(엔진)으로 새지 않게 증권사 공통 오류로 바꾼다."""
+        try:
+            return method(*args, **kwargs)
+        except httpx.HTTPError as exc:
+            raise TossNetworkError(f"토스 연결 실패: {exc!r}") from exc
+
     def _get(self, path: str, params: Mapping[str, Any], *, account: bool = False) -> Any:
         reissued = False
         for attempt in range(MAX_ATTEMPTS):
             headers = {"Authorization": f"Bearer {self._bearer()}"}
             if account:
                 headers["X-Tossinvest-Account"] = str(self._account_seq())
-            resp = self._http.get(path, params=params, headers=headers)
+            resp = self._send(self._http.get, path, params=params, headers=headers)
             self.last_rate_limit = {
                 k: v for k, v in resp.headers.items() if k.lower().startswith("x-ratelimit")
             }
@@ -223,12 +186,12 @@ class TossClient:
 
     # --- 시세·종목 ---
 
-    def stocks(self, symbols: list[str]) -> list[StockInfo]:
+    def instruments(self, symbols: list[str]) -> list[Instrument]:
         result = self._get("/api/v1/stocks", {"symbols": ",".join(symbols)})
         return [
-            StockInfo(
+            Instrument(
                 symbol=s["symbol"],
-                english_name=s["englishName"],
+                name=s["englishName"],
                 market=s["market"],
                 security_type=s["securityType"],
                 status=s["status"],
@@ -268,7 +231,7 @@ class TossClient:
                 return
             before = page.next_before
 
-    def prices(self, symbols: list[str]) -> list[Quote]:
+    def quotes(self, symbols: list[str]) -> list[Quote]:
         """현재가. 응답은 symbol·timestamp·lastPrice뿐이다 (tossApi.md 7절)."""
         result = self._get("/api/v1/prices", {"symbols": ",".join(symbols)})
         return [
@@ -281,10 +244,18 @@ class TossClient:
             if p.get("lastPrice") is not None
         ]
 
+    def latest_daily_bar(self, symbol: str) -> DailyBar | None:
+        bars = self.daily_candles(symbol, count=1).bars
+        return bars[-1] if bars else None
+
     def us_market_calendar(self, day: date | None = None) -> dict[str, Any]:
         params = {"date": day.isoformat()} if day else {}
         result: dict[str, Any] = self._get("/api/v1/market-calendar/US", params)
         return result
+
+    def is_regular_session(self, day: date) -> bool:
+        today = self.us_market_calendar(day)["today"]
+        return str(today.get("date")) == day.isoformat() and today.get("regularMarket") is not None
 
     # --- 계좌 (읽기 전용) ---
 

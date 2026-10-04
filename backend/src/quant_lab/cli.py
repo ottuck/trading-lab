@@ -14,7 +14,7 @@ from sqlalchemy.orm import sessionmaker
 
 from quant_lab.adapters.market_calendar import get_calendar
 from quant_lab.adapters.telegram import TelegramClient
-from quant_lab.adapters.toss.client import StockInfo, TossClient
+from quant_lab.adapters.toss.client import TossClient
 from quant_lab.application.backtesting import backtest_symbol
 from quant_lab.application.bar_sync import sync_daily_bars
 from quant_lab.application.demo_prices import DEMO_START, LEVERAGE, demo_bars
@@ -23,6 +23,7 @@ from quant_lab.application.replay import replay_bot
 from quant_lab.config import get_settings
 from quant_lab.domain.bars import outlier_limit
 from quant_lab.domain.bot import BotState, CommandKind
+from quant_lab.domain.broker import Instrument
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.domain.strategy import STRATEGIES
 from quant_lab.persistence.bars import upsert_daily_bars
@@ -51,7 +52,7 @@ def _toss_client() -> TossClient:
 def cmd_sync_bars(args: argparse.Namespace) -> int:
     client = _toss_client()
     calendar = get_calendar()
-    leverage = {s.symbol: s.leverage_factor for s in client.stocks(args.symbols)}
+    leverage = {s.symbol: s.leverage_factor for s in client.instruments(args.symbols)}
     exit_code = 0
     with sessionmaker(get_engine())() as session:
         for symbol in args.symbols:
@@ -253,9 +254,9 @@ def cmd_seed_demo(args: argparse.Namespace) -> int:
         upsert_instruments(
             session,
             [
-                StockInfo(
+                Instrument(
                     symbol=s,
-                    english_name=f"{s} (예시)",
+                    name=f"{s} (예시)",
                     market="DEMO",
                     security_type="ETF" if s != "NVDA" else "STOCK",
                     status="ACTIVE",

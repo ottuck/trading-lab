@@ -12,12 +12,10 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
-import httpx
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from quant_lab.adapters.toss.client import TossAuthError, TossError, TossForbiddenError
 from quant_lab.application.bar_sync import DEFAULT_SETTLE
 from quant_lab.application.market import MarketData
 from quant_lab.application.weekly import is_week_end, weekly_summary
@@ -29,6 +27,7 @@ from quant_lab.domain.bars import (
     outlier_limit,
 )
 from quant_lab.domain.bot import BotState
+from quant_lab.domain.broker import BrokerAccessError, BrokerError
 from quant_lab.domain.portfolio import Portfolio, money
 from quant_lab.domain.strategy import STRATEGIES, Strategy, deposit_plan, min_bars, month_key
 from quant_lab.domain.trading import Action, DecisionRecord, Fill, decide_basket, execute
@@ -127,12 +126,12 @@ def evaluate_bot(
         session.rollback()
         outcome = EvaluationOutcome(run_id, RunStatus.SKIPPED, None, str(skip))
         _finish(session, bot_id, outcome, now, level="WARN", retry=True)
-    except (TossForbiddenError, TossAuthError) as exc:
+    except BrokerAccessError as exc:
         # 허용 IP·토큰 경합은 기다려도 풀리지 않는다. 사람이 확인할 때까지 멈춘다.
         session.rollback()
         outcome = EvaluationOutcome(run_id, RunStatus.ERROR, None, f"토스 인증·권한 오류: {exc}")
         _finish(session, bot_id, outcome, now, level="ERROR", to_error=True)
-    except (TossError, httpx.HTTPError) as exc:
+    except BrokerError as exc:
         session.rollback()
         outcome = EvaluationOutcome(run_id, RunStatus.SKIPPED, None, f"토스 호출 실패: {exc}")
         _finish(session, bot_id, outcome, now, level="WARN", retry=True)

@@ -8,7 +8,6 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import Connection, func, select
 from sqlalchemy.orm import Session
 
-from quant_lab.adapters.toss.client import AccountSnapshot
 from quant_lab.application.dry_run import (
     EvaluationOutcome,
     Trigger,
@@ -23,6 +22,7 @@ from quant_lab.domain.bot import (
     InvalidTransitionError,
     apply_command,
 )
+from quant_lab.domain.broker import AccountSnapshot
 from quant_lab.persistence.bars import latest_session_date
 from quant_lab.persistence.bots import add_event, bot_weights, get_bot, set_bot_state
 from quant_lab.persistence.market_info import upsert_instruments, upsert_live_bars, upsert_quotes

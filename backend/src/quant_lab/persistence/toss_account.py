@@ -4,7 +4,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from quant_lab.adapters.toss.client import AccountOrder, AccountSnapshot
+from quant_lab.domain.broker import AccountOrder, AccountSnapshot
 from quant_lab.persistence.models import TossAccountRow
 
 ROW_ID = 1

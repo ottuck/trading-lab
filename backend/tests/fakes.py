@@ -4,8 +4,8 @@ from collections.abc import Iterator, Sequence
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 
-from quant_lab.adapters.toss.client import CandlePage
 from quant_lab.domain.bars import DailyBar
+from quant_lab.domain.broker import CandlePage
 
 
 class WeekdayCalendar:
