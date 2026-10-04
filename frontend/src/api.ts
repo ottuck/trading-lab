@@ -168,6 +168,8 @@ export type Live = {
   per_order: Money
   per_month: Money
   ratios: string[]
+  shortfall: { symbol: string; held: Money; bought: Money }[] // 실제 계좌 대조: 봇이 산 것보다 적은 종목
+  checked_at: string | null
   orders: LiveOrder[]
 }
 

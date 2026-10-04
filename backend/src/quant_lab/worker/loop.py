@@ -14,7 +14,7 @@ from quant_lab.application.dry_run import (
     evaluate_bot,
     latest_completed_session,
 )
-from quant_lab.application.live import LiveDesk
+from quant_lab.application.live import LiveDesk, check_holdings
 from quant_lab.application.market import LiveSource, MarketData
 from quant_lab.domain.bars import TradingCalendar
 from quant_lab.domain.bot import (
@@ -168,6 +168,7 @@ class Worker:
             return
         with self.make_session() as session:
             save_snapshot(session, snap, now)
+            check_holdings(session, snap, now)  # 실제 계좌 대조 (실거래 R2)
             session.commit()
 
     def refresh_live(self) -> None:

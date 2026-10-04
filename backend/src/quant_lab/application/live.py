@@ -23,19 +23,21 @@ from sqlalchemy.orm import Session
 
 from quant_lab.domain.bars import TradingCalendar
 from quant_lab.domain.broker import (
+    AccountSnapshot,
     AmountOrder,
     BrokerError,
     OrderRejected,
     OrderStatus,
     Trader,
 )
-from quant_lab.domain.events import EventKind, LiveOrderData
+from quant_lab.domain.events import EventKind, LiveOrderData, LiveReconcileData, ShortfallItem
 from quant_lab.domain.live import (
     MIN_AMOUNT,
     SEND_DELAY_MINUTES,
     LiveLimits,
     LiveState,
     SkipReason,
+    holding_shortfalls,
     needs_approval,
     order_key,
     scaled_amount,
@@ -117,7 +119,8 @@ class LiveDesk:
         """따라 사기를 켠 봇의 새 모의 매수마다 실제 주문을 하나 만든다."""
         made: list[LiveOrderRow] = []
         with self.make_session() as session:
-            halted = control(session, now).halted
+            ctl = control(session, now)
+            halted, shortfall = ctl.halted, bool(ctl.shortfall)
             rows = session.execute(
                 select(SimOrderRow, BotRow)
                 .join(BotRow, BotRow.id == SimOrderRow.bot_id)
@@ -164,7 +167,9 @@ class LiveDesk:
                         for c in carried:
                             c.carried_into, c.updated_at = order.id, now
                         month = self._month_total(session, bot.id, order.trade_date)
-                        if needs_approval(order.amount, month, bot.live_streak, self.limits):
+                        # 실제 계좌가 봇 기록과 맞지 않는 동안은 늘 승인을 받는다
+                        streak = 0 if shortfall else bot.live_streak
+                        if needs_approval(order.amount, month, streak, self.limits):
                             order.state = LiveState.WAITING_APPROVAL
                         else:
                             auto = True
@@ -369,3 +374,45 @@ class LiveDesk:
                     live_event(session, now, order, "WARN")
                 session.commit()
                 self._checked_at.pop(order_id, None)
+
+
+SETTLE = timedelta(minutes=10)  # 체결 직후 계좌 보유에 아직 안 보일 수 있어 이만큼 지난 체결만 센다
+
+
+def check_holdings(session: Session, snap: AccountSnapshot, now: datetime) -> None:
+    """실제 계좌 대조: 종목마다 계좌 보유 ≥ 봇이 실제로 산(체결된) 수량 합계인지 본다.
+
+    Worker가 계좌를 읽을 때마다(한 시간마다) 부른다. 결과가 바뀔 때만 알리고, 부족이 생기면
+    따라 사기를 하는 모든 봇을 다시 승인 단계로 돌린다 (부족이 풀릴 때까지 자동으로 내지 않는다).
+    """
+    rows = session.execute(
+        select(LiveOrderRow.symbol, func.sum(LiveOrderRow.filled_qty))
+        .where(
+            LiveOrderRow.filled_qty.is_not(None),
+            LiveOrderRow.state.in_([LiveState.FILLED, LiveState.CANCELED]),
+            LiveOrderRow.updated_at <= now - SETTLE,
+        )
+        .group_by(LiveOrderRow.symbol)
+    ).all()
+    bought = {symbol: Decimal(qty) for symbol, qty in rows if qty}
+    held = {h.symbol: h.quantity for h in snap.holdings}
+    items = [
+        ShortfallItem(symbol=s, held=str(h), bought=str(b))
+        for s, (h, b) in holding_shortfalls(held, bought).items()
+    ]
+    row = control(session, now)
+    before = [i["symbol"] for i in row.shortfall or []]
+    if [i["symbol"] for i in items] != before:
+        if items:
+            for bot in session.scalars(select(BotRow).where(BotRow.live_ratio.is_not(None))):
+                bot.live_streak = 0
+        add_event(
+            session,
+            now,
+            "WARN" if items else "INFO",
+            EventKind.LIVE_RECONCILE,
+            f"실제 계좌 대조: {', '.join(i['symbol'] for i in items) or '맞음'}",
+            data=LiveReconcileData(shortfall=items),
+        )
+    row.shortfall = [dict(i) for i in items] or None
+    row.checked_at = now

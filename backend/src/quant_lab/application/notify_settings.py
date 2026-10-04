@@ -21,6 +21,7 @@ SCOPES = ("live", "all")
 LIVE_KINDS = {
     EventKind.LIVE_ORDER,
     EventKind.LIVE_CONTROL,
+    EventKind.LIVE_RECONCILE,
     EventKind.RUN_ERROR,
     EventKind.NOTIFY_TEST,
 }
