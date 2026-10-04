@@ -86,6 +86,7 @@ backend/
   src/quant_lab/
     domain/          # 순수 로직: 봉, 지표, 전략, 위험 규칙, 모의 체결 규칙 (외부 의존 없음)
       broker.py      # 증권사 연결 규약(Broker)과 증권사와 무관한 시세·계좌 형식, 오류 2종
+      events.py      # 이벤트 종류·내용 형식·이유 코드 (엔진 → 알림·화면 규약)
     application/     # 유스케이스: 평가 1회, 백테스트, 명령 처리
     adapters/toss/   # 토스 HTTP 클라이언트, 토큰 관리, 응답 → domain/broker 형식 변환
     adapters/sim/    # 모의 브로커
@@ -139,7 +140,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | `decisions` | 판단·사유·지표·차단 사유, **당시 전략·비용·위험 한도 스냅샷**. 유일 키 `bot_id + symbol + session_date + mode` |
 | `sim_orders` | 모의 주문(판단당 최대 1개, 종목 `symbol`, **봇·종목당 대기 주문 1개**): `PENDING` → `FILLED`·`UNFILLED`, 체결일·수량·가격·수수료·실현 손익, 모으기 매수 예산(`budget`, 없으면 현금 전부) |
 | `backtests` | 입력 조건(여러 종목이면 `symbols`에 종목·비율, 데이터 범위, 전략·파라미터, 비용, 위험 한도, 코드 버전)과 지표·체결·판단·자산 곡선 |
-| `events` | 심각도별 기록 (텔레그램 알림·최근 활동의 원본) |
+| `events` | 심각도별 기록 (텔레그램 알림·최근 활동의 원본). 종류(`EventKind`)와 종류별 `data` 형식, 판단을 미룬·멈춘 이유 코드는 `domain/events.py`가 정한다. 알림 문장은 `data`만 읽고 `message`(로그 원문)는 해석하지 않는다. 모든 종류가 문장으로 바뀌는지 테스트가 확인한다 |
 | `instruments` | 종목명, 유형, 레버리지 배수 (토스 `/stocks`, 하루 한 번) |
 | `quotes` | 종목별 최신 현재가 1행 (`price`, `quoted_at`). 화면 "지금 가치"용, 판단에는 안 씀 |
 | `toss_account` | 실제 토스 계좌를 마지막으로 읽은 결과 1행 (실거래 R1): 주문 가능 금액(달러·원), 보유·최근 주문(JSONB, 금액은 문자열), 읽은 시각, 마지막 실패. 모의 봇 기록과 섞지 않는다 |

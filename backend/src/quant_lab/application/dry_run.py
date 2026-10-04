@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
-from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -28,6 +27,18 @@ from quant_lab.domain.bars import (
 )
 from quant_lab.domain.bot import BotState
 from quant_lab.domain.broker import BrokerAccessError, BrokerError
+from quant_lab.domain.events import (
+    BalanceSummary,
+    DecisionData,
+    DecisionRepeatData,
+    DepositData,
+    ErrorReason,
+    EventKind,
+    FillData,
+    MissedSessionsData,
+    RunData,
+    SkipReason,
+)
 from quant_lab.domain.portfolio import Portfolio, money
 from quant_lab.domain.strategy import STRATEGIES, Strategy, deposit_plan, min_bars, month_key
 from quant_lab.domain.trading import Action, DecisionRecord, Fill, decide_basket, execute
@@ -73,10 +84,15 @@ class EvaluationOutcome:
     detail: str
     decisions: tuple[DecisionRecord, ...] = ()  # 종목별 판단 (여러 종목 봇은 여러 개)
     fills: tuple[Fill, ...] = ()
+    reason: str | None = None  # SKIPPED·ERROR의 이유 코드 (domain/events.py)
 
 
 class _Skip(Exception):
     """신규 주문 없이 이번 평가를 건너뛴다. 잠시 뒤 다시 시도한다."""
+
+    def __init__(self, reason: SkipReason, message: str) -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 def build_strategy(bot: BotRow) -> Strategy:
@@ -90,7 +106,7 @@ def latest_completed_session(
     sessions = calendar.sessions(today - timedelta(days=14), today)
     done = [s for s in sessions if is_completed(s, calendar, now, settle)]
     if not done:
-        raise _Skip("최근 2주 안에 완료된 거래일이 없습니다")
+        raise _Skip(SkipReason.NO_RECENT_SESSION, "최근 2주 안에 완료된 거래일이 없습니다")
     return done[-1]
 
 
@@ -124,21 +140,39 @@ def evaluate_bot(
         outcome = _evaluate(session, bot_id, run_id, market, calendar, now)
     except _Skip as skip:
         session.rollback()
-        outcome = EvaluationOutcome(run_id, RunStatus.SKIPPED, None, str(skip))
+        outcome = EvaluationOutcome(run_id, RunStatus.SKIPPED, None, str(skip), reason=skip.reason)
         _finish(session, bot_id, outcome, now, level="WARN", retry=True)
     except BrokerAccessError as exc:
         # 허용 IP·토큰 경합은 기다려도 풀리지 않는다. 사람이 확인할 때까지 멈춘다.
         session.rollback()
-        outcome = EvaluationOutcome(run_id, RunStatus.ERROR, None, f"토스 인증·권한 오류: {exc}")
+        outcome = EvaluationOutcome(
+            run_id,
+            RunStatus.ERROR,
+            None,
+            f"증권사 인증·권한 오류: {exc}",
+            reason=ErrorReason.BROKER_ACCESS,
+        )
         _finish(session, bot_id, outcome, now, level="ERROR", to_error=True)
     except BrokerError as exc:
         session.rollback()
-        outcome = EvaluationOutcome(run_id, RunStatus.SKIPPED, None, f"토스 호출 실패: {exc}")
+        outcome = EvaluationOutcome(
+            run_id,
+            RunStatus.SKIPPED,
+            None,
+            f"증권사 호출 실패: {exc}",
+            reason=SkipReason.BROKER_UNAVAILABLE,
+        )
         _finish(session, bot_id, outcome, now, level="WARN", retry=True)
     except Exception as exc:
         session.rollback()
         log.exception("평가 실패 bot=%s", bot_id)
-        outcome = EvaluationOutcome(run_id, RunStatus.ERROR, None, f"예상하지 못한 오류: {exc!r}")
+        outcome = EvaluationOutcome(
+            run_id,
+            RunStatus.ERROR,
+            None,
+            f"예상하지 못한 오류: {exc!r}",
+            reason=ErrorReason.UNEXPECTED,
+        )
         _finish(session, bot_id, outcome, now, level="ERROR", to_error=True)
     return outcome
 
@@ -167,14 +201,16 @@ def _finish(
             set_bot_state(session, bot, BotState.ERROR, outcome.detail, now)
         elif retry:
             bot.next_evaluation_at = now + RETRY_AFTER
+    data: RunData = {"reason": outcome.reason or ""}
     add_event(
         session,
         now,
         level,
-        f"run_{outcome.status.lower()}",
+        EventKind.RUN_SKIPPED if outcome.status is RunStatus.SKIPPED else EventKind.RUN_ERROR,
         outcome.detail,
         bot_id=bot_id,
         run_id=outcome.run_id,
+        data=data,
     )
     session.commit()
 
@@ -205,7 +241,7 @@ def _evaluate(
 ) -> EvaluationOutcome:
     bot = get_bot(session, bot_id, for_update=True)
     if bot is None:
-        raise _Skip(f"봇 {bot_id}가 없습니다")
+        raise _Skip(SkipReason.BOT_MISSING, f"봇 {bot_id}가 없습니다")
     strategy = build_strategy(bot)
     costs, limits = bot_costs(bot), bot_limits(bot)
 
@@ -213,7 +249,9 @@ def _evaluate(
     target = latest_completed_session(calendar, now)
     confirmed = market.confirm_session(target)
     if confirmed is False:
-        raise _Skip(f"{target}: XNYS는 거래일이지만 토스 캘린더는 아닙니다")
+        raise _Skip(
+            SkipReason.CALENDAR_MISMATCH, f"{target}: XNYS는 거래일이지만 증권사 달력은 아닙니다"
+        )
 
     # 2) 완료 봉 수집·검증 (모든 종목). 한 종목이라도 그날 봉이 없거나 문제가 있으면 전체를 미룬다
     #    (원칙 5: 현금을 함께 쓰므로 일부 종목만 먼저 판단하면 백테스트와 순서가 달라진다).
@@ -228,11 +266,16 @@ def _evaluate(
         bars = load_daily_bars(session, symbol, end=target)
         if not bars or bars[-1].session_date != target:
             last = bars[-1].session_date if bars else None
-            raise _Skip(f"{who}{target} 일봉이 아직 없습니다 (마지막 {last})")
+            raise _Skip(
+                SkipReason.DATA_NOT_READY, f"{who}{target} 일봉이 아직 없습니다 (마지막 {last})"
+            )
         window = bars[-(strategy.warmup + 2) :]
         issues = check_daily_bars(window, calendar, outlier_limit(leverage_of(session, symbol)))
         if issues:
-            raise _Skip(f"{who}판단 구간 일봉 문제: {issues[0].kind} {issues[0].session_date}")
+            raise _Skip(
+                SkipReason.BAD_BARS,
+                f"{who}판단 구간 일봉 문제: {issues[0].kind} {issues[0].session_date}",
+            )
         series[symbol] = bars
 
     # 3) 이전 대기 주문(종목별)을 T+1 시가로 체결
@@ -294,10 +337,13 @@ def _evaluate(
                 session,
                 now,
                 "WARN",
-                "missed_sessions",
+                EventKind.MISSED_SESSIONS,
                 f"판단 누락 {len(missed)}일: {missed[0]} ~ {missed[-1]}",
                 bot_id=bot.id,
                 run_id=run_id,
+                data=MissedSessionsData(
+                    count=len(missed), first=missed[0].isoformat(), last=missed[-1].isoformat()
+                ),
             )
 
     # 5) 정기 입금(모으기 전략): 이번 달 입금이 아직 없고 입금일이 지났으면 오늘 넣는다.
@@ -324,11 +370,13 @@ def _evaluate(
                 session,
                 now,
                 "INFO",
-                "deposit",
+                EventKind.DEPOSIT,
                 f"{target} 입금 ${deposit}",
                 bot_id=bot.id,
                 run_id=run_id,
-                data={"amount": deposit, "contributed": pf.contributed, "symbol": bot.symbol},
+                data=DepositData(
+                    symbol=bot.symbol, amount=str(deposit), contributed=str(pf.contributed)
+                ),
             )
 
     # 6) 전략 판단·위험 검사·모의 주문 (종목별, 비율 순서대로)
@@ -338,7 +386,7 @@ def _evaluate(
     histories = {s: series[s] for s in active}
     decisions = decide_basket(strategy, histories, active, pf, costs, limits, fresh)
     if not decisions:
-        raise _Skip(f"봉이 부족합니다 (필요 {min_bars(strategy)}개)")
+        raise _Skip(SkipReason.NOT_ENOUGH_BARS, f"봉이 부족합니다 (필요 {min_bars(strategy)}개)")
     snapshot = {
         "name": bot.strategy,
         "params": bot.params,
@@ -382,7 +430,7 @@ def _evaluate(
                 session.flush()
     except IntegrityError as exc:
         # 다른 Worker가 같은 봉을 먼저 판단했다. 이 실행의 변경은 모두 버린다.
-        raise _Skip(f"{target} 판단 중복 차단 (DB 유일 제약)") from exc
+        raise _Skip(SkipReason.DUPLICATE, f"{target} 판단 중복 차단 (DB 유일 제약)") from exc
 
     save_account(session, bot.id, pf, now)
     if len(decisions) == 1:
@@ -398,7 +446,7 @@ def _evaluate(
     return _commit_ok(session, bot, outcome, calendar, now, _summary(bot, pf, closes))
 
 
-def _summary(bot: BotRow, pf: Portfolio, closes: dict[str, Decimal]) -> dict[str, Any]:
+def _summary(bot: BotRow, pf: Portfolio, closes: dict[str, Decimal]) -> BalanceSummary:
     """알림·로그용 잔고 요약 (판단일 종가 기준 평가). 수익률은 넣은 돈 대비.
 
     close·qty는 대표 종목(첫 종목) 값, closes는 종목별 종가 (주간 정리의 그냥 보유 비교용).
@@ -421,7 +469,7 @@ def _commit_ok(
     outcome: EvaluationOutcome,
     calendar: TradingCalendar,
     now: datetime,
-    summary: dict[str, Any],
+    summary: BalanceSummary,
 ) -> EvaluationOutcome:
     assert outcome.session_date is not None
     bot.next_evaluation_at = next_evaluation_time(calendar, outcome.session_date)
@@ -438,12 +486,21 @@ def _commit_ok(
             session,
             now,
             "INFO",
-            "sim_fill",
+            EventKind.SIM_FILL,
             f"{f.side} {f.qty.normalize():f}주 @ {f.price:.2f} "
             f"({f.fill_date} 시가, {f.signal_date} 판단)",
             bot_id=bot.id,
             run_id=outcome.run_id,
-            data=to_jsonable(f),
+            data=FillData(
+                symbol=f.symbol,
+                side=f.side,
+                signal_date=f.signal_date.isoformat(),
+                fill_date=f.fill_date.isoformat(),
+                qty=str(f.qty),
+                price=str(f.price),
+                commission=str(f.commission),
+                realized_pnl=None if f.realized_pnl is None else str(f.realized_pnl),
+            ),
         )
     # 같은 봉을 다시 평가한 경우(재시작·수동 실행)는 내부 기록만 남긴다 (알림·활동 표시 안 함).
     for d in outcome.decisions:
@@ -451,38 +508,38 @@ def _commit_ok(
             session,
             now,
             "INFO",
-            "decision",
+            EventKind.DECISION,
             outcome.detail,
             bot_id=bot.id,
             run_id=outcome.run_id,
-            data={
+            data=DecisionData(
                 **summary,
-                "symbol": d.symbol,
-                "action": d.action,
-                "target_long": d.target_long,
-                "holding": d.holding,
-                "indicators": to_jsonable(d.indicators),
-                "strategy": bot.strategy,
-                "params": bot.params,
-            },
+                symbol=d.symbol,
+                action=d.action,
+                target_long=d.target_long,
+                holding=d.holding,
+                indicators=to_jsonable(d.indicators),
+                strategy=bot.strategy,
+                params=bot.params,
+            ),
         )
     if not outcome.decisions:
         add_event(
             session,
             now,
             "INFO",
-            "decision_repeat",
+            EventKind.DECISION_REPEAT,
             outcome.detail,
             bot_id=bot.id,
             run_id=outcome.run_id,
-            data={**summary, "symbol": bot.symbol},
+            data=DecisionRepeatData(**summary, symbol=bot.symbol),
         )
     if outcome.decisions and is_week_end(calendar, outcome.session_date):
         add_event(
             session,
             now,
             "INFO",
-            "weekly_report",
+            EventKind.WEEKLY_REPORT,
             f"{outcome.session_date} 주간 리포트",
             bot_id=bot.id,
             run_id=outcome.run_id,

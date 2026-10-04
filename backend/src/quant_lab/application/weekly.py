@@ -4,6 +4,7 @@
 금요일이 휴장이면 그 주의 마지막 거래일(목요일 등)에 만든다.
 """
 
+from collections.abc import Mapping
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
@@ -12,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from quant_lab.domain.bars import TradingCalendar
+from quant_lab.domain.events import BalanceSummary, EventKind, WeeklyData
 from quant_lab.persistence.bots import bot_weights
 from quant_lab.persistence.models import BotRow, EventRow, RunRow, SimOrderRow
 
@@ -26,14 +28,14 @@ def is_week_end(calendar: TradingCalendar, session_date: date) -> bool:
 
 
 def weekly_summary(
-    session: Session, bot: BotRow, session_date: date, end: dict[str, Any]
-) -> dict[str, Any]:
+    session: Session, bot: BotRow, session_date: date, end: BalanceSummary
+) -> WeeklyData:
     """이번 주 자산·그냥 보유 대비·거래 횟수. end는 이번 판단의 잔고 요약(equity, close)."""
     week_start = session_date - timedelta(days=session_date.weekday())
     base_q = (
         select(EventRow.data)
         .join(RunRow, EventRow.run_id == RunRow.id)
-        .where(EventRow.bot_id == bot.id, EventRow.kind == "decision")
+        .where(EventRow.bot_id == bot.id, EventRow.kind == EventKind.DECISION)
     )
     # 기준점: 지난주 마지막 판단. 이번 주에 처음 시작했으면 이번 주 첫 판단.
     base = session.scalar(
@@ -57,7 +59,7 @@ def weekly_summary(
     def change(a: Any, b: Any) -> str:
         return str(round(Decimal(str(b)) / Decimal(str(a)) - 1, 6))
 
-    def hold_change(a: dict[str, Any], b: dict[str, Any]) -> str:
+    def hold_change(a: Mapping[str, Any], b: Mapping[str, Any]) -> str:
         """그냥 들고 있었다면의 이번 주 변화. 여러 종목이면 종목 비율로 가중 평균한다."""
         if "closes" not in a or "closes" not in b:
             return change(a["close"], b["close"])
@@ -80,7 +82,7 @@ def weekly_summary(
         str(start.get("contributed", end.get("contributed", 0)))
     )
 
-    return {
+    return {  # WeeklyData
         "symbol": bot.symbol,
         "week_start": week_start.isoformat(),
         "week_end": session_date.isoformat(),

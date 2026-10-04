@@ -23,6 +23,7 @@ from quant_lab.adapters.toss.client import TossClient
 from quant_lab.application.market import BrokerMarket, MarketData, StoredMarket
 from quant_lab.application.notify import EventNotifier
 from quant_lab.config import Settings, get_settings
+from quant_lab.domain.events import EventKind
 from quant_lab.persistence.bots import add_event
 from quant_lab.persistence.db import get_engine
 from quant_lab.persistence.heartbeat import record_heartbeat
@@ -96,7 +97,7 @@ def run(stop: threading.Event) -> None:
             session,
             datetime.now(UTC),
             "INFO",
-            "worker_start",
+            EventKind.WORKER_START,
             f"Worker 시작 ({worker_id}, v{__version__}, 시세 {settings.worker_market_source})",
         )
         session.commit()

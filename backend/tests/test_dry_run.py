@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from quant_lab.application.bar_sync import SyncResult
 from quant_lab.application.dry_run import RunStatus, Trigger, evaluate_bot
+from quant_lab.application.messages import event_message
 from quant_lab.application.replay import replay_bot
 from quant_lab.domain.backtest import run_backtest
 from quant_lab.domain.bars import DailyBar
@@ -226,6 +227,11 @@ def test_replay_matches_backtest(
     assert sum(r["buys"] + r["sells"] for r in reports) == sum(
         1 for f in expected if f.fill_date <= fridays[-1]
     )
+    # 엔진이 실제로 남긴 이벤트는 모두 형식에 맞아 알림 문장으로 바뀐다 (domain/events.py)
+    for kind, level, message, data in session.execute(
+        select(EventRow.kind, EventRow.level, EventRow.message, EventRow.data)
+    ):
+        event_message(kind, level, message, data, "t", "QQQ")
 
 
 @pytest.mark.parametrize("weights", [{"QQQ": 100}, {"QQQ": 60, "VOO": 40}])
