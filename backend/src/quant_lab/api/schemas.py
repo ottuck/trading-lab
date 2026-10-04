@@ -188,6 +188,7 @@ class LiveOrderView(BaseModel):
     reason: str | None
     filled_qty: Decimal | None
     filled_amount: Decimal | None
+    carried_into: int | None = None  # 작아서 모아 둔 몫이 더해진 주문
     created_at: datetime
     updated_at: datetime
 
@@ -204,6 +205,17 @@ class LiveView(BaseModel):
 
 class LiveRatioUpdate(BaseModel):
     ratio: str | None  # "1/100" | "1/10" | null(끄기)
+
+
+class NotifyView(BaseModel):
+    available: bool  # Worker에 텔레그램 봇 정보가 있음
+    enabled: bool
+    scope: str  # live(실제 주문만) | all(모의 투자 소식까지)
+
+
+class NotifyUpdate(BaseModel):
+    enabled: bool
+    scope: Literal["live", "all"]
 
 
 class LiveHalt(BaseModel):

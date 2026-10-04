@@ -156,6 +156,7 @@ export type LiveOrder = {
   reason: string | null
   filled_qty: Money | null
   filled_amount: Money | null
+  carried_into: number | null // 작아서 모아 둔 몫이 더해진 주문
   created_at: string
   updated_at: string
 }
@@ -391,6 +392,15 @@ export const botApi = {
   setLive: (botId: number, ratio: string | null) => request<Bot>(`/api/bots/${botId}/live`, json('PUT', { ratio })),
   history: (botId: number) =>
     request<ConfigEvent[]>(`/api/events?bot_id=${botId}&kind=config_change&limit=20`),
+}
+
+export type NotifyScope = 'live' | 'all'
+export type Notify = { available: boolean; enabled: boolean; scope: NotifyScope }
+
+export const notifyApi = {
+  get: () => request<Notify>('/api/notify'),
+  update: (enabled: boolean, scope: NotifyScope) => request<Notify>('/api/notify', json('PUT', { enabled, scope })),
+  test: () => request<void>('/api/notify/test', { method: 'POST' }),
 }
 
 export const liveApi = {

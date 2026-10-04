@@ -457,6 +457,8 @@ def event_message(
         )
     if kind == EventKind.LIVE_ORDER:
         return _live_order_message(cast(LiveOrderData, d))
+    if kind == EventKind.NOTIFY_TEST:
+        return Message("🔔", "알림 테스트", "텔레그램 알림이 잘 와요.", "INFO", True)
     if kind == EventKind.LIVE_CONTROL:
         if cast(LiveControlData, d).get("halted"):
             return Message(
@@ -510,6 +512,7 @@ _LIVE_REASONS = {
     "no_session": "그날 장이 열리지 않아 넘어가요.",
     "leveraged": "레버리지 상품은 실제로 사지 않아요.",
     "too_small": "금액이 너무 작아 내지 않았어요.",
+    "carried": "금액이 작아 모아 뒀어요. 같은 종목 몫이 $1을 넘으면 함께 사요.",
     "outside_hours": "주문을 받는 시간이 아니었어요.",
     "insufficient_funds": "실제 계좌에 돈이 부족해요. 달러를 채워 주세요.",
     "prerequisite": "증권사 앱에서 이 종목의 사전 확인(위험 고지 등)을 먼저 해 주세요.",

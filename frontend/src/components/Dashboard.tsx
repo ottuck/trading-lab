@@ -18,7 +18,7 @@ import { sourceLabel } from '../source'
 import { isMeBot, useStrategies } from '../strategies'
 import { useDemo } from '../demo'
 import { FxNote } from './Currency'
-import { LiveApprovals } from './Live'
+import { AccountCard, LiveApprovals } from './Live'
 import { Term } from './Help'
 import { goTo, selectBot, startNewBot, useSelectedBot } from '../selectedBot'
 import { PriceChart } from './PriceChart'
@@ -770,6 +770,7 @@ function BotSide({ bots, current, onPick }: { bots: Bot[]; current?: Bot; onPick
         </div>
         {others.length ? others.map(row) : <div className="bot-list-empty">유명한 투자법을 따라 하는 봇이에요</div>}
       </div>
+      <AccountCard />
       <div className="side-note">10초마다 새로 불러와요.</div>
     </aside>
   )

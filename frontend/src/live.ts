@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useSyncExternalStore } from 'react'
 import { liveApi, type LiveOrder } from './api'
 import { useDemo } from './demo'
 
@@ -28,6 +29,7 @@ const REASON: Record<string, string> = {
   no_session: '장이 열리지 않음',
   leveraged: '레버리지 상품',
   too_small: '금액이 너무 작음',
+  carried: '$1이 넘으면 함께 사요',
   outside_hours: '주문 시간이 아님',
   insufficient_funds: '계좌에 돈이 부족함',
   prerequisite: '증권사 앱에서 사전 확인 필요',
@@ -44,5 +46,37 @@ export function dayLabel(iso: string) {
 
 export function liveStatus(o: LiveOrder) {
   const reason = o.reason ? REASON[o.reason] ?? o.reason : ''
-  return [STATE[o.state], reason].filter(Boolean).join(' · ')
+  const state = o.reason === 'carried' ? (o.carried_into ? '다음 주문에 더함' : '작아서 모아 둠') : STATE[o.state]
+  return [state, o.carried_into ? '' : reason].filter(Boolean).join(' · ')
+}
+
+// 홈 잔액 카드의 "금액 가리기". 이 브라우저에만 기억한다.
+const HIDE_KEY = 'quant-lab:hide-balance'
+const hideListeners = new Set<() => void>()
+let hidden = (() => {
+  try {
+    return localStorage.getItem(HIDE_KEY) === '1'
+  } catch {
+    return false
+  }
+})()
+
+export function toggleBalanceHidden() {
+  hidden = !hidden
+  try {
+    localStorage.setItem(HIDE_KEY, hidden ? '1' : '0')
+  } catch {
+    // 저장이 막힌 브라우저에서는 이번 방문 동안만 적용한다.
+  }
+  hideListeners.forEach((l) => l())
+}
+
+export function useBalanceHidden(): boolean {
+  return useSyncExternalStore(
+    (l) => {
+      hideListeners.add(l)
+      return () => hideListeners.delete(l)
+    },
+    () => hidden,
+  )
 }

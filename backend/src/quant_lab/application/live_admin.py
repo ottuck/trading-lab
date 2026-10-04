@@ -42,6 +42,7 @@ class LiveOrderInfo:
     reason: str | None
     filled_qty: Decimal | None
     filled_amount: Decimal | None
+    carried_into: int | None
     created_at: datetime
     updated_at: datetime
 
@@ -85,6 +86,7 @@ def overview(session: Session) -> LiveOverview:
                 o.reason,
                 o.filled_qty,
                 o.filled_amount,
+                o.carried_into,
                 o.created_at,
                 o.updated_at,
             )

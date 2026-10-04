@@ -21,6 +21,7 @@ from quant_lab.adapters.market_calendar import get_calendar
 from quant_lab.adapters.telegram import TelegramClient
 from quant_lab.adapters.toss.client import TossClient
 from quant_lab.adapters.toss.trader import TossTrader
+from quant_lab.application import notify_settings
 from quant_lab.application.live import LiveDesk
 from quant_lab.application.market import BrokerMarket, MarketData, StoredMarket
 from quant_lab.application.notify import EventNotifier
@@ -48,11 +49,12 @@ def build_market(settings: Settings) -> MarketData:
 
 
 def build_notifier(settings: Settings, make_session: Callable[[], Session]) -> EventNotifier | None:
-    if not settings.telegram_enabled:
-        log.info("텔레그램 알림 꺼짐 (TELEGRAM_ENABLED가 false)")
-        return None
+    """토큰이 있으면 만들고, 보낼지·무엇을 보낼지는 화면 설정(notify_settings)을 따른다."""
+    available = settings.telegram_bot_token is not None and bool(settings.telegram_chat_id)
+    with make_session() as session:
+        notify_settings.announce(session, available, settings.telegram_enabled, datetime.now(UTC))
     if settings.telegram_bot_token is None or not settings.telegram_chat_id:
-        log.info("텔레그램 알림 꺼짐 (TELEGRAM_BOT_TOKEN/CHAT_ID 없음)")
+        log.info("텔레그램 알림 없음 (TELEGRAM_BOT_TOKEN/CHAT_ID 없음)")
         return None
     client = TelegramClient(
         settings.telegram_bot_token.get_secret_value(), settings.telegram_chat_id
@@ -60,7 +62,7 @@ def build_notifier(settings: Settings, make_session: Callable[[], Session]) -> E
     notifier = EventNotifier(make_session, client.send)
     # worker_start·재시작 일시정지 이벤트보다 먼저 위치를 잡아 이번 시작 알림부터 보낸다.
     notifier.start()
-    log.info("텔레그램 알림 켜짐")
+    log.info("텔레그램 알림 준비됨 (켜기·범위는 화면 설정)")
     return notifier
 
 
