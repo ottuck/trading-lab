@@ -85,3 +85,16 @@ mimetypes.add_type("application/manifest+json", ".webmanifest")
 _dist = get_settings().frontend_dist
 if _dist.is_dir():
     app.mount("/", StaticFiles(directory=_dist, html=True), name="frontend")
+
+
+@app.middleware("http")
+async def fresh_index(request: Request, call_next: RequestResponseEndpoint) -> Response:
+    """배포하면 바로 새 화면이 보이게 한다. index.html은 매번 확인하고(no-cache),
+    이름에 해시가 붙은 assets는 내용이 바뀌면 이름도 바뀌므로 오래 둔다."""
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/assets/"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif not path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
