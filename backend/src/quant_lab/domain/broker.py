@@ -6,8 +6,9 @@
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
+from enum import StrEnum
 from typing import Protocol
 
 from quant_lab.domain.bars import DailyBar
@@ -21,6 +22,24 @@ class BrokerError(Exception):
 
 class BrokerAccessError(BrokerError):
     """인증·권한·허용 IP 문제. 기다려도 풀리지 않으므로 사람이 확인할 때까지 봇을 멈춘다."""
+
+
+class RejectReason(StrEnum):
+    """증권사가 주문을 거절한 이유 (증권사와 무관). 어댑터가 증권사 오류 코드를 이것으로 바꾼다."""
+
+    OUTSIDE_HOURS = "outside_hours"  # 지금은 이 주문을 받지 않는 시간
+    INSUFFICIENT_FUNDS = "insufficient_funds"  # 주문에 쓸 수 있는 돈 부족
+    PREREQUISITE = "prerequisite"  # 위험 고지 등 사전 요건
+    RESTRICTED = "restricted"  # 종목·계좌 주문 제한
+    OTHER = "other"
+
+
+class OrderRejected(BrokerError):
+    """주문이 접수되지 않았다 (보내도 다시 안 되는 거절). 같은 주문을 다시 보내지 않는다."""
+
+    def __init__(self, reason: RejectReason, message: str) -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 # --- 시세 ---
@@ -75,6 +94,17 @@ class Holding:
     market_value: Decimal
 
 
+class OrderStatus(StrEnum):
+    """주문 상태 (증권사와 무관). 어댑터가 증권사 상태 문자열을 이것으로 바꾼다."""
+
+    OPEN = "OPEN"  # 접수됨, 체결 기다림
+    PARTIAL = "PARTIAL"  # 일부 체결, 나머지 기다림
+    FILLED = "FILLED"
+    CANCELED = "CANCELED"  # 취소 (일부 체결됐을 수 있음: filled_quantity)
+    REJECTED = "REJECTED"
+    OTHER = "OTHER"
+
+
 @dataclass(frozen=True, slots=True)
 class AccountOrder:
     """주문 1건 = 1행 (나눠 체결되면 합산)."""
@@ -82,7 +112,7 @@ class AccountOrder:
     order_id: str
     symbol: str
     side: str  # BUY | SELL
-    status: str  # PENDING, FILLED, CANCELED ...
+    status: OrderStatus
     currency: str
     ordered_at: datetime
     order_amount: Decimal | None  # 금액 주문의 금액 (USD)
@@ -128,3 +158,44 @@ class Broker(Protocol):
         ...
 
     def account_snapshot(self, since: date) -> AccountSnapshot: ...
+
+
+# --- 실제 주문 (실거래 R2) ---
+
+
+@dataclass(frozen=True, slots=True)
+class AmountOrder:
+    """금액만큼 시장가로 사는 주문 (소수점 매수). 파는 주문은 아직 없다 (사기만)."""
+
+    # 중복 방지 키 (영숫자·-·_ 36자 이내). 같은 키는 idempotency_window 안에서 한 번만 접수된다
+    key: str
+    symbol: str
+    amount: Decimal  # USD, 센트 단위
+
+
+class Trader(Protocol):
+    """실제 주문 규약. 실거래 스위치가 켜졌을 때만 조립 지점이 만든다 (Broker는 읽기만 한다).
+
+    증권사별 규칙(주문 키 형식, 멱등 유효 시간, 접수 시간, 오류 코드)은 어댑터가 이 값으로
+    바꿔 넘긴다.
+    """
+
+    source: str  # 출처 코드
+    idempotency_window: timedelta  # 같은 키로 다시 보내도 새 주문이 되지 않는 시간
+
+    def order_window(self, day: date) -> tuple[datetime, datetime] | None:
+        """미국 거래일 day에 금액 주문을 받는 시간 [시작, 끝). 장이 없으면 None."""
+        ...
+
+    def place_amount_buy(self, order: AmountOrder) -> str:
+        """주문을 내고 증권사 주문 번호를 돌려준다.
+
+        거절은 OrderRejected, 일시 장애는 BrokerError (같은 키로 다시 보내도 된다).
+        """
+        ...
+
+    def get_order(self, order_id: str) -> AccountOrder: ...
+
+    def find_orders(self, symbol: str, day: date) -> list[AccountOrder]:
+        """day(한국 날짜)에 낸 그 종목 주문. 결과를 모르는 주문을 찾을 때 쓴다."""
+        ...

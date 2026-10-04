@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     # WORKER_MARKET_SOURCE=toss일 때만 동작한다. 주문은 내지 않는다.
     toss_account_enabled: bool = False
 
+    # 실거래 스위치 (실거래 R2). 켜야만 Worker가 주문 어댑터를 만들고 실제 주문을 낸다.
+    # 봇마다 "실제로 따라 사기"도 켜야 하고, 처음 몇 번은 화면에서 승인해야 나간다.
+    live_trading: bool = False
+
     worker_heartbeat_interval_s: float = 15.0
     # stored: DB에 저장된 봉만 사용 (토스 호출 없음, 로컬 기본값). toss: 운영 서버.
     worker_market_source: Literal["stored", "toss"] = "stored"

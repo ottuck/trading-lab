@@ -170,6 +170,44 @@ class BotView(BaseModel):
     data_latest_date: date | None
     data_fetched_at: datetime | None
     data_source: str | None
+    live_ratio: Decimal | None = None  # 실제로 따라 사기 비율 (꺼짐이면 null)
+    live_streak: int = 0
+
+
+class LiveOrderView(BaseModel):
+    """실제 주문 1건 (실거래 R2)."""
+
+    id: int
+    bot_id: int | None
+    bot_name: str | None
+    symbol: str
+    signal_date: date
+    trade_date: date
+    amount: Decimal
+    state: str  # WAITING_APPROVAL·APPROVED·SENDING·SENT·FILLED·CANCELED·REJECTED·SKIPPED·UNKNOWN
+    reason: str | None
+    filled_qty: Decimal | None
+    filled_amount: Decimal | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class LiveView(BaseModel):
+    trader: str | None  # 실거래 스위치가 켜졌으면 증권사 출처 코드, 꺼졌으면 null
+    halted: bool
+    auto_after: int
+    per_order: Decimal
+    per_month: Decimal
+    ratios: list[str]
+    orders: list[LiveOrderView]
+
+
+class LiveRatioUpdate(BaseModel):
+    ratio: str | None  # "1/100" | "1/10" | null(끄기)
+
+
+class LiveHalt(BaseModel):
+    halted: bool
 
 
 class EventView(BaseModel):

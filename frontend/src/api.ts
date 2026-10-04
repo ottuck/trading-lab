@@ -139,6 +139,35 @@ export type Bot = {
   data_latest_date: string | null
   data_fetched_at: string | null
   data_source: string | null
+  live_ratio: Money | null // 실제로 따라 사기 비율 (꺼짐이면 null)
+  live_streak: number // 연속으로 문제없이 체결된 실제 주문
+}
+
+/** 실제 주문 1건 (실거래 R2) */
+export type LiveOrder = {
+  id: number
+  bot_id: number | null
+  bot_name: string | null
+  symbol: string
+  signal_date: string
+  trade_date: string
+  amount: Money
+  state: 'WAITING_APPROVAL' | 'APPROVED' | 'SENDING' | 'SENT' | 'FILLED' | 'CANCELED' | 'REJECTED' | 'SKIPPED' | 'UNKNOWN'
+  reason: string | null
+  filled_qty: Money | null
+  filled_amount: Money | null
+  created_at: string
+  updated_at: string
+}
+
+export type Live = {
+  trader: string | null // 실거래 스위치가 켜졌으면 증권사 출처 코드
+  halted: boolean
+  auto_after: number
+  per_order: Money
+  per_month: Money
+  ratios: string[]
+  orders: LiveOrder[]
 }
 
 export type EventItem = {
@@ -359,6 +388,14 @@ export const botApi = {
   rename: (botId: number, name: string) => request<Bot>(`/api/bots/${botId}`, json('PATCH', { name })),
   reset: (botId: number) => request<Bot>(`/api/bots/${botId}/reset`, { method: 'POST' }),
   remove: (botId: number) => request<void>(`/api/bots/${botId}`, { method: 'DELETE' }),
+  setLive: (botId: number, ratio: string | null) => request<Bot>(`/api/bots/${botId}/live`, json('PUT', { ratio })),
   history: (botId: number) =>
     request<ConfigEvent[]>(`/api/events?bot_id=${botId}&kind=config_change&limit=20`),
+}
+
+export const liveApi = {
+  get: () => request<Live>('/api/live'),
+  approve: (orderId: number) => request<Live>(`/api/live-orders/${orderId}/approve`, { method: 'POST' }),
+  decline: (orderId: number) => request<Live>(`/api/live-orders/${orderId}/decline`, { method: 'POST' }),
+  halt: (halted: boolean) => request<Live>('/api/live/halt', json('POST', { halted })),
 }

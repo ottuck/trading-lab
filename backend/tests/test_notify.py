@@ -19,6 +19,8 @@ from quant_lab.domain.events import (
     ErrorReason,
     EventKind,
     FillData,
+    LiveControlData,
+    LiveOrderData,
     MissedSessionsData,
     RunData,
     SkipReason,
@@ -94,6 +96,10 @@ SAMPLES: dict[EventKind, Mapping[str, Any] | None] = {
     EventKind.RUN_SKIPPED: RunData(reason=SkipReason.BAD_BARS),
     EventKind.RUN_ERROR: RunData(reason=ErrorReason.BROKER_ACCESS),
     EventKind.WATCHLIST_SYNC: None,
+    EventKind.LIVE_ORDER: LiveOrderData(
+        symbol="VOO", amount="3.37", state="FILLED", filled_qty="0.004812"
+    ),
+    EventKind.LIVE_CONTROL: LiveControlData(halted=True),
 }
 HIDDEN = {EventKind.WORKER_START, EventKind.DECISION_REPEAT, EventKind.WATCHLIST_SYNC}
 

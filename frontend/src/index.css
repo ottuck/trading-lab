@@ -2265,3 +2265,22 @@ body {
 .fx-note {
   margin-top: 4px;
 }
+/* 실제로 살까요? (실거래 R2): 홈 맨 위 승인 카드 */
+.live-ask {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--rise-soft);
+}
+.live-ask-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+.live-ask-row .title {
+  font-size: 15px;
+}

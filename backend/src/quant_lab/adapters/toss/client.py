@@ -26,6 +26,7 @@ from quant_lab.domain.broker import (
     ExchangeRate,
     Holding,
     Instrument,
+    OrderStatus,
     Quote,
 )
 
@@ -188,6 +189,26 @@ class TossClient:
             raise err
         raise RuntimeError("unreachable")
 
+    def _post(self, path: str, body: Mapping[str, Any]) -> Any:
+        """주문용 POST (계좌 헤더). 다시 보내지 않는다: 같은 주문 키로 다시 보낼지는 엔진이 정한다.
+
+        토큰 만료로 인한 401만 한 번 재발급해 다시 보낸다 (요청이 처리되기 전에 거절된 것이다).
+        """
+        for attempt in range(2):
+            headers = {
+                "Authorization": f"Bearer {self._bearer()}",
+                "X-Tossinvest-Account": str(self._account_seq()),
+            }
+            resp = self._send(self._http.post, path, json=body, headers=headers)
+            if resp.status_code == 200:
+                return resp.json()["result"]
+            err = _error_from(resp)
+            if isinstance(err, TossAuthError) and attempt == 0:
+                self._token = None
+                continue
+            raise err
+        raise RuntimeError("unreachable")
+
     # --- 시세·종목 ---
 
     def instruments(self, symbols: list[str]) -> list[Instrument]:
@@ -330,13 +351,28 @@ def _decimal_or_none(value: str | None) -> Decimal | None:
     return Decimal(value) if value is not None else None
 
 
+# 토스 주문 상태 → 증권사 무관 상태. 정정·취소 거부 행은 원주문이 따로 있어 거절로 본다.
+_STATUS = {
+    "PENDING": OrderStatus.OPEN,
+    "PENDING_CANCEL": OrderStatus.OPEN,
+    "PENDING_REPLACE": OrderStatus.OPEN,
+    "PARTIAL_FILLED": OrderStatus.PARTIAL,
+    "FILLED": OrderStatus.FILLED,
+    "CANCELED": OrderStatus.CANCELED,
+    "REPLACED": OrderStatus.CANCELED,
+    "REJECTED": OrderStatus.REJECTED,
+    "CANCEL_REJECTED": OrderStatus.REJECTED,
+    "REPLACE_REJECTED": OrderStatus.REJECTED,
+}
+
+
 def _to_order(raw: Mapping[str, Any]) -> AccountOrder:
     execution = raw.get("execution") or {}
     return AccountOrder(
         order_id=str(raw["orderId"]),
         symbol=raw["symbol"],
         side=raw["side"],
-        status=raw["status"],
+        status=_STATUS.get(raw["status"], OrderStatus.OTHER),
         currency=raw["currency"],
         ordered_at=datetime.fromisoformat(raw["orderedAt"]),
         order_amount=_decimal_or_none(raw.get("orderAmount")),

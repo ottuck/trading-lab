@@ -14,6 +14,7 @@ from quant_lab.application.dry_run import (
     evaluate_bot,
     latest_completed_session,
 )
+from quant_lab.application.live import LiveDesk
 from quant_lab.application.market import LiveSource, MarketData
 from quant_lab.domain.bars import TradingCalendar
 from quant_lab.domain.bot import (
@@ -89,6 +90,7 @@ class Worker:
         watchlist: Sequence[str] = (),
         live: LiveSource | None = None,
         account: Callable[[date], AccountSnapshot] | None = None,
+        desk: LiveDesk | None = None,
     ) -> None:
         self.make_session = make_session
         self.market = market
@@ -97,6 +99,7 @@ class Worker:
         self.watchlist = list(watchlist)
         self.live = live
         self.account = account
+        self.desk = desk
         self._account_at: datetime | None = None
         self._watchlist_checked_at: datetime | None = None
         self._watchlist_failing: set[str] = set()
@@ -129,7 +132,17 @@ class Worker:
         self.sync_watchlist()
         self.refresh_live()
         self.refresh_account()
+        self.trade_live()
         return outcomes
+
+    def trade_live(self) -> None:
+        """실제로 따라 사기 (실거래 R2). 실패해도 모의 판단과는 무관하다."""
+        if self.desk is None:
+            return
+        try:
+            self.desk.tick(self.now())
+        except Exception:
+            log.exception("실제 주문 처리 실패, 다음 주기에 다시")
 
     def refresh_account(self) -> None:
         """실제 증권사 계좌를 한 시간마다 읽어 저장한다 (실거래 R1, 읽기만).
