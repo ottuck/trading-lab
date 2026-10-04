@@ -149,23 +149,52 @@ class LiveDesk:
                 leverage = leverage_of(session, sim.symbol)
                 if leverage is not None and leverage > 1:
                     order.state, order.reason = LiveState.SKIPPED, SkipReason.LEVERAGED
-                elif order.amount < MIN_AMOUNT:
-                    order.state, order.reason = LiveState.SKIPPED, SkipReason.TOO_SMALL
                 elif halted:
                     order.state, order.reason = LiveState.SKIPPED, SkipReason.HALTED
                 else:
-                    month = self._month_total(session, bot.id, order.trade_date)
-                    if needs_approval(order.amount, month, bot.live_streak, self.limits):
-                        order.state = LiveState.WAITING_APPROVAL
+                    carried = self._carried(session, bot.id, sim.symbol)
+                    total = order.amount + sum((c.amount for c in carried), Decimal(0))
+                    if total < MIN_AMOUNT:
+                        # 작은 몫은 버리지 않고 모아 둔다. 같은 종목 다음 주문에 더해 함께 산다.
+                        order.state, order.reason = LiveState.SKIPPED, SkipReason.CARRIED
                     else:
-                        auto = True
+                        order.amount = total
+                        session.add(order)
+                        session.flush()
+                        for c in carried:
+                            c.carried_into, c.updated_at = order.id, now
+                        month = self._month_total(session, bot.id, order.trade_date)
+                        if needs_approval(order.amount, month, bot.live_streak, self.limits):
+                            order.state = LiveState.WAITING_APPROVAL
+                        else:
+                            auto = True
                 session.add(order)
                 session.flush()
-                level = "WARN" if order.state == LiveState.SKIPPED else "INFO"
-                live_event(session, now, order, level, **({"auto": True} if auto else {}))
+                warn = order.reason in (SkipReason.HALTED, SkipReason.LEVERAGED)
+                live_event(
+                    session,
+                    now,
+                    order,
+                    "WARN" if warn else "INFO",
+                    **({"auto": True} if auto else {}),
+                )
                 made.append(order)
             session.commit()
         return made
+
+    @staticmethod
+    def _carried(session: Session, bot_id: int, symbol: str) -> list[LiveOrderRow]:
+        """아직 더하지 않은, 작아서 모아 둔 몫."""
+        return list(
+            session.scalars(
+                select(LiveOrderRow).where(
+                    LiveOrderRow.bot_id == bot_id,
+                    LiveOrderRow.symbol == symbol,
+                    LiveOrderRow.reason == SkipReason.CARRIED,
+                    LiveOrderRow.carried_into.is_(None),
+                )
+            )
+        )
 
     def _next_session(self, signal_date: date) -> date:
         return self.calendar.sessions(

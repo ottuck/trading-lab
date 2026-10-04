@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
-import { api, botApi, liveApi, type Bot, type SymbolWeight, type BrokerAccount } from '../api'
+import { api, botApi, liveApi, notifyApi, type Bot, type NotifyScope, type SymbolWeight, type BrokerAccount } from '../api'
 import { useLive } from '../live'
 import { LiveOrderList } from './Live'
 import { ago, dollars, money, shares, won } from '../format'
@@ -253,7 +253,7 @@ function BrokerAccountSection() {
   const name = data.source ? sourceLabel(data.source) : '증권사'
   const failing = !!data.error_at && (!data.fetched_at || data.error_at > data.fetched_at)
   return (
-    <Section title={`${name} 계좌`} desc={`실제 ${name} 계좌를 한 시간마다 읽어 와요. 아직 주문은 내지 않아요.`}>
+    <Section title={`${name} 계좌`} desc={`실제 ${name} 계좌를 한 시간마다 읽어 와요. 실제 주문은 봇 설정의 "실제로 따라 사기"에서 켜요.`}>
       {failing && (
         <div className="notice">
           {ago(data.error_at)}에 계좌를 읽지 못했어요.{' '}
@@ -320,10 +320,6 @@ function LiveSection({ bot }: { bot: Bot }) {
       void qc.invalidateQueries({ queryKey: ['history', bot.id] })
     },
   })
-  const halt = useMutation({
-    mutationFn: (halted: boolean) => liveApi.halt(halted),
-    onSuccess: (data) => qc.setQueryData(['live'], data),
-  })
   if (!live) return null
   const current = bot.live_ratio == null ? null : (RATIO_OF[String(Number(bot.live_ratio))] ?? bot.live_ratio)
   const pick = (ratio: string | null) => {
@@ -373,25 +369,111 @@ function LiveSection({ bot }: { bot: Bot }) {
           <LiveOrderList orders={mine} />
         </div>
       )}
-      {live.trader && (
-        <div className="controls">
-          {live.halted ? (
-            <button disabled={halt.isPending} onClick={() => halt.mutate(false)}>
-              실제 주문 다시 시작
-            </button>
-          ) : (
-            <button
-              className="danger"
-              disabled={halt.isPending}
-              onClick={() => window.confirm('모든 봇의 실제 주문을 멈출까요? 이미 보낸 주문은 체결을 계속 확인해요.') && halt.mutate(true)}
-            >
-              실제 주문 모두 멈추기
-            </button>
-          )}
-          {live.halted && <span className="bad small">멈춤 중 · 새 실제 주문을 보내지 않아요</span>}
-        </div>
-      )}
     </Section>
+  )
+}
+
+/** 비상 중지: 모든 봇의 실제 주문을 멈춘다. 이미 보낸 주문은 체결을 계속 확인한다. */
+function HaltSection() {
+  const qc = useQueryClient()
+  const { data: live } = useLive()
+  const halt = useMutation({
+    mutationFn: (halted: boolean) => liveApi.halt(halted),
+    onSuccess: (data) => qc.setQueryData(['live'], data),
+  })
+  if (!live?.trader) return null
+  return (
+    <Section title="실제 주문" desc="모든 봇의 실제 주문을 한 번에 멈추거나 다시 시작해요. 이미 보낸 주문은 체결을 계속 확인해요.">
+      <div className="controls">
+        {live.halted ? (
+          <button disabled={halt.isPending} onClick={() => halt.mutate(false)}>
+            다시 시작
+          </button>
+        ) : (
+          <button
+            className="danger"
+            disabled={halt.isPending}
+            onClick={() => window.confirm('모든 봇의 실제 주문을 멈출까요?') && halt.mutate(true)}
+          >
+            모두 멈추기
+          </button>
+        )}
+        <span className={live.halted ? 'bad small' : 'faint small'}>
+          {live.halted ? '멈춤 중 · 새 실제 주문을 보내지 않아요' : '실제 주문을 내고 있어요'}
+        </span>
+      </div>
+    </Section>
+  )
+}
+
+/** 텔레그램 알림: 켜기·받을 알림 고르기·테스트. 봇 토큰은 서버 비밀값에만 있다. */
+function NotifySection() {
+  const qc = useQueryClient()
+  const { data } = useQuery({ queryKey: ['notify'], queryFn: notifyApi.get })
+  const save = useMutation({
+    mutationFn: (next: { enabled: boolean; scope: NotifyScope }) => notifyApi.update(next.enabled, next.scope),
+    onSuccess: (n) => qc.setQueryData(['notify'], n),
+  })
+  const test = useMutation({ mutationFn: notifyApi.test })
+  if (!data) return null
+  if (!data.available)
+    return (
+      <Section title="텔레그램 알림" desc="승인 요청과 체결을 폰으로 받아요.">
+        <div className="notice">서버에 텔레그램 봇 정보가 없어요. 봇 토큰과 채팅 ID를 넣으면 여기서 켤 수 있어요.</div>
+      </Section>
+    )
+  const scope = data.scope as NotifyScope
+  return (
+    <Section title="텔레그램 알림" desc="승인 요청과 체결을 폰으로 받아요.">
+      <div className="controls">
+        <button className={`seg ${!data.enabled ? 'active' : ''}`} disabled={save.isPending} onClick={() => save.mutate({ enabled: false, scope })}>
+          끄기
+        </button>
+        <button
+          className={`seg ${data.enabled && scope === 'live' ? 'active' : ''}`}
+          disabled={save.isPending}
+          onClick={() => save.mutate({ enabled: true, scope: 'live' })}
+        >
+          실제 주문만
+        </button>
+        <button
+          className={`seg ${data.enabled && scope === 'all' ? 'active' : ''}`}
+          disabled={save.isPending}
+          onClick={() => save.mutate({ enabled: true, scope: 'all' })}
+        >
+          모의 투자 소식까지
+        </button>
+      </div>
+      <div className="faint small">
+        {!data.enabled
+          ? '알림을 보내지 않아요. 소식은 앱의 기록에서 볼 수 있어요.'
+          : scope === 'live'
+            ? '실제로 살까요? 승인 요청, 체결, 실제 주문 문제, 봇이 멈춘 문제만 보내요.'
+            : '모의 매수·매도와 주간 정리까지 보내요.'}
+      </div>
+      <div className="controls">
+        <button disabled={test.isPending} onClick={() => test.mutate()}>
+          테스트 메시지 보내기
+        </button>
+        {test.isSuccess && <span className="ok small">보냈어요. 1분 안에 도착해요.</span>}
+        {(test.error ?? save.error) && <span className="bad small">{(test.error ?? save.error)?.message}</span>}
+      </div>
+    </Section>
+  )
+}
+
+/** 설정 맨 위: 봇과 상관없이 하나인 것 (실제 계좌, 알림, 비상 중지). */
+function AccountAndNotify() {
+  return (
+    <>
+      <div className="settings-head">
+        <h1 className="settings-title">계좌와 알림</h1>
+        <p className="muted small">봇과 상관없이 하나예요.</p>
+      </div>
+      <BrokerAccountSection />
+      <NotifySection />
+      <HaltSection />
+    </>
   )
 }
 
@@ -449,7 +531,6 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
       <SymbolsField key={bot.symbols.map((s) => `${s.symbol}${s.weight}`).join()} bot={bot} />
       {isMeBot(bot) && <LiveSection bot={bot} />}
       <NameField key={bot.name} bot={bot} />
-      <BrokerAccountSection />
       <History botId={bot.id} />
       <DangerZone bot={bot} others={others} />
     </>
@@ -560,7 +641,8 @@ export function SettingsView({ bots }: { bots: Bot[] }) {
   const creating = seed !== null || !bots.length
   return (
     <div className="settings">
-      <div className="settings-head">
+      <AccountAndNotify />
+      <div className="settings-head bots-head">
         <Switcher bots={bots} current={selected} creating={creating} />
         <p className="muted small">
           {creating

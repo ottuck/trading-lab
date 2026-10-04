@@ -29,6 +29,7 @@ class EventKind(StrEnum):
     WATCHLIST_SYNC = "watchlist_sync"  # 내부 기록
     LIVE_ORDER = "live_order"  # 실제 주문 상태가 바뀜 (실거래 R2)
     LIVE_CONTROL = "live_control"  # 비상 중지·재개
+    NOTIFY_TEST = "notify_test"  # 화면의 "테스트 메시지 보내기"
 
 
 class SkipReason(StrEnum):

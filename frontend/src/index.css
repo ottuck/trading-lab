@@ -2284,3 +2284,40 @@ body {
 .live-ask-row .title {
   font-size: 15px;
 }
+/* 설정: 맨 위 "계좌와 알림"(봇과 무관) 다음에 봇 설정 */
+.settings-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+.settings-head.bots-head {
+  margin-top: 48px;
+}
+/* 홈 오른쪽 실제 계좌 카드. 누르면 금액을 가린다 */
+button.account-card {
+  display: grid;
+  justify-items: start;
+  gap: 3px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  text-align: left;
+  font-weight: 400;
+}
+button.account-card:hover:not(:disabled) {
+  background: var(--card);
+  border-color: var(--border-strong, var(--border));
+}
+.account-card .label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.account-card .value {
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}

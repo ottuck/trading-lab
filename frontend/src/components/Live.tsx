@@ -1,7 +1,9 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { liveApi, type LiveOrder } from '../api'
-import { ago, dollars, shares } from '../format'
-import { dayLabel, liveStatus, useLive } from '../live'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { api, liveApi, type LiveOrder } from '../api'
+import { useDemo } from '../demo'
+import { ago, dollars, shares, won } from '../format'
+import { dayLabel, liveStatus, toggleBalanceHidden, useBalanceHidden, useLive } from '../live'
+import { sourceLabel } from '../source'
 
 /* 실제로 따라 사기 (실거래 R2). 실제 계좌 금액은 원화로 바꿔 보지 않고 늘 달러로 보여준다. */
 
@@ -67,5 +69,46 @@ export function LiveOrderList({ orders, limit = 5 }: { orders: LiveOrder[]; limi
         </div>
       ))}
     </>
+  )
+}
+
+/** 홈 오른쪽: 실제 증권사 계좌 잔액과 이번 달 실제로 산 금액. 누르면 금액을 가린다. */
+export function AccountCard() {
+  const demo = useDemo()
+  const { data: account } = useQuery({
+    queryKey: ['broker-account'],
+    queryFn: api.brokerAccount,
+    refetchInterval: 60_000,
+    enabled: !demo,
+  })
+  const { data: live } = useLive()
+  const hidden = useBalanceHidden()
+  if (!account?.fetched_at) return null
+  const month = account.fetched_at.slice(0, 7) // 마지막으로 읽은 달 (렌더 중 Date를 부르지 않는다)
+  const bought = (live?.orders ?? [])
+    .filter((o) => o.state === 'FILLED' && o.updated_at.slice(0, 7) === month)
+    .reduce((sum, o) => sum + Number(o.filled_amount ?? o.amount), 0)
+  const waiting = (live?.orders ?? []).filter((o) => o.state === 'WAITING_APPROVAL').length
+  const mask = (text: string) => (hidden ? '••••' : text)
+  return (
+    <button
+      className="account-card"
+      onClick={toggleBalanceHidden}
+      aria-pressed={hidden}
+      title={hidden ? '눌러서 금액 보기' : '눌러서 금액 가리기'}
+    >
+      <span className="label">{account.source ? sourceLabel(account.source) : '증권사'} 계좌</span>
+      <span className="value tnum">{mask(dollars(account.cash_usd))}</span>
+      <span className="faint small">
+        {hidden ? '눌러서 금액 보기' : `원화로 약 ${won(account.cash_krw)}`}
+      </span>
+      {live?.trader && (
+        <span className="small muted">
+          이번 달 실제로 산 금액 {mask(dollars(String(bought)))}
+          {waiting > 0 && ` · 승인 기다림 ${waiting}건`}
+        </span>
+      )}
+      <span className="faint small">{ago(account.fetched_at)}에 읽었어요</span>
+    </button>
   )
 }

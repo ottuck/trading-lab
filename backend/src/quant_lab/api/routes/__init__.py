@@ -6,10 +6,11 @@ research: 계산해 보기). 서비스 오류(NotFound·Invalid·Conflict)는 ap
 
 from fastapi import APIRouter
 
-from quant_lab.api.routes import bots, live, market, research
+from quant_lab.api.routes import bots, live, market, notify, research
 
 router = APIRouter(prefix="/api")
 router.include_router(bots.router)
 router.include_router(live.router)
 router.include_router(market.router)
+router.include_router(notify.router)
 router.include_router(research.router)

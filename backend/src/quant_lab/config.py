@@ -19,9 +19,9 @@ class Settings(BaseSettings):
     toss_client_id: SecretStr | None = None
     toss_client_secret: SecretStr | None = None
 
-    # 텔레그램 알림 (Worker만 사용). 2026-10-02부터 기본으로 끈다 (project.md 6절):
-    # 실거래가 없는 모의 투자에는 즉시 알림이 필요 없고, 소식은 앱의 기록에서 본다.
-    # 다시 켜려면 TELEGRAM_ENABLED=true와 토큰·채팅 ID를 함께 둔다.
+    # 텔레그램 알림 (Worker만 사용). 토큰·채팅 ID가 있으면 준비되고, 켜기·받을 알림은
+    # 화면 설정(notify_settings)에서 고른다 (2026-10-04~).
+    # TELEGRAM_ENABLED는 처음 시작 값으로만 쓴다.
     telegram_enabled: bool = False
     telegram_bot_token: SecretStr | None = None
     telegram_chat_id: str | None = None
