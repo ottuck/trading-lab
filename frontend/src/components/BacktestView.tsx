@@ -2,10 +2,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ColorType, createChart, LineSeries, type Time } from 'lightweight-charts'
 import { useEffect, useRef, useState } from 'react'
 import { api, backtestApi, type BacktestDetail, type StrategyInfo, type SymbolWeight } from '../api'
-import { money, percent, shares, signedMoney, tone } from '../format'
+import { useCurrency } from '../currency'
+import { money, percent, roundMoney, shares, signedMoney, tone } from '../format'
 import { isMeBot, useStrategies } from '../strategies'
 import { useDemo, usePriceWord } from '../demo'
 import { cssVar, useTheme } from '../theme'
+import { FxNote } from './Currency'
 import { Term } from './Help'
 import { goTo, startNewBot } from '../selectedBot'
 import { ParallelWorlds } from './Parallel'
@@ -170,7 +172,7 @@ function RunForm({
             {run.isPending
               ? '계산 중…'
               : info?.accumulates
-                ? `매달 $${params.deposit?.toLocaleString('en-US')}씩 시험해 보기`
+                ? `매달 ${roundMoney(Number(params.deposit ?? 0))}씩 시험해 보기`
                 : '$10,000로 시험해 보기'}
           </button>
           {run.error && <span className="bad small">{run.error.message}</span>}
@@ -183,6 +185,7 @@ function RunForm({
 export function EquityChart({ detail }: { detail: BacktestDetail }) {
   const el = useRef<HTMLDivElement>(null)
   const { theme } = useTheme()
+  const { currency, rate } = useCurrency()
   useEffect(() => {
     if (!el.current) return
     const grid = cssVar('--chart-grid')
@@ -198,7 +201,7 @@ export function EquityChart({ detail }: { detail: BacktestDetail }) {
       // 10년 일봉(약 2,500개)이 좁은 화면에도 다 들어오게 막대 간격 하한을 낮춘다 (기본 0.5px).
       timeScale: { borderVisible: false, minBarSpacing: 0.01 },
       rightPriceScale: { mode: 1, borderVisible: false }, // 로그 눈금: 긴 기간의 오르내림을 비교하기 쉽다
-      localization: { priceFormatter: (v: number) => `$${Math.round(v).toLocaleString('en-US')}` },
+      localization: { priceFormatter: roundMoney },
     })
     const strat = chart.addSeries(LineSeries, { color: cssVar('--text'), lineWidth: 2, priceLineVisible: false })
     const bench = chart.addSeries(LineSeries, { color: cssVar('--faint'), lineWidth: 1, priceLineVisible: false })
@@ -206,7 +209,7 @@ export function EquityChart({ detail }: { detail: BacktestDetail }) {
     bench.setData(detail.equity.map((p) => ({ time: p.session_date as Time, value: Number(p.benchmark) })))
     chart.timeScale().fitContent()
     return () => chart.remove()
-  }, [detail, theme])
+  }, [detail, theme, currency, rate])
   return <div ref={el} className="bt-chart" />
 }
 
@@ -245,7 +248,7 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
             <span>
               · {basketLabel(data.symbols, data.symbol)} ·{' '}
               {monthly
-                ? `${ym(m.start)}부터 매달 $${data.params.deposit?.toLocaleString('en-US')}씩 넣었다면 (모두 ${money(paid)})`
+                ? `${ym(m.start)}부터 매달 ${roundMoney(Number(data.params.deposit ?? 0))}씩 넣었다면 (모두 ${money(paid)})`
                 : `${ym(m.start)}부터 ${money(m.initial_cash)}로 시작했다면`}
             </span>
           </div>
@@ -256,6 +259,7 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
             </span>
             <span className="when">해마다 평균 {percent(m.cagr)}</span>
           </div>
+          <FxNote />
         </div>
         {!demo && (
           <div className="hero-actions">

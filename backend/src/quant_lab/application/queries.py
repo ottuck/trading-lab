@@ -18,6 +18,7 @@ from quant_lab.persistence.models import (
     DailyBarRow,
     DecisionRow,
     EventRow,
+    ExchangeRateRow,
     InstrumentRow,
     LiveBarRow,
     QuoteRow,
@@ -43,6 +44,15 @@ class InstrumentInfo:
     leverage_factor: Decimal | None
     live_price: Decimal | None
     live_at: datetime | None
+
+
+@dataclass(frozen=True)
+class FxInfo:
+    base: str
+    quote: str
+    rate: Decimal  # 매매기준율
+    as_of: datetime
+    source: str
 
 
 @dataclass(frozen=True)
@@ -86,6 +96,14 @@ def instruments(session: Session, watchlist: Sequence[str]) -> list[InstrumentIn
         )
         for s in symbols
     ]
+
+
+def usd_krw(session: Session) -> FxInfo | None:
+    """화면 원화 환산용 최신 원/달러 (W1). Worker가 한 시간마다, 데모는 고정 예시 값."""
+    row = session.get(ExchangeRateRow, ("USD", "KRW"))
+    if row is None:
+        return None
+    return FxInfo(row.base, row.quote, row.mid_rate, row.as_of, row.source)
 
 
 def activity(session: Session, bot_id: int | None, kind: str | None, limit: int) -> list[Activity]:

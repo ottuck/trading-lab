@@ -1,12 +1,26 @@
 // 표시용 변환. 계산은 백엔드가 하고 화면은 숫자를 보기 좋게만 바꾼다.
-
-const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
-
-export function money(value: string | null | undefined): string {
-  return value == null ? '—' : usd.format(Number(value))
-}
+import { krwRate } from './currency'
 
 const krw = new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' })
+const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
+
+/** 달러 금액. 원화로 보기(W1)를 골랐으면 오늘 환율로 바꾼 원화로 보여준다. */
+export function money(value: string | null | undefined): string {
+  if (value == null) return '—'
+  const rate = krwRate()
+  return rate ? krw.format(Math.round(Number(value) * rate)) : usd.format(Number(value))
+}
+
+/** 차트 눈금·짧은 문장용 반올림 금액 ($1,350 / ₩1,890,000). */
+export function roundMoney(value: number): string {
+  const rate = krwRate()
+  return rate ? `₩${Math.round(value * rate).toLocaleString('ko-KR')}` : `$${Math.round(value).toLocaleString('en-US')}`
+}
+
+/** 실제 증권사 계좌의 달러처럼 바꿔 보면 안 되는 금액. 늘 달러로 보여준다. */
+export function dollars(value: string | null | undefined): string {
+  return value == null ? '—' : usd.format(Number(value))
+}
 
 export function won(value: string | null | undefined): string {
   return value == null ? '—' : krw.format(Number(value))
@@ -15,7 +29,7 @@ export function won(value: string | null | undefined): string {
 export function signedMoney(value: string | null | undefined): string {
   if (value == null) return '—'
   const n = Number(value)
-  return `${n > 0 ? '+' : ''}${usd.format(n)}`
+  return `${n > 0 ? '+' : ''}${money(value)}`
 }
 
 export function percent(value: string | null | undefined): string {

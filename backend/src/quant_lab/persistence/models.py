@@ -308,3 +308,20 @@ class BrokerAccountRow(Base):
     fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)  # access(권한·허용 IP) | temporary(일시 장애)
     error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ExchangeRateRow(Base):
+    """통화 쌍마다 최신 환율 1행 (W1, 화면에서 원화로 바꿔 보기만).
+
+    판단·주문·저장 금액은 늘 달러다.
+    """
+
+    __tablename__ = "exchange_rates"
+
+    base: Mapped[str] = mapped_column(String(3), primary_key=True)
+    quote: Mapped[str] = mapped_column(String(3), primary_key=True)
+    mid_rate: Mapped[Decimal] = mapped_column(PRICE)  # 매매기준율, 화면 환산에 쓴다
+    buy_rate: Mapped[Decimal | None] = mapped_column(PRICE)
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    source: Mapped[str] = mapped_column(String(20))  # 출처 코드 (증권사 어댑터 또는 demo)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

@@ -13,6 +13,7 @@ from quant_lab.api.schemas import (
     ChoiceOption,
     ChoiceView,
     EventView,
+    FxView,
     InstrumentView,
     PresetView,
     StrategyInfo,
@@ -46,6 +47,13 @@ def instruments(session: SessionDep) -> list[InstrumentView]:
         InstrumentView.model_validate(i, from_attributes=True)
         for i in queries.instruments(session, watch)
     ]
+
+
+@router.get("/fx")
+def fx(session: SessionDep) -> FxView | None:
+    """오늘 원/달러 (화면에서 원화로 바꿔 보기만). 아직 받지 못했으면 null."""
+    info = queries.usd_krw(session)
+    return FxView.model_validate(info, from_attributes=True) if info else None
 
 
 @router.get("/broker-account")
