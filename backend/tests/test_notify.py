@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from quant_lab.application import notify_settings
 from quant_lab.application.messages import event_message
 from quant_lab.application.notify import EventNotifier
 from quant_lab.domain.events import (
@@ -100,6 +101,7 @@ SAMPLES: dict[EventKind, Mapping[str, Any] | None] = {
         symbol="VOO", amount="3.37", state="FILLED", filled_qty="0.004812"
     ),
     EventKind.LIVE_CONTROL: LiveControlData(halted=True),
+    EventKind.NOTIFY_TEST: None,
 }
 HIDDEN = {EventKind.WORKER_START, EventKind.DECISION_REPEAT, EventKind.WATCHLIST_SYNC}
 
@@ -117,6 +119,8 @@ def test_every_event_kind_has_a_message() -> None:
 
 def test_events_become_plain_messages_sent_once(engine: Engine, session: Session) -> None:
     make_session: Callable[[], Session] = sessionmaker(engine)
+    notify_settings.announce(session, True, False, NOW)  # Worker에 토큰이 있음
+    notify_settings.update(session, True, "all", NOW)  # 화면: 켜기, 모의 투자 소식까지
     add_event(session, NOW, "ERROR", EventKind.RUN_ERROR, "시작 전 오류")
     session.commit()
     sent: list[str] = []
@@ -146,3 +150,12 @@ def test_events_become_plain_messages_sent_once(engine: Engine, session: Session
     ]
     assert "상승 흐름이에요" in parts[0] and "내일 장이 열리면 QQQ를 사요" in parts[0]
     assert "아직 최신 시세가 도착하지 않았어요" in parts[2]
+
+    # "실제 주문만"을 고르면 모의 투자 소식은 보내지 않는다
+    notify_settings.update(session, True, "live", NOW)
+    add_event(session, NOW, "INFO", EventKind.DECISION, "x", data=decision("BUY", False))
+    live = LiveOrderData(symbol="VOO", amount="3.37", state="WAITING_APPROVAL")
+    add_event(session, NOW, "INFO", EventKind.LIVE_ORDER, "x", data=live)
+    session.commit()
+    assert notifier.poll() == 1
+    assert sent[-1].startswith("🙋 실제로 살까요? · VOO")

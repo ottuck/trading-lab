@@ -15,7 +15,7 @@ CENT = Decimal("0.01")
 RATIOS: dict[str, Decimal] = {"1/100": Decimal("0.01"), "1/10": Decimal("0.1")}
 
 AUTO_AFTER = 3  # 승인한 주문이 이만큼 연속으로 문제없이 체결되면 그다음부터 자동으로 낸다
-MIN_AMOUNT = Decimal("1")  # 이보다 작은 주문은 내지 않는다 (소수점 금액 주문의 최소 단위)
+MIN_AMOUNT = Decimal("1")  # 이보다 작은 몫은 모아 두었다가 넘으면 함께 산다 (소수점 금액 주문 최소)
 SEND_DELAY_MINUTES = 5  # 주문 접수 시간이 열리고 이만큼 뒤에 낸다 (장 시작 직후 가격 흔들림 피하기)
 
 
@@ -50,7 +50,8 @@ class SkipReason(StrEnum):
     MISSED = "missed"  # 접수 시간 안에 내지 못함 (PC 꺼짐 등)
     NO_SESSION = "no_session"  # 그날 장이 열리지 않음
     LEVERAGED = "leveraged"  # 레버리지 ETF는 실제로 사지 않는다
-    TOO_SMALL = "too_small"
+    TOO_SMALL = "too_small"  # 2026-10-04 이전 기록만 (지금은 CARRIED로 모아 둔다)
+    CARRIED = "carried"  # 금액이 작아 모아 둠. 같은 종목 다음 주문에 더해 함께 산다
 
 
 def scaled_amount(budget: Decimal, ratio: Decimal) -> Decimal:

@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from quant_lab.application.messages import KST, event_message, telegram_text
+from quant_lab.application.notify_settings import current, wants
 from quant_lab.persistence.models import BotRow, EventRow
 
 log = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ class EventNotifier:
                     .limit(50)
                 )
             )
+            settings = current(session)
             bots = {
                 bot_id: (name, symbol)
                 for bot_id, name, symbol in session.execute(
@@ -63,6 +65,8 @@ class EventNotifier:
         # (마지막 이벤트 id, 묶은 문장, 소식 수) 단위로 보낸다.
         chunks: list[tuple[int, str, int]] = []
         for event in events:
+            if not wants(settings, event.kind):  # 화면 설정: 꺼짐이거나 받지 않기로 한 종류
+                continue
             text = render(event, bots.get(event.bot_id) if event.bot_id else None)
             if text is None:
                 continue

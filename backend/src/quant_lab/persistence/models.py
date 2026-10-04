@@ -359,6 +359,8 @@ class LiveOrderRow(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # 처음 보낸 시각
     filled_qty: Mapped[Decimal | None] = mapped_column(PRICE)
     filled_amount: Mapped[Decimal | None] = mapped_column(PRICE)
+    # 금액이 작아 모아 둔 몫(reason=carried)이 더해진 주문. 비어 있으면 아직 모아 두는 중
+    carried_into: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -374,4 +376,19 @@ class LiveControlRow(Base):
     trader: Mapped[str | None] = mapped_column(
         String(20)
     )  # 켜져 있으면 출처 코드, 꺼져 있으면 NULL
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class NotifySettingsRow(Base):
+    """텔레그램 알림 설정 1행. 화면에서 켜고 고른다.
+
+    봇 토큰·채팅 ID는 비밀값이라 .secrets/에만 둔다.
+    """
+
+    __tablename__ = "notify_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)  # 늘 1
+    enabled: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    scope: Mapped[str] = mapped_column(String(10), server_default="live")  # live | all
+    available: Mapped[bool] = mapped_column(Boolean, server_default="false")  # Worker에 토큰이 있음
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

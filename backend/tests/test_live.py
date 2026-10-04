@@ -87,13 +87,13 @@ def live_bot(session: Session, streak: int = 0) -> BotRow:
     return bot
 
 
-def sim_buy(session: Session, bot: BotRow, budget: str) -> SimOrderRow:
+def sim_buy(session: Session, bot: BotRow, budget: str, signal: date = SIGNAL) -> SimOrderRow:
     """모의 판단이 만든 매수 주문 (dry_run이 남기는 것과 같은 모양)."""
     run = RunRow(id=uuid.uuid4(), bot_id=bot.id, trigger="SCHEDULED", started_at=OPEN, status="OK")
     session.add(run)
     session.flush()
     decision = DecisionRow(
-        bot_id=bot.id, symbol="VOO", session_date=SIGNAL, mode="DRY_RUN", run_id=run.id,
+        bot_id=bot.id, symbol="VOO", session_date=signal, mode="DRY_RUN", run_id=run.id,
         strategy={}, action="BUY", target_long=True, holding=False, reason="", indicators={},
         created_at=OPEN - timedelta(hours=12),
     )  # fmt: skip
@@ -101,7 +101,7 @@ def sim_buy(session: Session, bot: BotRow, budget: str) -> SimOrderRow:
     session.flush()
     sim = SimOrderRow(
         bot_id=bot.id, symbol="VOO", decision_id=decision.id, side="BUY", status="PENDING",
-        signal_date=SIGNAL, created_at=OPEN - timedelta(hours=12), budget=Decimal(budget),
+        signal_date=signal, created_at=OPEN - timedelta(hours=12), budget=Decimal(budget),
     )  # fmt: skip
     session.add(sim)
     session.commit()
@@ -158,3 +158,21 @@ def test_unknown_result_is_never_resent_after_window_and_auto_after_streak(
     assert order.state == LiveState.UNKNOWN
     session.refresh(bot)
     assert bot.live_streak == 0  # 다음 주문부터 다시 승인
+
+
+def test_small_shares_are_carried_until_they_reach_the_minimum(
+    make_session: Callable[[], Session], session: Session
+) -> None:
+    bot = live_bot(session)
+    desk = LiveDesk(make_session, FakeTrader(), WeekdayCalendar())
+    first_sim = sim_buy(session, bot, "50", signal=date(2026, 9, 30))  # $0.50: 모아 둔다
+    desk.plan(SEND)
+    first_sim.status = "FILLED"  # 모의 체결 뒤 다음 매수
+    session.commit()
+    sim_buy(session, bot, "50")  # 또 $0.50: 모은 몫과 합쳐 $1.00
+    desk.plan(SEND)
+
+    session.expire_all()
+    first, second = session.scalars(select(LiveOrderRow).order_by(LiveOrderRow.id))
+    assert (first.state, first.reason, first.carried_into) == ("SKIPPED", "carried", second.id)
+    assert (second.state, second.amount) == (LiveState.WAITING_APPROVAL, Decimal("1.00"))
