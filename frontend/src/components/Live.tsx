@@ -89,26 +89,46 @@ export function AccountCard() {
     .filter((o) => o.state === 'FILLED' && o.updated_at.slice(0, 7) === month)
     .reduce((sum, o) => sum + Number(o.filled_amount ?? o.amount), 0)
   const waiting = (live?.orders ?? []).filter((o) => o.state === 'WAITING_APPROVAL').length
-  const mask = (text: string) => (hidden ? '••••' : text)
+  // 가릴 때는 숫자 자리를 같은 높이의 둥근 막대로 바꿔 레이아웃이 흔들리지 않게 한다.
+  const amount = (text: string, width: string) =>
+    hidden ? <span className="redact" style={{ width }} aria-label="가린 금액" /> : text
   return (
     <button
       className="account-card"
       onClick={toggleBalanceHidden}
       aria-pressed={hidden}
-      title={hidden ? '눌러서 금액 보기' : '눌러서 금액 가리기'}
+      aria-label={hidden ? '금액 보기' : '금액 가리기'}
+      title={hidden ? '금액 보기' : '금액 가리기'}
     >
-      <span className="label">{account.source ? sourceLabel(account.source) : '증권사'} 계좌</span>
-      <span className="value tnum">{mask(dollars(account.cash_usd))}</span>
-      <span className="faint small">
-        {hidden ? '눌러서 금액 보기' : `원화로 약 ${won(account.cash_krw)}`}
+      <span className="account-card-head">
+        <span className="label">{account.source ? sourceLabel(account.source) : '증권사'} 계좌</span>
+        <EyeIcon off={hidden} />
       </span>
+      <span className="value tnum">{amount(dollars(account.cash_usd), '4.2em')}</span>
+      <span className="faint small">원화로 약 {amount(won(account.cash_krw), '5em')}</span>
       {live?.trader && (
         <span className="small muted">
-          이번 달 실제로 산 금액 {mask(dollars(String(bought)))}
+          이번 달 실제로 산 금액 {amount(dollars(String(bought)), '3.4em')}
           {waiting > 0 && ` · 승인 기다림 ${waiting}건`}
         </span>
       )}
       <span className="faint small">{ago(account.fetched_at)}에 읽었어요</span>
     </button>
+  )
+}
+
+function EyeIcon({ off }: { off: boolean }) {
+  return (
+    <svg className="eye" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="2.8" fill="none" stroke="currentColor" strokeWidth="1.6" />
+      {off && <path d="M4 4l16 16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />}
+    </svg>
   )
 }
