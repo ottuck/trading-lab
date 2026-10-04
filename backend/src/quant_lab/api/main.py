@@ -15,6 +15,7 @@ from quant_lab import __version__
 from quant_lab.api.access import AccessGuard
 from quant_lab.api.routes import router
 from quant_lab.api.schemas import HealthResponse, WorkerStatus
+from quant_lab.application.errors import AppError, Conflict, Invalid, NotFound
 from quant_lab.config import get_settings
 from quant_lab.persistence.db import get_session
 from quant_lab.persistence.heartbeat import latest_heartbeat
@@ -23,6 +24,16 @@ from quant_lab.persistence.heartbeat import latest_heartbeat
 # 공개 인터넷에 직접 노출하지 않는다.
 app = FastAPI(title="Quant Lab", version=__version__)
 app.include_router(router)
+
+# 서비스 오류 → HTTP 상태. 메시지는 화면에 그대로 보여줘도 되는 문장이다 (application/errors.py).
+ERROR_STATUS = {NotFound: 404, Invalid: 400, Conflict: 409}
+
+
+@app.exception_handler(AppError)
+async def app_error(request: Request, exc: AppError) -> JSONResponse:
+    code = next((c for t, c in ERROR_STATUS.items() if isinstance(exc, t)), 400)
+    return JSONResponse({"detail": str(exc)}, status_code=code)
+
 
 _settings = get_settings()
 access = (
