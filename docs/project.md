@@ -87,11 +87,18 @@ backend/
     domain/          # 순수 로직: 봉, 지표, 전략, 위험 규칙, 모의 체결 규칙 (외부 의존 없음)
       broker.py      # 증권사 연결 규약(Broker)과 증권사와 무관한 시세·계좌 형식, 오류 2종
       events.py      # 이벤트 종류·내용 형식·이유 코드 (엔진 → 알림·화면 규약)
-    application/     # 유스케이스: 평가 1회, 백테스트, 명령 처리
+    application/     # 유스케이스 (FastAPI를 모른다)
+      dry_run.py     #   평가 1회 (엔진)
+      bots.py        #   봇 관리: 만들기·설정·종목·이름·초기화·삭제·명령
+      bot_status.py  #   봇 상태 계산: 종목별·실시간 평가, 마지막 판단, 자산 곡선
+      queries.py     #   조회: 일봉(+진행 중 봉), 종목, 최근 활동, 기록
+      research.py    #   계산해 보기: 백테스트, 평행세계, 따라 하기
+      messages.py    #   알림·화면 공용 문장
+      errors.py      #   서비스 오류 3종 (NotFound·Invalid·Conflict)
     adapters/toss/   # 토스 HTTP 클라이언트, 토큰 관리, 응답 → domain/broker 형식 변환
     adapters/sim/    # 모의 브로커
     persistence/     # SQLAlchemy 모델, 리포지토리
-    api/             # FastAPI 진입점
+    api/             # FastAPI 진입점. routes/는 요청 해석 → 서비스 호출 → 응답 변환만 한다
     worker/          # Worker 진입점과 루프
   migrations/        # Alembic
   tests/
