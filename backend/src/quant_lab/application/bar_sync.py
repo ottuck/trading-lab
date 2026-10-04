@@ -29,13 +29,14 @@ from quant_lab.persistence.bars import (
     upsert_daily_bars,
 )
 
-SOURCE = "toss"
 # 정규장 마감 후 이만큼 지난 봉만 완료로 본다. 일봉 전략은 다음 날 시가에 체결하므로 넉넉히 둔다.
 # 저장 뒤에 값이 바뀌면 증분 동기화의 겹침 비교가 감지해 "resync"로 남긴다 (tossApi.md 6절 #6).
 DEFAULT_SETTLE = timedelta(hours=2)
 
 
 class DailyBarSource(Protocol):
+    source: str  # 저장할 봉의 출처 코드 (증권사 어댑터가 정한다)
+
     def iter_daily_pages(self, symbol: str, since: date | None = None) -> Iterator[CandlePage]: ...
 
 
@@ -90,7 +91,7 @@ def sync_daily_bars(
     new = [b for b in completed if b.session_date > latest]
     anchor = load_daily_bars(session, symbol, start=latest, end=latest)
     issues = check_daily_bars(anchor + new, calendar, max_abs_return) if new else []
-    upsert_daily_bars(session, new, SOURCE, now)
+    upsert_daily_bars(session, new, source.source, now)
     session.commit()
     return SyncResult(
         symbol=symbol,
@@ -119,7 +120,7 @@ def _full_sync(
     issues = check_daily_bars(completed, calendar, max_abs_return)
     # 지우고 다시 넣는 것을 한 트랜잭션으로 처리한다.
     delete_daily_bars(session, symbol)
-    upsert_daily_bars(session, completed, SOURCE, now)
+    upsert_daily_bars(session, completed, source.source, now)
     session.commit()
     return SyncResult(
         symbol=symbol,

@@ -22,13 +22,13 @@ from quant_lab.domain.bot import (
     InvalidTransitionError,
     apply_command,
 )
-from quant_lab.domain.broker import AccountSnapshot
+from quant_lab.domain.broker import AccountSnapshot, BrokerAccessError
 from quant_lab.domain.events import CommandData, EventKind
 from quant_lab.persistence.bars import latest_session_date
 from quant_lab.persistence.bots import add_event, bot_weights, get_bot, set_bot_state
+from quant_lab.persistence.broker_account import save_error, save_snapshot
 from quant_lab.persistence.market_info import upsert_instruments, upsert_live_bars, upsert_quotes
 from quant_lab.persistence.models import BotRow, CommandRow
-from quant_lab.persistence.toss_account import save_error, save_snapshot
 
 # 같은 DB에 Worker가 둘 뜨지 않게 하는 PostgreSQL advisory lock 키 ("QLAB")
 WORKER_LOCK_KEY = 0x514C4142
@@ -125,9 +125,10 @@ class Worker:
         return outcomes
 
     def refresh_account(self) -> None:
-        """실제 토스 계좌를 한 시간마다 읽어 저장한다 (실거래 R1, 읽기만).
+        """실제 증권사 계좌를 한 시간마다 읽어 저장한다 (실거래 R1, 읽기만).
 
-        판단·모의 체결과 무관하다. 실패하면 마지막 값은 두고 실패만 적는다 (알림 없음).
+        판단·모의 체결과 무관하다. 실패하면 마지막 값은 두고 실패 종류만 적는다 (알림 없음):
+        access(인증·권한·허용 IP, 사람이 확인) | temporary(일시 장애, 다음 시간에 다시).
         """
         if self.account is None:
             return
@@ -139,9 +140,10 @@ class Worker:
         try:
             snap = self.account(since)
         except Exception as exc:
-            log.warning("토스 계좌 읽기 실패: %s", exc)
+            log.warning("계좌 읽기 실패: %s", exc)
+            kind = "access" if isinstance(exc, BrokerAccessError) else "temporary"
             with self.make_session() as session:
-                save_error(session, str(exc), now)
+                save_error(session, kind, now)
                 session.commit()
             return
         with self.make_session() as session:
