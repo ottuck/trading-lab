@@ -2321,3 +2321,29 @@ button.account-card:hover:not(:disabled) {
   font-weight: 650;
   letter-spacing: -0.02em;
 }
+.account-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.account-card .eye {
+  width: 16px;
+  height: 16px;
+  color: var(--faint);
+}
+.account-card:hover .eye {
+  color: var(--muted);
+}
+/* 가린 금액: 숫자 대신 같은 높이의 둥근 막대 */
+.redact {
+  display: inline-block;
+  height: 0.8em;
+  border-radius: 999px;
+  background: var(--border);
+  vertical-align: -0.05em;
+}
+.account-card .value .redact {
+  height: 0.75em;
+  vertical-align: 0;
+}
