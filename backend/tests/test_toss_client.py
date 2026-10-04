@@ -153,3 +153,56 @@ def test_pagination_stops_at_since(client: TossClient) -> None:
     assert route.calls[1].request.url.params["before"] == "2026-09-29T13:00:00+09:00"
     # 각 페이지는 거래일 오름차순
     assert [b.session_date.day for b in pages[0].bars] == [30, 1]
+
+
+def test_account_snapshot_reads_with_account_header(client: TossClient) -> None:
+    def order(order_id: str, at: str, status: str = "FILLED") -> dict[str, object]:
+        return {
+            "orderId": order_id,
+            "symbol": "VOO",
+            "side": "BUY",
+            "status": status,
+            "currency": "USD",
+            "orderedAt": at,
+            "orderAmount": "3.5",
+            "execution": {"filledQuantity": "0.005", "filledAmount": "3.49"},
+        }
+
+    def orders(request: httpx.Request) -> httpx.Response:
+        params = request.url.params
+        if params["status"] == "OPEN":
+            page = {"orders": [order("o3", "2026-10-03T23:00:00+09:00", "PENDING")]}
+        elif "cursor" not in params:
+            page = {
+                "orders": [order("o1", "2026-09-01T23:00:00+09:00")],
+                "hasNext": True,
+                "nextCursor": "c1",
+            }
+        else:
+            page = {"orders": [order("o2", "2026-09-15T23:00:00+09:00")], "hasNext": False}
+        return httpx.Response(200, json={"result": {"nextCursor": None, **page}})
+
+    with respx.mock(assert_all_called=True) as mock:
+        mock.post(TOKEN_URL).mock(return_value=token_response())
+        mock.get(f"{BASE_URL}/api/v1/accounts").mock(
+            return_value=httpx.Response(200, json={"result": [{"accountSeq": 7}]})
+        )
+        cash = {"USD": "12.5", "KRW": "10000"}
+        power = mock.get(f"{BASE_URL}/api/v1/buying-power").mock(
+            side_effect=lambda r: httpx.Response(
+                200, json={"result": {"cashBuyingPower": cash[r.url.params["currency"]]}}
+            )
+        )
+        mock.get(f"{BASE_URL}/api/v1/holdings").mock(
+            return_value=httpx.Response(200, json={"result": {"items": []}})
+        )
+        mock.get(f"{BASE_URL}/api/v1/orders").mock(side_effect=orders)
+        snap = client.account_snapshot(date(2026, 9, 1))
+        # 계좌 목록은 한 번만 읽고, 계좌 API에는 계좌 헤더를 붙인다.
+        assert mock.calls.call_count == 1 + 1 + 3 + 2 + 1
+        assert power.calls[0].request.headers["X-Tossinvest-Account"] == "7"
+
+    assert (snap.cash_usd, snap.cash_krw) == (Decimal("12.5"), Decimal("10000"))
+    # 진행 중 + 종료 주문을 이어서 읽고 최신순으로 둔다.
+    assert [o.order_id for o in snap.orders] == ["o3", "o2", "o1"]
+    assert snap.orders[1].filled_amount == Decimal("3.49")

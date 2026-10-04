@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     # 매일 일봉을 갱신할 관심 종목 (백테스트용, 쉼표 구분). 봇 종목은 평가 때 따로 갱신된다.
     watchlist_symbols: str = "QQQ,VOO,QLD,TQQQ,SOXL,NVDA,GLD,MAGS,EWY,EWJ"
 
+    # 실제 토스 계좌 읽기 (실거래 R1). 켜면 Worker가 한 시간마다 잔고·보유·최근 주문을 읽는다.
+    # WORKER_MARKET_SOURCE=toss일 때만 동작한다. 주문은 내지 않는다.
+    toss_account_enabled: bool = False
+
     worker_heartbeat_interval_s: float = 15.0
     # stored: DB에 저장된 봉만 사용 (토스 호출 없음, 로컬 기본값). toss: 운영 서버.
     worker_market_source: Literal["stored", "toss"] = "stored"

@@ -60,6 +60,38 @@ class InstrumentView(BaseModel):
     live_at: datetime | None
 
 
+class TossHoldingView(BaseModel):
+    symbol: str
+    name: str
+    currency: str
+    qty: Decimal
+    avg_price: Decimal
+    last_price: Decimal
+    value: Decimal
+
+
+class TossOrderView(BaseModel):
+    symbol: str
+    side: str
+    status: str
+    currency: str
+    ordered_at: datetime
+    amount: Decimal | None
+    qty: Decimal
+
+
+class TossAccountView(BaseModel):
+    """실제 토스 계좌를 마지막으로 읽은 결과 (실거래 R1). 계좌번호는 없다."""
+
+    cash_usd: Decimal | None
+    cash_krw: Decimal | None
+    holdings: list[TossHoldingView]
+    orders: list[TossOrderView]
+    fetched_at: datetime | None
+    error: str | None
+    error_at: datetime | None
+
+
 class DecisionView(BaseModel):
     id: int
     symbol: str
