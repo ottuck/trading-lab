@@ -18,6 +18,7 @@ import { sourceLabel } from '../source'
 import { isMeBot, useStrategies } from '../strategies'
 import { useDemo } from '../demo'
 import { FxNote } from './Currency'
+import { LiveApprovals } from './Live'
 import { Term } from './Help'
 import { goTo, selectBot, startNewBot, useSelectedBot } from '../selectedBot'
 import { PriceChart } from './PriceChart'
@@ -975,6 +976,7 @@ export function MeHome({ bots }: { bots: Bot[] }) {
       <div className="home-main" key={bot?.id ?? 'start'}>
         {bot ? (
           <>
+            <LiveApprovals />
             <MeHero bot={bot} />
             <NextPlan bot={bot} />
             <MonthDigest bot={bot} />

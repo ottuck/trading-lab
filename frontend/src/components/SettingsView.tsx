@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
-import { api, botApi, type Bot, type SymbolWeight, type BrokerAccount } from '../api'
+import { api, botApi, liveApi, type Bot, type SymbolWeight, type BrokerAccount } from '../api'
+import { useLive } from '../live'
+import { LiveOrderList } from './Live'
 import { ago, dollars, money, shares, won } from '../format'
 import { closeNewBot, selectBot, startMeEdit, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
 import { isMeBot, sameParams, useStrategies } from '../strategies'
@@ -304,6 +306,95 @@ function BrokerAccountSection() {
   )
 }
 
+const RATIO_OF: Record<string, string> = { '0.01': '1/100', '0.1': '1/10' }
+
+/** 실제로 따라 사기 (실거래 R2): 나 카피 봇의 모의 매수를 비율만큼 줄여 실제 계좌에서 산다. */
+function LiveSection({ bot }: { bot: Bot }) {
+  const qc = useQueryClient()
+  const { data: live } = useLive()
+  const setRatio = useMutation({
+    mutationFn: (ratio: string | null) => botApi.setLive(bot.id, ratio),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['bots'] })
+      void qc.invalidateQueries({ queryKey: ['live'] })
+      void qc.invalidateQueries({ queryKey: ['history', bot.id] })
+    },
+  })
+  const halt = useMutation({
+    mutationFn: (halted: boolean) => liveApi.halt(halted),
+    onSuccess: (data) => qc.setQueryData(['live'], data),
+  })
+  if (!live) return null
+  const current = bot.live_ratio == null ? null : (RATIO_OF[String(Number(bot.live_ratio))] ?? bot.live_ratio)
+  const pick = (ratio: string | null) => {
+    if (ratio === current) return
+    if (
+      ratio &&
+      !window.confirm(
+        `모의 매수의 ${ratio} 금액을 실제 ${sourceLabel(live.trader)} 계좌에서 사요. 실제 돈이 나가요.
+` +
+          `처음 ${live.auto_after}번은 앱에서 승인해야 나가고, 그다음부터 자동이에요. 켤까요?`,
+      )
+    )
+      return
+    setRatio.mutate(ratio)
+  }
+  const mine = live.orders.filter((o) => o.bot_id === bot.id)
+  const left = Math.max(0, live.auto_after - bot.live_streak)
+  return (
+    <Section
+      title="실제로 따라 사기"
+      desc={`모의 매수를 줄인 금액으로 실제 계좌에서 같은 날 같은 종목을 사요. 파는 주문은 내지 않아요. 한도: 주문 1건 ${dollars(live.per_order)}, 한 달 ${dollars(live.per_month)}.`}
+    >
+      {!live.trader && (
+        <div className="notice">서버의 실거래 스위치가 꺼져 있어요. 켜기 전에는 실제 주문이 나가지 않아요.</div>
+      )}
+      <div className="controls">
+        <button className={`seg ${current === null ? 'active' : ''}`} disabled={setRatio.isPending} onClick={() => pick(null)}>
+          끄기
+        </button>
+        {live.ratios.map((r) => (
+          <button key={r} className={`seg ${current === r ? 'active' : ''}`} disabled={setRatio.isPending || !live.trader} onClick={() => pick(r)}>
+            {r}
+          </button>
+        ))}
+        {setRatio.error && <span className="bad small">{setRatio.error.message}</span>}
+      </div>
+      {current && (
+        <div className="faint small">
+          {left > 0
+            ? `처음 ${live.auto_after}번은 홈에서 승인해야 나가요 (앞으로 ${left}번). 문제가 생기면 다시 승인부터 해요.`
+            : '자동으로 내요. 한도를 넘거나 문제가 생기면 다시 승인을 받아요.'}
+        </div>
+      )}
+      {mine.length > 0 && (
+        <div className="set-log">
+          <div className="faint small">이 봇이 낸 실제 주문</div>
+          <LiveOrderList orders={mine} />
+        </div>
+      )}
+      {live.trader && (
+        <div className="controls">
+          {live.halted ? (
+            <button disabled={halt.isPending} onClick={() => halt.mutate(false)}>
+              실제 주문 다시 시작
+            </button>
+          ) : (
+            <button
+              className="danger"
+              disabled={halt.isPending}
+              onClick={() => window.confirm('모든 봇의 실제 주문을 멈출까요? 이미 보낸 주문은 체결을 계속 확인해요.') && halt.mutate(true)}
+            >
+              실제 주문 모두 멈추기
+            </button>
+          )}
+          {live.halted && <span className="bad small">멈춤 중 · 새 실제 주문을 보내지 않아요</span>}
+        </div>
+      )}
+    </Section>
+  )
+}
+
 function sameStrategy(d: Draft, bot: Bot) {
   return d.strategy === bot.strategy && sameParams(d.params, bot.params)
 }
@@ -356,6 +447,7 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
         {save.error && <span className="bad small">{save.error.message}</span>}
       </div>
       <SymbolsField key={bot.symbols.map((s) => `${s.symbol}${s.weight}`).join()} bot={bot} />
+      {isMeBot(bot) && <LiveSection bot={bot} />}
       <NameField key={bot.name} bot={bot} />
       <BrokerAccountSection />
       <History botId={bot.id} />

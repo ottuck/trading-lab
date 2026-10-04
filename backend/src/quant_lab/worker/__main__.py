@@ -20,6 +20,8 @@ from quant_lab.adapters.heartbeat_ping import HeartbeatPinger
 from quant_lab.adapters.market_calendar import get_calendar
 from quant_lab.adapters.telegram import TelegramClient
 from quant_lab.adapters.toss.client import TossClient
+from quant_lab.adapters.toss.trader import TossTrader
+from quant_lab.application.live import LiveDesk
 from quant_lab.application.market import BrokerMarket, MarketData, StoredMarket
 from quant_lab.application.notify import EventNotifier
 from quant_lab.config import Settings, get_settings
@@ -88,8 +90,25 @@ def run(stop: threading.Event) -> None:
     if settings.toss_account_enabled and isinstance(market, BrokerMarket):
         account = market.broker.account_snapshot
         log.info("토스 계좌 읽기 켜짐 (한 시간마다, 주문 없음)")
+    # 실거래 스위치 (실거래 R2). 꺼져 있으면 주문 어댑터를 만들지 않아 실제 주문 경로가 없다.
+    trader = None
+    if settings.live_trading:
+        if not (isinstance(market, BrokerMarket) and isinstance(market.broker, TossClient)):
+            raise SystemExit(
+                "LIVE_TRADING=true 인데 토스 연결(WORKER_MARKET_SOURCE=toss)이 없습니다"
+            )
+        trader = TossTrader(market.broker)
+        log.warning("실거래 스위치 켜짐: 승인했거나 자동인 실제 주문을 냅니다")
+    desk = LiveDesk(make_session, trader, get_calendar())
+    desk.announce(datetime.now(UTC))
     worker = Worker(
-        make_session, market, get_calendar(), watchlist=watchlist, live=live, account=account
+        make_session,
+        market,
+        get_calendar(),
+        watchlist=watchlist,
+        live=live,
+        account=account,
+        desk=desk,
     )
     notifier = build_notifier(settings, make_session)
     with make_session() as session:

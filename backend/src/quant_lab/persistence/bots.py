@@ -2,7 +2,7 @@
 
 import uuid
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from quant_lab.domain.bot import BotState, CommandKind
 from quant_lab.domain.events import EventKind
+from quant_lab.domain.live import LiveState, SkipReason
 from quant_lab.domain.portfolio import CostModel, Portfolio, Position, RiskLimits
 from quant_lab.persistence.backtests import to_jsonable
 from quant_lab.persistence.models import (
@@ -21,6 +22,7 @@ from quant_lab.persistence.models import (
     CommandRow,
     DecisionRow,
     EventRow,
+    LiveOrderRow,
     RunRow,
     SimOrderRow,
 )
@@ -200,8 +202,27 @@ def unprocessed_commands(session: Session) -> list[CommandRow]:
     return list(session.scalars(stmt))
 
 
+def drop_unsent_live_orders(session: Session, bot_id: int, now: datetime) -> None:
+    """아직 보내지 않은 실제 주문을 "안 사기"로 닫는다 (따라 사기 끄기·봇 삭제·다시 시작).
+
+    이미 보낸 주문은 증권사에 있으므로 그대로 두고 체결을 계속 확인한다.
+    """
+    session.execute(
+        update(LiveOrderRow)
+        .where(
+            LiveOrderRow.bot_id == bot_id,
+            LiveOrderRow.state.in_([LiveState.WAITING_APPROVAL, LiveState.APPROVED]),
+        )
+        .values(state=LiveState.SKIPPED, reason=SkipReason.DECLINED, updated_at=now)
+    )
+
+
 def delete_bot(session: Session, bot_id: int) -> None:
-    """봇과 그 기록을 모두 지운다 (화면의 봇 삭제, replay 임시 봇 정리)."""
+    """봇과 그 기록을 모두 지운다 (화면의 봇 삭제, replay 임시 봇 정리).
+
+    실제 주문 기록은 남는다 (DB가 봇 연결만 비움). 아직 보내지 않은 실제 주문은 먼저 닫는다.
+    """
+    drop_unsent_live_orders(session, bot_id, datetime.now(UTC))
     for model in (
         EventRow,
         SimOrderRow,
@@ -229,5 +250,8 @@ def reset_bot_history(session: Session, bot: BotRow, now: datetime) -> None:
     ):
         session.execute(delete(model).where(model.bot_id == bot.id))
     save_account(session, bot.id, Portfolio(cash=bot.initial_cash), now)
+    drop_unsent_live_orders(session, bot.id, now)
+    if bot.live_ratio is not None:  # 따라 사기는 새 기록부터, 처음 몇 번은 다시 묻는다
+        bot.live_since, bot.live_streak = now, 0
     bot.next_evaluation_at = None
     bot.updated_at = now

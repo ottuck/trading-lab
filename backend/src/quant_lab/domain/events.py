@@ -27,6 +27,8 @@ class EventKind(StrEnum):
     RUN_SKIPPED = "run_skipped"
     RUN_ERROR = "run_error"
     WATCHLIST_SYNC = "watchlist_sync"  # 내부 기록
+    LIVE_ORDER = "live_order"  # 실제 주문 상태가 바뀜 (실거래 R2)
+    LIVE_CONTROL = "live_control"  # 비상 중지·재개
 
 
 class SkipReason(StrEnum):
@@ -54,6 +56,7 @@ class ConfigChange(StrEnum):
     SETTINGS = "settings"  # 전략·비용·위험 한도
     SYMBOLS = "symbols"
     RENAME = "rename"
+    LIVE = "live"  # 실제로 따라 사기 비율 (after: {"live_ratio": "0.01" | None})
 
 
 # --- 종류별 data 형식 ---
@@ -101,6 +104,21 @@ class FillData(TypedDict):
     price: str
     commission: str
     realized_pnl: str | None
+
+
+class LiveOrderData(TypedDict):
+    symbol: str
+    amount: str  # USD
+    state: str  # domain/live.py LiveState
+    reason: NotRequired[
+        str
+    ]  # 건너뜀(domain/live.py SkipReason)·거절(domain/broker.py RejectReason)
+    filled_qty: NotRequired[str]
+    auto: NotRequired[bool]  # 사람에게 묻지 않고 자동으로 내기로 함
+
+
+class LiveControlData(TypedDict):
+    halted: bool
 
 
 class BalanceSummary(TypedDict):
