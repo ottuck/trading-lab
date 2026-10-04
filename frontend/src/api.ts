@@ -59,6 +59,9 @@ export type Instrument = {
   live_at: string | null
 }
 
+/** 화면 원화 환산용 원/달러 매매기준율 (W1). 아직 받지 못했으면 null. */
+export type Fx = { base: string; quote: string; rate: Money; as_of: string; source: string }
+
 /** 실제 증권사 계좌를 마지막으로 읽은 결과 (실거래 R1). 읽기를 켜지 않았으면 null. */
 export type BrokerAccount = {
   source: string | null // 출처 코드, 이름은 source.ts
@@ -173,6 +176,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   health: () => request<Health>('/api/health'),
+  fx: () => request<Fx | null>('/api/fx'),
   bots: () => request<Bot[]>('/api/bots'),
   orders: (botId: number) => request<Order[]>(`/api/bots/${botId}/orders?limit=20`),
   decisions: (botId: number) => request<Decision[]>(`/api/bots/${botId}/decisions?limit=500`),

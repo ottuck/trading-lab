@@ -1,13 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { botApi, type Bot, type Plan, type SymbolPlan } from '../api'
-import { money } from '../format'
+import { money, roundMoney } from '../format'
 
 /* 따라 하기 (F1~F3): 나 카피 봇이 다음에 할 일, 조건까지 거리, 모아 둔 돈의 내력.
    규칙은 바꾸지 않고 보여주기만 한다. 같은 날 같은 금액으로 실제 계좌에서 따라 하면 실제 투자가 된다. */
 
 const day = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'short', timeZone: 'UTC' })
 const when = (iso: string) => day.format(new Date(`${iso}T00:00:00Z`))
-const usd = (v: string | number) => `$${Math.round(Number(v)).toLocaleString('en-US')}`
+const usd = (v: string | number) => roundMoney(Number(v))
 const pct = (v: number) => `${Math.abs(v * 100).toFixed(1)}%`
 
 function actionOf(s: SymbolPlan) {

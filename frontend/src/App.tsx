@@ -3,12 +3,14 @@ import { useEffect, useState } from 'react'
 import { api } from './api'
 import { BacktestView } from './components/BacktestView'
 import { Brand, ThemeMenu } from './components/Brand'
+import { CurrencyToggle } from './components/Currency'
 import { Home, MeHome } from './components/Dashboard'
 import { HelpButton } from './components/Help'
 import { MeView } from './components/MeView'
 import { SettingsView } from './components/SettingsView'
 import { ago } from './format'
 import { useDemo } from './demo'
+import { useCurrency, useFxSync } from './currency'
 
 const TABS = {
   dashboard: '홈',
@@ -74,6 +76,8 @@ export default function App() {
   const [tab, setTab] = useHashTab()
   const bots = useQuery({ queryKey: ['bots'], queryFn: api.bots })
   const demo = useDemo()
+  useFxSync()
+  useCurrency() // $ / ₩를 바꾸면 화면 전체를 다시 그린다 (금액은 format.ts가 바꿔 보여준다)
 
   return (
     <>
@@ -100,6 +104,7 @@ export default function App() {
             <NewYorkClock />
             <SystemStatus />
             <HelpButton />
+            <CurrencyToggle />
             <ThemeMenu />
           </div>
         </header>

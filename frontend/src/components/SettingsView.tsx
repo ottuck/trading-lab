@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import { api, botApi, type Bot, type SymbolWeight, type BrokerAccount } from '../api'
-import { ago, money, shares, won } from '../format'
+import { ago, dollars, money, shares, won } from '../format'
 import { closeNewBot, selectBot, startMeEdit, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
 import { isMeBot, sameParams, useStrategies } from '../strategies'
 import { answersOf, describe } from '../me'
@@ -235,7 +235,7 @@ const ORDER_STATUS: Record<string, string> = {
 }
 
 function amountOf(value: string | null, currency: string) {
-  return currency === 'KRW' ? won(value) : money(value)
+  return currency === 'KRW' ? won(value) : dollars(value)
 }
 
 function orderTitle(o: BrokerAccount['orders'][number]) {
@@ -265,7 +265,7 @@ function BrokerAccountSection() {
           <div>
             <div className="faint small">주문에 쓸 수 있는 돈</div>
             <div>
-              {money(data.cash_usd)} <span className="muted">· {won(data.cash_krw)}</span>
+              {dollars(data.cash_usd)} <span className="muted">· {won(data.cash_krw)}</span>
             </div>
           </div>
           <div>

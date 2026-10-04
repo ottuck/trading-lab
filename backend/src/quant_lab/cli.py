@@ -17,13 +17,13 @@ from quant_lab.adapters.telegram import TelegramClient
 from quant_lab.adapters.toss.client import TossClient
 from quant_lab.application.backtesting import backtest_symbol
 from quant_lab.application.bar_sync import sync_daily_bars
-from quant_lab.application.demo_prices import DEMO_START, LEVERAGE, demo_bars
+from quant_lab.application.demo_prices import DEMO_START, DEMO_USD_KRW, LEVERAGE, demo_bars
 from quant_lab.application.dry_run import latest_completed_session
 from quant_lab.application.replay import replay_bot
 from quant_lab.config import get_settings
 from quant_lab.domain.bars import outlier_limit
 from quant_lab.domain.bot import BotState, CommandKind
-from quant_lab.domain.broker import Instrument
+from quant_lab.domain.broker import ExchangeRate, Instrument
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.domain.strategy import STRATEGIES
 from quant_lab.persistence.bars import upsert_daily_bars
@@ -36,7 +36,7 @@ from quant_lab.persistence.bots import (
     load_account,
 )
 from quant_lab.persistence.db import get_engine
-from quant_lab.persistence.market_info import upsert_instruments
+from quant_lab.persistence.market_info import upsert_exchange_rate, upsert_instruments
 from quant_lab.persistence.models import DailyBarRow, DecisionRow, SimOrderRow
 
 
@@ -267,6 +267,8 @@ def cmd_seed_demo(args: argparse.Namespace) -> int:
             ],
             now,
         )
+        fx = ExchangeRate("USD", "KRW", DEMO_USD_KRW, None, now)
+        upsert_exchange_rate(session, fx, "demo", now)
         session.commit()
     total = sum(len(v) for v in bars.values())
     print(f"예시 시세 {len(bars)}종목 {total}봉 ({sessions[0]} ~ {end}, seed={args.seed})")

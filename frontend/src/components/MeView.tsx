@@ -9,6 +9,7 @@ import { isMeBot } from '../strategies'
 import { useDemo, usePriceWord } from '../demo'
 import { toConfig, toDraft } from '../botConfig'
 import { EquityChart } from './BacktestView'
+import { FxNote } from './Currency'
 import { ParallelWorlds } from './Parallel'
 import { BasketPicker } from './SymbolPicker'
 
@@ -177,6 +178,7 @@ function Result({
             둘 다 같은 날 같은 돈({money(m.contributed ?? m.initial_cash)})을 넣었어요. {priceWord}으로 계산했고, 재미로 보는
             비교예요.
           </p>
+          <FxNote />
         </>
       )}
 

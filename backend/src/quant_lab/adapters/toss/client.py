@@ -23,6 +23,7 @@ from quant_lab.domain.broker import (
     BrokerAccessError,
     BrokerError,
     CandlePage,
+    ExchangeRate,
     Holding,
     Instrument,
     Quote,
@@ -246,6 +247,17 @@ class TossClient:
             for p in result
             if p.get("lastPrice") is not None
         ]
+
+    def exchange_rate(self, base: str, quote: str) -> ExchangeRate:
+        """참고용 표시 환율 (1분마다 바뀜). rate는 살 때 환율, midRate는 매매기준율."""
+        result = self._get("/api/v1/exchange-rate", {"baseCurrency": base, "quoteCurrency": quote})
+        return ExchangeRate(
+            base=base,
+            quote=quote,
+            mid_rate=Decimal(result["midRate"]),
+            buy_rate=_decimal_or_none(result.get("rate")),
+            as_of=datetime.fromisoformat(result["validFrom"]),
+        )
 
     def latest_daily_bar(self, symbol: str) -> DailyBar | None:
         bars = self.daily_candles(symbol, count=1).bars

@@ -12,11 +12,12 @@ import {
   type EquityPoint,
   type Order,
 } from '../api'
-import { ago, isPast, kstTime, money, percent, shares, signedMoney, tone } from '../format'
+import { ago, isPast, kstTime, money, percent, roundMoney, shares, signedMoney, tone } from '../format'
 import { leverageOf, useInstruments } from '../instruments'
 import { sourceLabel } from '../source'
 import { isMeBot, useStrategies } from '../strategies'
 import { useDemo } from '../demo'
+import { FxNote } from './Currency'
 import { Term } from './Help'
 import { goTo, selectBot, startNewBot, useSelectedBot } from '../selectedBot'
 import { PriceChart } from './PriceChart'
@@ -310,6 +311,7 @@ function Overview({ bot }: { bot: Bot }) {
             </span>
             <span className="when">{when}</span>
           </div>
+          <FxNote />
         </div>
         {!demo && <Controls bot={bot} onSent={setSent} />}
       </div>
@@ -825,6 +827,7 @@ function MeHero({ bot }: { bot: Bot }) {
           </div>
           <div className="hero-value">{money(String(now))}</div>
           <div className={`hero-delta ${tone(vsPaid(now))}`}>넣은 돈보다 {percent(vsPaid(now))}</div>
+          <FxNote />
         </div>
         <div className="vs-other">
           <div className="label legend">
@@ -853,7 +856,7 @@ function MonthDigest({ bot }: { bot: Bot }) {
   // 이번 달에 아직 아무도 안 샀으면(입금일 전) 지난달을 정리한다.
   const at = worlds.some((w) => Number(w.recent[1].bought) > 0) ? 1 : 0
   const amount = (w: World) => Number(w.recent[at].bought)
-  const did = (w: World) => (amount(w) > 0 ? `$${Math.round(amount(w)).toLocaleString('en-US')}어치 샀어요` : '사지 않고 모아 뒀어요')
+  const did = (w: World) => (amount(w) > 0 ? `${roundMoney(amount(w))}어치 샀어요` : '사지 않고 모아 뒀어요')
   const others = worlds.filter((w) => w.key !== 'me')
   // 나와 다르게 한 나: 사고 안 사고가 다른 나, 없으면 금액이 다른 나
   const other =

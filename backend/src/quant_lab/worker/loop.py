@@ -27,7 +27,12 @@ from quant_lab.domain.events import CommandData, EventKind
 from quant_lab.persistence.bars import latest_session_date
 from quant_lab.persistence.bots import add_event, bot_weights, get_bot, set_bot_state
 from quant_lab.persistence.broker_account import save_error, save_snapshot
-from quant_lab.persistence.market_info import upsert_instruments, upsert_live_bars, upsert_quotes
+from quant_lab.persistence.market_info import (
+    upsert_exchange_rate,
+    upsert_instruments,
+    upsert_live_bars,
+    upsert_quotes,
+)
 from quant_lab.persistence.models import BotRow, CommandRow
 
 # 같은 DB에 Worker가 둘 뜨지 않게 하는 PostgreSQL advisory lock 키 ("QLAB")
@@ -36,6 +41,7 @@ WATCHLIST_CHECK_INTERVAL = timedelta(minutes=30)
 QUOTE_INTERVAL = timedelta(seconds=30)
 INSTRUMENT_INTERVAL = timedelta(days=1)
 ACCOUNT_INTERVAL = timedelta(hours=1)
+FX_INTERVAL = timedelta(hours=1)  # 화면 원화 환산용 (W1). 참고 값이라 자주 받을 필요 없다
 ACCOUNT_ORDER_DAYS = 30  # 화면에 보여줄 최근 주문 기간
 KST = ZoneInfo("Asia/Seoul")
 NEW_YORK = ZoneInfo("America/New_York")
@@ -96,6 +102,7 @@ class Worker:
         self._watchlist_failing: set[str] = set()
         self._quotes_at: datetime | None = None
         self._instruments_at: datetime | None = None
+        self._fx_at: datetime | None = None
 
     def recover_after_restart(self) -> None:
         """실행 중이던 봇은 그대로 이어서 돈다. 밀린 평가는 다음 tick에서 바로 처리된다.
@@ -151,7 +158,8 @@ class Worker:
             session.commit()
 
     def refresh_live(self) -> None:
-        """화면용 종목 정보(하루 한 번)와 봇 종목 현재가·진행 중 일봉(거래 시간 중 30초마다).
+        """화면용 종목 정보(하루 한 번), 봇 종목 현재가·진행 중 일봉(거래 시간 중 30초마다),
+        원/달러 환율(한 시간마다, W1).
 
         실패해도 판단·모의 체결과 무관하므로 로그만 남긴다 (알림 없음).
         """
@@ -185,6 +193,15 @@ class Worker:
                     session.commit()
         except Exception as exc:
             log.warning("실시간 정보 갱신 실패: %s", exc)
+        if self._fx_at is None or now - self._fx_at >= FX_INTERVAL:
+            self._fx_at = now
+            try:
+                fx = self.live.exchange_rate("USD", "KRW")
+                with self.make_session() as session:
+                    upsert_exchange_rate(session, fx, self.live.source, now)
+                    session.commit()
+            except Exception as exc:
+                log.warning("환율 갱신 실패: %s", exc)
 
     def sync_watchlist(self) -> list[str]:
         """관심 종목 일봉을 최신 완료 거래일까지 맞춘다 (백테스트용). 30분에 한 번만 확인한다.
