@@ -50,6 +50,12 @@ from quant_lab.application.messages import CATALOG, action_phrase, decision_reas
 from quant_lab.application.parallel import World, parallel_worlds
 from quant_lab.application.plan import follow_plan
 from quant_lab.config import get_settings
+from quant_lab.domain.events import (
+    BotDeletedData,
+    ConfigChange,
+    ConfigChangeData,
+    EventKind,
+)
 from quant_lab.domain.portfolio import CostModel, Portfolio, RiskLimits, affordable_qty
 from quant_lab.domain.strategy import STRATEGIES, DipSaver, Strategy, deposit_plan
 from quant_lab.domain.trading import MAX_SYMBOLS
@@ -366,10 +372,10 @@ def create(session: SessionDep, body: BotCreate) -> BotView:
         session,
         now,
         "INFO",
-        "config_change",
+        EventKind.CONFIG_CHANGE,
         f"봇 생성: {'·'.join(weights)} {bot.strategy} {bot.params}",
         bot_id=bot.id,
-        data={"after": body.model_dump(mode="json")},
+        data=ConfigChangeData(change=ConfigChange.CREATE, after=body.model_dump(mode="json")),
     )
     session.commit()
     return _bot_view(session, bot)
@@ -407,10 +413,10 @@ def update_config(session: SessionDep, bot_id: int, body: BotConfig) -> BotView:
         session,
         now,
         "INFO",
-        "config_change",
+        EventKind.CONFIG_CHANGE,
         f"설정 변경: {_changes(before, after)}",
         bot_id=bot.id,
-        data={"before": before, "after": after},
+        data=ConfigChangeData(change=ConfigChange.SETTINGS, before=before, after=after),
     )
     session.commit()
     return _bot_view(session, bot)
@@ -458,10 +464,15 @@ def update_symbols(session: SessionDep, bot_id: int, body: SymbolsUpdate) -> Bot
         session,
         now,
         "INFO",
-        "config_change",
+        EventKind.CONFIG_CHANGE,
         detail,
         bot_id=bot.id,
-        data={"before": {"symbols": bot.symbols}, "after": {"symbols": _symbols_json(after)}},
+        data=ConfigChangeData(
+            change=ConfigChange.SYMBOLS,
+            before={"symbols": bot.symbols},
+            after={"symbols": _symbols_json(after)},
+            dropped=list(dropped),
+        ),
     )
     bot.symbols, bot.symbol = _symbols_json(after), next(iter(weights))
     bot.updated_at = now
@@ -487,10 +498,12 @@ def rename(session: SessionDep, bot_id: int, body: BotRename) -> BotView:
             session,
             now,
             "INFO",
-            "config_change",
+            EventKind.CONFIG_CHANGE,
             f"이름 변경: {bot.name} → {name}",
             bot_id=bot.id,
-            data={"before": {"name": bot.name}, "after": {"name": name}},
+            data=ConfigChangeData(
+                change=ConfigChange.RENAME, before={"name": bot.name}, after={"name": name}
+            ),
         )
         bot.name, bot.updated_at = name, now
         session.commit()
@@ -503,7 +516,7 @@ def reset(session: SessionDep, bot_id: int) -> BotView:
     bot = _require_bot(session, bot_id, for_update=True)
     now = datetime.now(UTC)
     reset_bot_history(session, bot, now)
-    add_event(session, now, "INFO", "bot_reset", "처음부터 다시 시작", bot_id=bot.id)
+    add_event(session, now, "INFO", EventKind.BOT_RESET, "처음부터 다시 시작", bot_id=bot.id)
     session.commit()
     return _bot_view(session, bot)
 
@@ -517,9 +530,9 @@ def remove(session: SessionDep, bot_id: int) -> None:
         session,
         datetime.now(UTC),
         "INFO",
-        "bot_deleted",
+        EventKind.BOT_DELETED,
         f"봇 삭제: {name}",
-        data={"name": name, "symbol": symbol},
+        data=BotDeletedData(name=name, symbol=symbol),
     )
     session.commit()
 
