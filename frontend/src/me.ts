@@ -27,6 +27,7 @@ export type Option = { value: number; label: string; sub?: string }
 
 export const DEPOSITS: Option[] = [
   { value: 500, label: '$500' },
+  { value: 675, label: '$675', sub: '월 10만 엔 안팎' },
   { value: 1000, label: '$1,000' },
   { value: 1350, label: '$1,350', sub: '월 20만 엔 안팎' },
   { value: 2000, label: '$2,000' },
