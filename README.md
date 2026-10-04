@@ -1,39 +1,65 @@
 # Quant Lab
 
-토스증권 공식 Open API의 미국 주식 일봉으로 규칙 기반 전략을 돌리고, **실제 주문 없이 내부 모의 체결(DRY RUN)** 로 신호·주문·잔고·판단 근거를 추적하는 개인용 퀀트 실험 도구입니다.
+**내 투자 습관을 복사한 봇이, 내 방식대로 대신 투자해 보는 개인용 퀀트 앱입니다.**
 
-**중심 아이디어는 "나 카피 봇"입니다.** 질문 몇 개로 내 투자 습관(월급날 사기, 많이 오르면 쉬기, 크게 떨어지면 몰아 사기)을 복사한 봇이 두 가지에 답합니다 ([설계 1절](docs/project.md#1-한-줄-정의)).
+토스증권 공식 Open API의 미국 주식 일봉으로 규칙 기반 전략을 돌립니다. 모든 판단은 먼저 내부 모의 체결(DRY RUN)로 기록하고, 원하면 그 판단을 **1/100로 줄인 금액으로 실제 토스증권 계좌에서 따라 삽니다.**
 
-- **과거: "그때 그렇게 했다면?"** 지난 10년을 "나처럼 했다면 vs 매달 그냥 샀다면", 그리고 내 규칙을 하나씩 바꾼 **평행세계의 나**들과 나란히 보여줍니다. 점수·등수 없이 구경하듯 봅니다.
-- **미래: "다음에 무엇을 할까?"** 다음 월급날 종목별로 살 금액·모아 둘 금액과 이유, "이 가격 아래면 몰아 사요 / 이 가격 위면 쉬어요"까지의 거리, 모아 둔 돈의 내력을 보여줍니다. 같은 날 같은 금액으로 실제 계좌에서 따라 하면 그대로 실제 투자가 됩니다.
+**데모:** [demo.trading-lab.me](https://demo.trading-lab.me) · 예시 시세(실제 가격 아님)로 누구나 볼 수 있습니다. 2년째 돌고 있는 예시 나 카피 봇을 보고, 나 카피하기와 시험해 보기를 직접 해 볼 수 있습니다.
 
-**데모:** [demo.trading-lab.me](https://demo.trading-lab.me) — 예시 시세(실제 가격 아님)로 누구나 볼 수 있는 데모입니다. 2년째 돌고 있는 예시 나 카피 봇을 보고, 나 카피하기와 시험해 보기를 직접 해 볼 수 있습니다.
+## 나 카피 봇
 
-마일스톤 1(모의 운영 기반)과 2(나 카피 봇)는 태그 [`milestone-1`](https://github.com/ottuck/quant-lab/tree/milestone-1)·[`milestone-2`](https://github.com/ottuck/quant-lab/tree/milestone-2)로 남겨 두었고, 실거래는 마일스톤 3입니다 ([로드맵](docs/roadmap.md#마일스톤)).
+질문 몇 개(얼마를, 언제 넣나요? 많이 오르면 쉬나요? 얼마나 떨어지면 몰아 사나요?)로 내 투자 습관을 규칙으로 옮긴 봇입니다. 이 봇이 세 가지에 답합니다.
 
-최종 목표는 퀀트 자동매매이고, 첫 완성 범위(MWP)는 "실거래 코드 경로가 아예 없는 상태에서 정기 모의 운영을 2주 동안 사람 개입 없이 돌리는 것"입니다.
+| | 질문 | 보여주는 것 |
+| --- | --- | --- |
+| **과거** | 그때 그렇게 했다면? | 지난 10년 "나처럼 했다면 vs 매달 그냥 샀다면", 그리고 내 규칙을 하나씩 바꾼 **평행세계의 나**들. 점수·등수 없이 구경하듯 봅니다 |
+| **미래** | 다음에 무엇을 할까? | 다음 월급날 종목별로 살 금액·모아 둘 금액과 이유, "이 가격 아래면 몰아 사요 / 이 가격 위면 쉬어요"까지의 거리, 모아 둔 돈의 내력 |
+| **실제** | 진짜 돈으로도 똑같이 움직일까? | 모의 매수를 **1/100 금액으로 실제 계좌에서 따라 사기**. 처음 3번은 앱에서 승인하고, 그다음은 자동으로 삽니다 |
+
+실제 큰돈 투자는 다른 증권사에서 하고, 이 앱의 토스 계좌는 "같은 판단이 진짜 돈으로도 그대로 움직인다"를 작은 금액(한 달 약 1만원)으로 증명하는 곳입니다 ([설계 1절](docs/project.md#1-한-줄-정의), [실거래 트랙](docs/roadmap.md#실거래-트랙-마일스톤-3-2026-10-04-다시-계획)).
+
+## 진행 상황
+
+| 마일스톤 | 내용 | 상태 |
+| --- | --- | --- |
+| 1. 모의 운영 기반 | 시세 수집·검증, 백테스트, 정기 DRY RUN, 운영 화면, 배포 | 완료 · 태그 [`milestone-1`](https://github.com/ottuck/quant-lab/tree/milestone-1) |
+| 2. 나 카피 봇 | 질문으로 나 만들기, 평행세계의 나, 홈 첫 화면, 도메인 접속 | 완료 · 태그 [`milestone-2`](https://github.com/ottuck/quant-lab/tree/milestone-2) |
+| 따라 하기 · 데모 · 원화 | 다음에 할 일, 포트폴리오 데모, 원화로 보기 | 완료 |
+| **3. 실거래** | 실제 계좌 읽기(R1), 실제로 따라 사기(R2), 넓히기(R3) | **진행 중** · R1 완료, R2 첫 실주문 확인 중 |
 
 | 문서 | 내용 |
 | --- | --- |
-| [docs/project.md](docs/project.md) | 설계의 단일 출처: 범위, 원칙, 아키텍처, 기술 스택, 인프라, 작업 방식 |
-| [docs/roadmap.md](docs/roadmap.md) | 단계별 계획, 진행 상태, 백테스트·replay 결과 |
-| [docs/tossApi.md](docs/tossApi.md) | 토스증권 Open API 조사·실측 결과 |
+| [docs/project.md](docs/project.md) | 설계의 단일 출처: 범위, 원칙, 아키텍처, 인프라, 작업 방식, 알려진 한계 |
+| [docs/roadmap.md](docs/roadmap.md) | 단계별 계획과 진행 상태, 백테스트·replay 결과 |
+| [docs/tossApi.md](docs/tossApi.md) | 토스증권 Open API 조사와 직접 호출로 확인한 사실 |
 
 ## 무엇을 하나
 
-- **시세 수집** — 토스 일봉을 상장일부터 받아 PostgreSQL에 캐시하고, 누락·중복·비거래일·이상치를 검사합니다. 수정주가가 바뀌면 자동으로 전체를 다시 받습니다.
-- **시험해 보기(백테스트)** — 전략 5종(느긋한 추세 타기=골든크로스 50/200, 200일선 지킴이=Faber, 급락 줍줍=Connors RSI(2), 신고가 올라타기=터틀 돌파, 나처럼 투자=월급 적립·고점 쉬기·하락장 몰아 사기)을 "그냥 들고 있었을 때"(모으기는 "매달 그냥 사기")와 비교합니다.
-- **정기 DRY RUN** — Worker가 미국 정규장 마감 2시간 뒤 완료된 일봉으로 판단하고, 다음 거래일 시가로 모의 체결합니다.
-- **기록과 알림** — 판단·체결·입금·설정 변경은 앱의 기록에서 봅니다. 텔레그램 알림(매매 신호·체결·경고·주간 리포트)은 만들어 두었지만 기본으로 꺼져 있습니다(`TELEGRAM_ENABLED=true`로 켬). Worker나 서버 자체가 멈추면 외부 heartbeat(Healthchecks.io)가 알립니다.
-- **쉬운 화면** — 전략은 별명과 언제 사고파는지 보여주는 작은 그림으로 고르고, 설정은 선택지로 바꿉니다. 판단 이유와 알림은 "상승 흐름이에요. 내일 장이 열리면 QQQ를 사요"처럼 쉬운 말로 보여줍니다.
+**모의 투자**
+
+- **시세 수집** · 토스 일봉을 상장일부터 받아 PostgreSQL에 캐시하고, 누락·중복·비거래일·이상치를 검사합니다. 수정주가가 바뀌면 전체를 다시 받습니다.
+- **시험해 보기(백테스트)** · 나처럼 투자(월급 적립·고점 쉬기·하락장 몰아 사기)가 주력이고, 유명 전략 4종(골든크로스 50/200, Faber 200일선, Connors RSI(2), 터틀 돌파)은 참고용입니다. 여러 종목을 비율대로 나눠 사는 봇도 됩니다(최대 10종목).
+- **정기 DRY RUN** · Worker가 미국 정규장 마감 2시간 뒤 확정된 일봉으로 판단하고, 다음 거래일 시가로 모의 체결합니다. 금액 기준·소수점 6자리로 사서 실제 소수점 주문과 같은 방식입니다.
+
+**실제 계좌 (마일스톤 3)**
+
+- **실제 계좌 읽기** · 한 시간마다 주문 가능 금액·보유·최근 주문을 읽습니다. 홈의 계좌 카드에서 보고, 누르면 금액을 가립니다.
+- **실제로 따라 사기** · 나 카피 봇의 모의 매수 금액 × 1/100(또는 1/10)을 다음 거래일 밤 토스 금액 주문으로 삽니다. 사기만 하고, $1보다 작은 몫은 모아 두었다가 함께 삽니다.
+- **안전장치** · 실거래 스위치(`LIVE_TRADING`), 처음 3번 승인, 한도(주문 1건 $20 · 한 달 $50), 실제 주문 모두 멈추기, 실제 계좌 대조(보유가 봇이 산 수량보다 적으면 다시 승인 단계로).
+
+**화면과 알림**
+
+- **쉬운 말** · 전략은 별명과 작은 그림으로 고르고, 설정은 선택지로 바꿉니다. 판단 이유는 "상승 흐름이에요. 내일 장이 열리면 QQQ를 사요"처럼 보여줍니다.
+- **원화로 보기** · 머리말의 $ / ₩ 버튼으로 금액을 오늘 환율(매매기준율)로 바꿔 봅니다. 계산과 주문은 늘 달러입니다.
+- **텔레그램 알림** · 설정에서 끄기 / 실제 주문만(승인 요청·체결·문제) / 모의 투자 소식까지 고르고 테스트 메시지를 보냅니다. 서버가 멈추면 외부 heartbeat(Healthchecks.io)가 알립니다.
 
 ## 화면
 
-> 아래 캡처는 **포트폴리오 데모**([demo.trading-lab.me](https://demo.trading-lab.me))의 예시 시세입니다. 토스 시세는 제3자 배포가 금지돼 있어 데모는 `cli seed-demo`로 만든 합성 일봉(실제와 비슷하게 움직이지만 실제 가격과 무관)만 씁니다.
+> 캡처는 **포트폴리오 데모**([demo.trading-lab.me](https://demo.trading-lab.me))의 예시 시세입니다. 토스 시세는 제3자 배포가 금지돼 있어, 데모는 `cli seed-demo`로 만든 합성 일봉(실제와 비슷하게 움직이지만 실제 가격과 무관)만 씁니다. 데모에는 실제 계좌·주문 기능이 없습니다.
 
-주식을 잘 모르는 사람도 쓸 수 있게 전문 용어 대신 쉬운 말과 선택지로 만들었습니다. 용어 옆 ⓘ와 "도움말"에서 뜻을 볼 수 있습니다. 밝은·어두운 테마(기본은 시스템 설정)를 지원하고, 가격 색은 국내 관례대로 오르면 빨강·내리면 파랑입니다. 폰에서 "홈 화면에 추가"하면 앱처럼 열립니다(PWA).
+주식을 잘 모르는 사람도 쓸 수 있게 만들었습니다. 용어 옆 ⓘ와 "도움말"에서 뜻을 볼 수 있고, 밝은·어두운 테마를 지원합니다. 가격 색은 국내 관례대로 오르면 빨강, 내리면 파랑입니다. 폰에서 "홈 화면에 추가"하면 앱처럼 열립니다(PWA).
 
-**홈 (나 카피 봇)** — 나처럼 했을 때 vs 매달 그냥 샀다면, 다음에 할 일(날짜·금액·이유·조건까지 거리·모아 둔 돈), 월간 정리, 평행세계의 나, 오늘의 판단
+**홈 (나 카피 봇)** · 나처럼 했을 때 vs 매달 그냥 샀다면, 다음에 할 일, 월간 정리, 평행세계의 나, 오늘의 판단
 
 ![홈](docs/images/dashboard.png)
 
@@ -41,20 +67,33 @@
 | --- | --- |
 | ![나 카피하기: 질문 4~6개의 답을 규칙으로 요약하고, 지난 10년 나처럼 했다면 vs 매달 그냥 샀다면과 평행세계의 나](docs/images/me.png) | ![시험해 보기: 나처럼 투자가 주력, 유명 전략은 참고로. 금액·규칙·종목·기간을 고르면 결과와 평행세계의 나](docs/images/backtest.png) |
 
-**어두운 테마**
-
-![홈 (어두운 테마)](docs/images/dashboard-dark.png)
-
 ## 설계에서 신경 쓴 것
+
+**모의 투자**
 
 | 문제 | 해결 |
 | --- | --- |
-| 백테스트 결과와 실제 운영이 어긋나는 문제 | 판단·체결 함수(`domain/trading.py`)를 백테스트와 Worker가 **같이** 씁니다. 과거 거래일마다 정기 평가를 재생하는 `replay`로 실제 QQQ 데이터에서 **체결까지 백테스트와 일치**하는 것을 확인했습니다 (689일 3건, 437일 17건). |
-| 미래 데이터 참조 (look-ahead) | 전략은 판단일까지의 봉만 받습니다. 테스트가 "잘린 데이터와 전체 데이터의 판단이 겹치는 구간에서 같은지"를 검사합니다. |
-| 진행 중인 봉으로 판단하는 문제 | 토스는 미국 정규장 **전부터** 당일 일봉을 데이마켓 체결로 채워 내려줍니다 (직접 호출해서 발견). 정규장 마감 + 2시간이 지난 봉만 완료로 보고, 저장 뒤 값이 바뀌면 재동기화로 감지합니다. |
-| 중복 주문 | `bot + 종목 + 거래일 + 모드` 유일 제약, "봇당 대기 주문 1개" 부분 유일 인덱스, PostgreSQL advisory lock으로 Worker 1개만 실행. 같은 봉을 다시 평가하면 아무것도 하지 않습니다. |
-| 토큰 경합 | 토스는 client당 유효 토큰이 1개라 새로 발급하면 이전 토큰이 무효가 됩니다. 토큰은 Worker 한 곳만 보유하고, API 컨테이너에는 토스 키가 아예 들어가지 않습니다. |
-| 모를 때의 동작 | 데이터 지연·캘린더 불일치·토스 일시 장애는 판단 없이 `SKIPPED` 후 재시도, 허용 IP·인증 오류는 봇을 `ERROR`로 멈춥니다. Worker가 재시작되면 실행 중이던 봇은 그대로 이어서 돌고 밀린 평가를 처리합니다. 평가가 멱등이라 몇 번 재시작해도 중복 주문이 생기지 않습니다. |
+| 백테스트와 실제 운영이 어긋남 | 판단·체결 함수(`domain/trading.py`)를 백테스트와 Worker가 **같이** 씁니다. 과거 거래일마다 정기 평가를 재생하는 `replay`로 실제 QQQ 데이터에서 **체결까지 백테스트와 일치**하는 것을 확인했습니다. |
+| 미래 데이터 참조 (look-ahead) | 전략은 판단일까지의 봉만 받습니다. 잘린 데이터와 전체 데이터의 판단이 겹치는 구간에서 같은지 테스트합니다. |
+| 진행 중인 봉으로 판단 | 토스는 미국 정규장 **전부터** 당일 일봉을 데이마켓 체결로 채워 줍니다(직접 호출해서 발견). 정규장 마감 + 2시간이 지난 봉만 완료로 보고, 저장 뒤 값이 바뀌면 재동기화로 감지합니다. |
+| 중복 모의 주문 | `봇 + 종목 + 거래일 + 모드` 유일 제약, 봇·종목당 대기 주문 1개, PostgreSQL advisory lock으로 Worker 1개만 실행. 같은 봉을 다시 평가해도 아무것도 하지 않습니다. |
+| 모를 때의 동작 | 데이터 지연·캘린더 불일치·일시 장애는 판단 없이 `SKIPPED` 후 재시도하고, 허용 IP·인증 오류는 봇을 멈춥니다. 평가가 멱등이라 Worker가 몇 번 재시작해도 중복 주문이 생기지 않습니다. |
+
+**실제 주문**
+
+| 문제 | 해결 |
+| --- | --- |
+| 같은 주문이 두 번 나감 | 모의 매수 1건에 실제 주문 최대 1건(DB 유일 제약). 보내기 **전에** `SENDING`을 먼저 기록하고, 같은 판단은 늘 같은 중복 방지 키를 씁니다. |
+| 보냈는지 모르는 주문 | 토스의 중복 방지 키는 **10분만** 유효하고, 주문 조회에는 그 키가 나오지 않습니다(명세에서 확인). 그래서 10분 안에서만 같은 키로 다시 보내고, 그 뒤에는 다시 보내지 않고 주문 조회로 찾습니다. 못 찾으면 "확인 필요"로 멈추고 알립니다. |
+| 기록과 실제 계좌가 어긋남 | 주문마다 체결을 확인하고, 계좌를 읽을 때마다 종목별 보유가 봇이 산 수량보다 적지 않은지 봅니다. 직접 산 주식이 섞일 수 있어 "같은지"가 아니라 "적지 않은지"만 봅니다. |
+| 증권사에 묶인 엔진 | 엔진·저장소·API는 증권사 규약(`domain/broker.py`의 `Broker`·`Trader`)만 압니다. 주문 키 형식, 접수 시간, 오류 코드 같은 토스 규칙은 어댑터 안에만 있고, 엔진 코드에 토스 이름이 들어오면 테스트가 실패합니다. |
+
+**공통**
+
+| 문제 | 해결 |
+| --- | --- |
+| 토큰 경합 | 토스는 client당 유효 토큰이 1개라 새로 발급하면 이전 토큰이 무효가 됩니다. 토큰은 Worker 한 곳만 보유하고, API 컨테이너에는 토스 키가 아예 없습니다. |
+| 알림 문구가 조용히 틀어짐 | 이벤트 종류와 내용 형식을 `domain/events.py`에 정의하고, 알림은 로그 문구가 아니라 그 값만 읽습니다. 모든 종류가 문장으로 바뀌는지 테스트합니다. |
 | 돈과 시간 | 가격·금액은 `Decimal`/`numeric`(float 금지), DB 시각은 UTC, 장 판정은 `America/New_York`, 화면은 KST. |
 
 ## 아키텍처
@@ -62,22 +101,26 @@
 ```mermaid
 flowchart LR
     ME[내 브라우저·폰] -->|app.trading-lab.me<br/>Cloudflare Access| CF[Cloudflare Tunnel]
+    VISITOR[누구나] -->|demo.trading-lab.me| CF
     CF --> API
-    subgraph VM[Lightsail 서울 · 고정 IP · Docker Compose]
-        API[api<br/>FastAPI + React 정적 파일] <--> DB[(PostgreSQL 17)]
-        WORKER[worker<br/>수집·판단·모의 체결] <--> DB
+    CF --> DEMO[demo-api<br/>예시 시세 · 키 없음]
+    subgraph HOST[서버 1대 · Docker Compose]
+        API[api<br/>FastAPI + React] <--> DB[(PostgreSQL 17)]
+        WORKER[worker<br/>수집·판단·모의 체결·실주문] <--> DB
+        DEMO <--> DEMODB[(데모 DB)]
     end
-    WORKER -->|고정 송신 IP · 읽기 전용| TOSS[토스증권 Open API]
+    WORKER -->|고정 송신 IP<br/>시세·계좌 읽기, 실주문은 스위치 켤 때만| TOSS[토스증권 Open API]
+    WORKER --> TG[텔레그램]
 ```
 
-- 공개 인바운드 포트가 없습니다. 화면은 도메인(Cloudflare Tunnel이 밖으로만 연결, Access로 본인 이메일만)으로, 관리용 SSH는 Tailscale로 접근합니다.
-- API와 Worker는 **DB를 통해서만** 대화합니다. 화면의 명령은 `commands` 테이블에 쌓이고 Worker가 15초 안에 처리합니다.
-- `domain` 계층은 FastAPI·httpx·SQLAlchemy를 import하지 않습니다 (테스트로 강제).
+- 공개 인바운드 포트가 없습니다. 화면은 Cloudflare Tunnel(밖으로만 연결)과 Access(본인 이메일만)로 엽니다. 데모는 별도 DB·네트워크라 운영 DB와 Worker에 닿지 않습니다.
+- API와 Worker는 **DB를 통해서만** 대화합니다. 화면의 명령과 승인은 DB에 쌓이고 Worker가 15초 안에 처리합니다. 토스와 텔레그램은 Worker만 부릅니다.
+- 지금은 개발 PC에서 돌리고, 서울 리전 VM(Lightsail, Terraform 준비됨)이나 홈서버로 옮길 수 있게 VM 한 대 구성으로 만들었습니다.
 
 ```text
-Worker 평가 1회
-완료 봉 확인·검증 → 이전 대기 주문을 T+1 시가로 체결 → 전략 판단 → 모의 주문 → 잔고·다음 평가 시각 저장
-(모두 한 트랜잭션, 실패하면 아무것도 바뀌지 않음)
+Worker 15초마다
+명령 처리 → 예정된 봇 평가(확정 일봉 → 이전 모의 주문 체결 → 판단 → 모의 주문)
+→ 실시간 가격·환율 → 계좌 읽기·대조(1시간) → 실제로 따라 사기(계획 → 승인 확인 → 보내기 → 체결 확인)
 ```
 
 ## 백테스트 결과 예시 (QQQ, 수수료 0.1%, 슬리피지 5bp)
@@ -85,11 +128,11 @@ Worker 평가 1회
 | 전략 | 2000~ CAGR / 최대 낙폭 | 2010~ CAGR / 최대 낙폭 |
 | --- | --- | --- |
 | 매수 후 보유 | 8.1% / -82.6% | 18.0% / -35.6% |
-| **골든크로스 50/200** (운영 전략) | **10.5% / -36.3%** | 14.2% / -28.6% |
+| **골든크로스 50/200** | **10.5% / -36.3%** | 14.2% / -28.6% |
 | Faber 200일선 | 7.3% / -55.5% | 11.5% / -25.6% |
 | Connors RSI(2) | 1.7% / -16.2% | 1.1% / -16.0% |
 
-추세 추종은 강세장에서 보유를 이기지 못하는 대신 낙폭을 줄입니다. 과최적화를 피하려고 파라미터 탐색은 하지 않았습니다. 자세한 비교는 [roadmap.md](docs/roadmap.md).
+추세 추종은 강세장에서 보유를 이기지 못하는 대신 낙폭을 줄입니다. 과최적화를 피하려고 파라미터 탐색은 하지 않았습니다. "나처럼 모으기" 규칙도 10년 실제 가격에서 매달 그냥 사기와 거의 같아서(예: +145.5% vs +147.9%), 결과는 성적표가 아니라 구경하는 재미로 보여줍니다. 자세한 비교는 [roadmap.md](docs/roadmap.md).
 
 ## 기술 스택
 
@@ -97,7 +140,7 @@ Worker 평가 1회
 | --- | --- |
 | Backend | Python 3.14, uv, FastAPI, Pydantic v2, SQLAlchemy 2, Alembic, psycopg 3, httpx, pandas, exchange_calendars |
 | Frontend | React, TypeScript, Vite, TanStack Query, Lightweight Charts |
-| Infra | Docker Compose, PostgreSQL 17, AWS Lightsail(Terraform), Cloudflare Tunnel·Access, Tailscale |
+| Infra | Docker Compose, PostgreSQL 17, Cloudflare Tunnel·Access, Tailscale, AWS Lightsail(Terraform) |
 | 품질 | pytest(핵심 불변식 위주), ruff, mypy strict, oxlint, GitHub Actions, `alembic check` |
 
 ## 로컬 실행
@@ -105,17 +148,25 @@ Worker 평가 1회
 필요한 도구: [uv](https://docs.astral.sh/uv/), Python 3.14, Node.js LTS, Docker Desktop.
 
 ```bash
-cp .env.example .env                      # 필요하면 값 채우기
+cp .env.example .env                      # 필요하면 값 채우기 (기본값은 토스를 부르지 않음)
 docker compose up -d --wait db            # PostgreSQL 17
 cd backend
 uv sync
 uv run alembic upgrade head
 uv run uvicorn quant_lab.api.main:app --reload   # http://localhost:8000/api/health
-uv run python -m quant_lab.worker                # 다른 터미널 (기본값: 토스 호출 없음)
+uv run python -m quant_lab.worker                # 다른 터미널
 cd ../frontend
 npm install
 npm run dev                                       # http://localhost:5173
 ```
+
+| 설정 | 기본값 | 뜻 |
+| --- | --- | --- |
+| `WORKER_MARKET_SOURCE` | `stored` | `toss`면 토스 시세를 받음. 토스 client는 계정당 1개라 로컬에서는 보통 꺼 둠 |
+| `TOSS_ACCOUNT_ENABLED` | `false` | 실제 계좌 읽기 (한 시간마다) |
+| `LIVE_TRADING` | `false` | 실거래 스위치. 꺼져 있으면 주문 어댑터를 만들지 않아 실제 주문 경로가 없음 |
+
+비밀값(토스 키, 텔레그램 토큰 등)은 저장소 안 `.secrets/`(Git 제외)에 둡니다.
 
 ## CLI
 
@@ -127,10 +178,9 @@ uv run python -m quant_lab.cli bot create qqq-sma QQQ --params fast=50,slow=200 
 uv run python -m quant_lab.cli bot cmd <봇 ID> START                            # START·PAUSE·STOP·RUN_ONCE
 uv run python -m quant_lab.cli replay QQQ --start 2024-01-02 --end 2026-09-30   # 정기 평가 재생 vs 백테스트
 uv run python -m quant_lab.cli notify chat-id                                   # 텔레그램 채팅 ID 확인 (봇에게 먼저 메시지)
-uv run python -m quant_lab.cli notify test                                      # 텔레그램 테스트 메시지
 uv run scripts/toss_probe.py                                                    # 토스 API 읽기 전용 탐색
 DATABASE_URL=postgresql+psycopg://quant:quant@localhost:5432/quant_lab_portfolio \
-  uv run python -m quant_lab.cli seed-demo                                      # 데모 DB에 예시 시세·예시 봇 (실제 시세가 있는 DB에는 안 넣음)
+  uv run python -m quant_lab.cli seed-demo                                      # 데모 DB에 예시 시세·예시 봇·예시 환율
 ```
 
 ## 검사
@@ -146,33 +196,33 @@ npm run lint && npm run build
 
 ## 운영 배포
 
-서울 리전 VM 1대에서 Docker Compose로 실행하고, 화면은 Cloudflare Access 뒤의 도메인으로 엽니다. 단계별 절차는 [project.md 6절](docs/project.md).
+서버 한 대에서 Docker Compose로 운영(api·worker·db·cloudflared)과 데모를 함께 띄웁니다. 단계별 절차는 [project.md 6절](docs/project.md).
 
 ```bash
-cd infra/lightsail && terraform apply   # 서버·고정 IP·자동 스냅샷 (AWS 자격 증명 필요)
+cd infra/lightsail && terraform apply   # (서버를 옮길 때) 서울 VM·고정 IP·자동 스냅샷
 sudo bash deploy/bootstrap.sh           # 새 서버에서 한 번
-bash deploy/deploy.sh                   # 배포할 때마다 (main 기준)
+bash deploy/deploy.sh                   # 배포할 때마다 (main 기준, 마이그레이션 성공해야 api·worker가 뜸)
 ```
 
 ## 프로젝트 구조
 
 ```text
 backend/src/quant_lab/
-  domain/        봉·전략·체결·백테스트 규칙 (외부 의존 없음)
-  application/   일봉 동기화, DRY RUN 평가 1회, 백테스트, replay
-  adapters/      토스 클라이언트, 거래소 달력
+  domain/        봉·전략·체결·백테스트·실주문 규칙, 증권사 규약(broker.py), 이벤트 형식 (외부 의존 없음)
+  application/   일봉 동기화, DRY RUN 평가, 실제로 따라 사기, 백테스트·평행세계·따라 하기, 알림
+  adapters/      토스 시세·계좌 클라이언트와 주문 어댑터, 거래소 달력, 텔레그램
   persistence/   SQLAlchemy 모델·저장소
-  api/           FastAPI
-  worker/        Worker 루프 (advisory lock, 명령 처리, 예정 평가)
-frontend/        React 운영 화면
-deploy/          운영 compose, 서버 준비·배포·백업 스크립트
+  api/           FastAPI (요청 해석 → application 호출 → 응답만)
+  worker/        Worker 진입점(조립 지점)과 루프
+frontend/        React 화면
+deploy/          운영·데모 compose, 서버 준비·배포·백업 스크립트
 infra/lightsail/ Terraform
 docs/            설계·로드맵·토스 API 조사
 ```
 
 ## 데이터와 범위에 대한 주의
 
-- 토스증권 Open API 데이터는 본인 매매 목적으로만 쓸 수 있고 제3자 배포가 금지돼 있습니다. 이 저장소에는 시세 데이터를 넣지 않으며, 테스트는 합성 데이터로만 돌립니다.
-- 모든 주문은 내부 모의 체결입니다. 실제 계좌 주문 기능은 별도 검증 단계 전까지 구현하지 않습니다.
-- 투자 조언이 아니며, 백테스트 결과는 미래 수익을 보장하지 않습니다.
-- 체결·비용·데이터·운영의 알려진 한계는 [project.md 11절](docs/project.md)에 정리했습니다 (예: 환전·세금·배당 미반영, 보유 중 액면분할 시 잔고 미보정, 하루 한 번 판단).
+- 토스증권 Open API 데이터는 본인 매매 목적으로만 쓸 수 있고 제3자 배포가 금지돼 있습니다. 이 저장소에는 시세 데이터를 넣지 않으며, 테스트와 데모는 합성 데이터만 씁니다.
+- 실제 주문은 실거래 스위치를 켜고, 봇마다 "실제로 따라 사기"를 켜고, 처음 몇 번은 사람이 승인해야 나갑니다. 사기만 하며 작은 금액 한도 안에서만 냅니다.
+- 개인용 앱입니다. 남에게 서비스하지 않으며 투자 조언이 아닙니다. 백테스트 결과는 미래 수익을 보장하지 않습니다.
+- 체결·비용·데이터·운영의 알려진 한계는 [project.md 11절](docs/project.md)에 정리했습니다 (예: 환전·세금·배당 미반영, 원화 수익에 환차손익 미반영, 하루 한 번 판단).
