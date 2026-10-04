@@ -20,9 +20,10 @@ from quant_lab.adapters.heartbeat_ping import HeartbeatPinger
 from quant_lab.adapters.market_calendar import get_calendar
 from quant_lab.adapters.telegram import TelegramClient
 from quant_lab.adapters.toss.client import TossClient
-from quant_lab.application.market import MarketData, StoredMarket, TossMarket
+from quant_lab.application.market import BrokerMarket, MarketData, StoredMarket
 from quant_lab.application.notify import EventNotifier
 from quant_lab.config import Settings, get_settings
+from quant_lab.domain.events import EventKind
 from quant_lab.persistence.bots import add_event
 from quant_lab.persistence.db import get_engine
 from quant_lab.persistence.heartbeat import record_heartbeat
@@ -41,7 +42,7 @@ def build_market(settings: Settings) -> MarketData:
     client = TossClient(
         settings.toss_client_id.get_secret_value(), settings.toss_client_secret.get_secret_value()
     )
-    return TossMarket(client, get_calendar())
+    return BrokerMarket(client, get_calendar())
 
 
 def build_notifier(settings: Settings, make_session: Callable[[], Session]) -> EventNotifier | None:
@@ -80,11 +81,12 @@ def run(stop: threading.Event) -> None:
     log.info("worker 시작 id=%s version=%s", worker_id, __version__)
     market = build_market(settings)
     watchlist = [s.strip().upper() for s in settings.watchlist_symbols.split(",") if s.strip()]
-    live = market if isinstance(market, TossMarket) else None  # 실시간 가격은 토스 모드에서만
+    # 실시간 가격은 증권사 연결 모드에서만
+    live = market if isinstance(market, BrokerMarket) else None
     # 실제 토스 계좌 읽기 (실거래 R1). 시세와 같은 클라이언트라 토큰도 하나다 (원칙 6).
     account = None
-    if settings.toss_account_enabled and isinstance(market, TossMarket):
-        account = market.client.account_snapshot
+    if settings.toss_account_enabled and isinstance(market, BrokerMarket):
+        account = market.broker.account_snapshot
         log.info("토스 계좌 읽기 켜짐 (한 시간마다, 주문 없음)")
     worker = Worker(
         make_session, market, get_calendar(), watchlist=watchlist, live=live, account=account
@@ -95,7 +97,7 @@ def run(stop: threading.Event) -> None:
             session,
             datetime.now(UTC),
             "INFO",
-            "worker_start",
+            EventKind.WORKER_START,
             f"Worker 시작 ({worker_id}, v{__version__}, 시세 {settings.worker_market_source})",
         )
         session.commit()

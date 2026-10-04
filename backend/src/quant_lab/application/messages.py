@@ -5,8 +5,19 @@
 
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 from zoneinfo import ZoneInfo
+
+from quant_lab.domain.events import (
+    CommandData,
+    ConfigChange,
+    ConfigChangeData,
+    ErrorReason,
+    EventKind,
+    MissedSessionsData,
+    RunData,
+    SkipReason,
+)
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -263,26 +274,29 @@ class Message:
     notify: bool  # 텔레그램으로 보낼지
 
 
-def _plain_skip(detail: str) -> str:
-    if "일봉이 아직 없습니다" in detail:
-        return "아직 최신 시세가 도착하지 않았어요."
-    if "토스 캘린더" in detail:
-        return "오늘 미국 시장이 열렸는지 토스와 확인이 맞지 않아요."
-    if "토스 호출 실패" in detail:
-        return "토스 서버 연결이 잠시 불안정해요."
-    if "일봉 문제" in detail or "품질" in detail:
-        return "시세 데이터에 비어 있는 날이 있어요."
-    if "중복" in detail:
-        return "같은 날 판단이 이미 진행 중이에요."
-    return "잠시 확인이 필요한 상황이에요."
+# 이유 코드 → 쉬운 말. 엔진의 로그 문구(message 칸)는 읽지 않는다 (domain/events.py).
+SKIP_TEXT: dict[str, str] = {
+    SkipReason.DATA_NOT_READY: "아직 최신 시세가 도착하지 않았어요.",
+    SkipReason.CALENDAR_MISMATCH: "오늘 미국 시장이 열렸는지 토스와 확인이 맞지 않아요.",
+    SkipReason.BROKER_UNAVAILABLE: "토스 서버 연결이 잠시 불안정해요.",
+    SkipReason.BAD_BARS: "시세 데이터에 비어 있거나 이상한 날이 있어요.",
+    SkipReason.NOT_ENOUGH_BARS: "판단에 필요한 만큼 시세가 쌓이지 않았어요.",
+    SkipReason.DUPLICATE: "같은 날 판단이 이미 진행 중이에요.",
+    SkipReason.NO_RECENT_SESSION: "최근에 끝난 거래일을 찾지 못했어요.",
+    SkipReason.BOT_MISSING: "봇을 찾지 못했어요.",
+}
+ERROR_TEXT: dict[str, str] = {
+    ErrorReason.BROKER_ACCESS: "토스가 접속을 막았거나 로그인 정보에 문제가 있어요. "
+    "인터넷 주소(IP)가 바뀌었거나 키가 만료됐을 수 있어요. 토스 앱의 허용 IP와 키를 확인해 주세요.",
+    ErrorReason.UNEXPECTED: "예상하지 못한 문제가 생겼어요. 확인이 필요해요.",
+}
 
 
-def _plain_error(detail: str) -> str:
-    if "403" in detail or "forbidden" in detail or "edge-blocked" in detail:
-        return "토스가 접속을 막았어요. 이 컴퓨터의 인터넷 주소(IP)가 바뀌었을 수 있어요. 토스 앱의 허용 IP를 확인해 주세요."
-    if "인증" in detail or "token" in detail:
-        return "토스 로그인 정보에 문제가 있어요. 키가 바뀌었거나 만료됐을 수 있어요."
-    return "예상하지 못한 문제가 생겼어요. 확인이 필요해요."
+def _weights_label(symbols: list[dict[str, Any]]) -> str:
+    active = [s for s in symbols if int(s.get("weight", 0)) > 0]
+    if len(active) > 1:
+        return " · ".join(f"{s['symbol']} {s['weight']}%" for s in active)
+    return "·".join(str(s["symbol"]) for s in active)
 
 
 def event_message(
@@ -302,7 +316,7 @@ def event_message(
         ret = float(d.get("total_return", 0)) * 100
         equity_line = f"내 모의 자산 {_usd(d['equity'])} ({ret:+.2f}%)"
 
-    if kind == "decision":
+    if kind == EventKind.DECISION:
         if "action" not in d:
             return None  # 예전 형식의 "이미 판단함" 기록
         action = d["action"]
@@ -327,12 +341,12 @@ def event_message(
         # 아무것도 하지 않는 날의 점검은 앱 기록에만 남긴다. 텔레그램은 거래·문제·주간 정리만.
         return Message("📋", f"오늘의 점검 · {sym}", body, "INFO", False)
 
-    if kind == "deposit":
+    if kind == EventKind.DEPOSIT:
         amount, total = _usd(d.get("amount", 0)), _usd(d.get("contributed", 0))
         body = f"모의 계좌에 {amount}를 넣었어요. 지금까지 넣은 돈 {total}"
         return Message("💵", f"월급 입금 · {sym}", body, "INFO", False)
 
-    if kind == "sim_fill":
+    if kind == EventKind.SIM_FILL:
         qty, price = _shares(d.get("qty")), d.get("price")
         fee = _usd(d.get("commission", 0))
         if d.get("side") == "BUY":
@@ -357,7 +371,7 @@ def event_message(
             True,
         )
 
-    if kind == "weekly_report":
+    if kind == EventKind.WEEKLY_REPORT:
         week, hold = Decimal(d["week_return"]), Decimal(d["hold_return"])
         buys, sells = int(d.get("buys", 0)), int(d.get("sells", 0))
         trades = (
@@ -387,7 +401,7 @@ def event_message(
             "INFO",
             True,
         )
-    if kind == "bot_reset":
+    if kind == EventKind.BOT_RESET:
         return Message(
             "🔄",
             f"{obj(who)} 처음부터 다시 시작해요",
@@ -395,10 +409,10 @@ def event_message(
             "INFO",
             True,
         )
-    if kind == "bot_deleted":
+    if kind == EventKind.BOT_DELETED:
         name = d.get("name") or who
         return Message("🗑️", f"{obj(name)} 지웠어요", "봇과 그 기록을 모두 지웠어요.", "INFO", True)
-    if kind == "restart_resume":
+    if kind == EventKind.RESTART_RESUME:
         return Message(
             "🔄",
             f"{obj(who)} 이어서 실행해요",
@@ -406,7 +420,7 @@ def event_message(
             "INFO",
             True,
         )
-    if kind == "restart_pause":  # 2026-10-02 이전 기록
+    if kind == EventKind.RESTART_PAUSE:  # 2026-10-02 이전 기록
         return Message(
             "⏸️",
             f"{obj(who)} 잠시 멈췄어요",
@@ -414,45 +428,52 @@ def event_message(
             "WARN",
             True,
         )
-    if kind == "run_skipped":
+    if kind == EventKind.RUN_SKIPPED:
+        run = cast(RunData, d)
         notify = level == "WARN"  # 같은 이유가 이어지면 두 번째부터 INFO로 기록된다
+        text = SKIP_TEXT.get(run.get("reason", ""), "잠시 확인이 필요한 상황이에요.")
         return Message(
-            "⏳",
-            "오늘 판단을 잠시 미뤘어요",
-            f"{_plain_skip(raw)}\n15분 뒤 다시 확인해요.",
-            level,
-            notify,
+            "⏳", "오늘 판단을 잠시 미뤘어요", f"{text}\n15분 뒤 다시 확인해요.", level, notify
         )
-    if kind == "run_error":
-        return Message("🚨", f"{subj(who)} 멈췄어요", _plain_error(raw), "ERROR", True)
-    if kind == "missed_sessions":
+    if kind == EventKind.RUN_ERROR:
+        run = cast(RunData, d)
+        text = ERROR_TEXT.get(run.get("reason", ""), ERROR_TEXT[ErrorReason.UNEXPECTED])
+        return Message("🚨", f"{subj(who)} 멈췄어요", text, "ERROR", True)
+    if kind == EventKind.MISSED_SESSIONS:
+        missed = cast(MissedSessionsData, d)
+        span = (
+            f" ({missed['first']} ~ {missed['last']}, {missed['count']}일)"
+            if "count" in missed
+            else ""
+        )
         return Message(
             "📅",
             "판단하지 못한 날이 있어요",
-            f"프로그램이 꺼져 있던 동안의 판단을 건너뛰었어요. ({raw.split(': ')[-1]})",
+            f"프로그램이 꺼져 있던 동안의 판단을 건너뛰었어요.{span}",
             "WARN",
             True,
         )
-    if kind == "config_change":
-        if raw.startswith("종목 변경: "):
-            body = raw.removeprefix("종목 변경: ")
+    if kind == EventKind.CONFIG_CHANGE:
+        change = cast(ConfigChangeData, d)
+        kind_of = change.get("change")
+        if kind_of == ConfigChange.SYMBOLS:
+            body = f"{_weights_label(change.get('before', {}).get('symbols') or [])} → {_weights_label(change['after']['symbols'])}"
+            if change.get("dropped"):
+                body += f" (더 사지 않고 들고만 있기: {', '.join(change['dropped'])})"
             return Message("⚙️", "종목을 바꿨어요", body, "INFO", False)
-        title = "봇을 만들었어요" if raw.startswith("봇 생성") else "설정을 바꿨어요"
-        return Message(
-            "⚙️",
-            title,
-            nickname(d.get("after", {}).get("strategy", "")) if d.get("after") else "",
-            "INFO",
-            False,
-        )
-    if kind == "command":
+        if kind_of == ConfigChange.RENAME:
+            body = f"{change.get('before', {}).get('name')} → {change['after'].get('name')}"
+            return Message("⚙️", "이름을 바꿨어요", body, "INFO", False)
+        title = "봇을 만들었어요" if kind_of == ConfigChange.CREATE else "설정을 바꿨어요"
+        after = change.get("after") or {}
+        return Message("⚙️", title, nickname(after.get("strategy", "")), "INFO", False)
+    if kind == EventKind.COMMAND:
         labels = {
             "RUNNING": ("▶️", "매매를 시작했어요"),
-            "PAUSED": ("⏸️", "매매를 일시정지했어요"),
-            "STOPPED": ("⏹️", "매매를 중단했어요"),
+            "PAUSED": ("⏸️", "매매를 멈췄어요"),
+            "STOPPED": ("⏸️", "매매를 멈췄어요"),
         }
-        state = raw.split(": ")[-1]
-        icon, title = labels.get(state, ("ℹ️", raw))
+        icon, title = labels.get(cast(CommandData, d).get("state", ""), ("ℹ️", "봇 상태를 바꿨어요"))
         return Message(icon, title, "", "INFO", False)
     # worker_start, decision_repeat, watchlist_sync 등은 내부 기록이라 보여주지 않는다.
     return None

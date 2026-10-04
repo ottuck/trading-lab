@@ -42,3 +42,19 @@ def test_domain_has_no_forbidden_imports() -> None:
         if any(name == f or name.startswith(f + ".") for f in FORBIDDEN)
     ]
     assert violations == []
+
+
+# 증권사(토스)를 직접 아는 곳은 어댑터와 조립 지점(Worker 진입점·CLI)뿐이다 (domain/broker.py 규약).
+BROKER_ASSEMBLY = {"cli.py", "worker/__main__.py"}
+
+
+def test_only_assembly_points_know_the_broker() -> None:
+    root = DOMAIN_DIR.parent
+    violations = [
+        str(path.relative_to(root))
+        for path in root.rglob("*.py")
+        if "adapters" not in path.relative_to(root).parts
+        and path.relative_to(root).as_posix() not in BROKER_ASSEMBLY
+        and any(n.startswith("quant_lab.adapters.toss") for n in imported_modules(path))
+    ]
+    assert violations == []

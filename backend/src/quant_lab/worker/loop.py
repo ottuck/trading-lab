@@ -8,7 +8,6 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import Connection, func, select
 from sqlalchemy.orm import Session
 
-from quant_lab.adapters.toss.client import AccountSnapshot
 from quant_lab.application.dry_run import (
     EvaluationOutcome,
     Trigger,
@@ -23,6 +22,8 @@ from quant_lab.domain.bot import (
     InvalidTransitionError,
     apply_command,
 )
+from quant_lab.domain.broker import AccountSnapshot
+from quant_lab.domain.events import CommandData, EventKind
 from quant_lab.persistence.bars import latest_session_date
 from quant_lab.persistence.bots import add_event, bot_weights, get_bot, set_bot_state
 from quant_lab.persistence.market_info import upsert_instruments, upsert_live_bars, upsert_quotes
@@ -109,7 +110,7 @@ class Worker:
                     session,
                     now,
                     "INFO",
-                    "restart_resume",
+                    EventKind.RESTART_RESUME,
                     "Worker 재시작 후 이어서 실행합니다.",
                     bot_id=bot.id,
                 )
@@ -213,7 +214,11 @@ class Worker:
                     level = "INFO" if symbol in self._watchlist_failing else "WARN"
                     self._watchlist_failing.add(symbol)
                     add_event(
-                        session, now, level, "watchlist_sync", f"{symbol} 일봉 갱신 실패: {exc}"
+                        session,
+                        now,
+                        level,
+                        EventKind.WATCHLIST_SYNC,
+                        f"{symbol} 일봉 갱신 실패: {exc}",
                     )
                     session.commit()
                     continue
@@ -226,7 +231,7 @@ class Worker:
                     session,
                     now,
                     "INFO",
-                    "watchlist_sync",
+                    EventKind.WATCHLIST_SYNC,
                     f"관심 종목 일봉 갱신 ({target}): {', '.join(synced)}",
                 )
                 session.commit()
@@ -289,7 +294,15 @@ class Worker:
                     now  # 바로 한 번 평가한다 (이미 판단한 봉이면 아무것도 안 함)
                 )
             cmd.result, cmd.detail = "OK", f"{kind} → {new}"
-            add_event(session, now, "INFO", "command", f"{kind}: {new}", bot_id=bot.id)
+            add_event(
+                session,
+                now,
+                "INFO",
+                EventKind.COMMAND,
+                f"{kind}: {new}",
+                bot_id=bot.id,
+                data=CommandData(command=kind, state=new),
+            )
         session.commit()
         return None
 

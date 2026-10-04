@@ -1,6 +1,7 @@
 """봇·명령·이벤트 저장소."""
 
 import uuid
+from collections.abc import Mapping
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -9,6 +10,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from quant_lab.domain.bot import BotState, CommandKind
+from quant_lab.domain.events import EventKind
 from quant_lab.domain.portfolio import CostModel, Portfolio, Position, RiskLimits
 from quant_lab.persistence.backtests import to_jsonable
 from quant_lab.persistence.models import (
@@ -160,13 +162,14 @@ def add_event(
     session: Session,
     at: datetime,
     level: str,
-    kind: str,
+    kind: EventKind,
     message: str,
     *,
     bot_id: int | None = None,
     run_id: uuid.UUID | None = None,
-    data: dict[str, Any] | None = None,
+    data: Mapping[str, Any] | None = None,
 ) -> None:
+    """data 형식은 domain/events.py가 정한다. message는 로그용 원문이라 아무도 해석하지 않는다."""
     session.add(
         EventRow(
             at=at,
@@ -175,7 +178,7 @@ def add_event(
             message=message,
             bot_id=bot_id,
             run_id=run_id,
-            data=to_jsonable(data) if data is not None else None,
+            data=to_jsonable(dict(data)) if data is not None else None,
         )
     )
 
