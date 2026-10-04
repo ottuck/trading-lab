@@ -1,3 +1,4 @@
+import json
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -13,7 +14,14 @@ from quant_lab.adapters.toss.client import (
     TossForbiddenError,
     to_daily_bar,
 )
-from quant_lab.domain.broker import BrokerAccessError, BrokerError
+from quant_lab.adapters.toss.trader import TossTrader
+from quant_lab.domain.broker import (
+    AmountOrder,
+    BrokerAccessError,
+    BrokerError,
+    OrderRejected,
+    RejectReason,
+)
 
 TOKEN_URL = f"{BASE_URL}/oauth2/token"
 CANDLES_URL = f"{BASE_URL}/api/v1/candles"
@@ -215,3 +223,32 @@ def test_account_snapshot_reads_with_account_header(client: TossClient) -> None:
     # 진행 중 + 종료 주문을 이어서 읽고 최신순으로 둔다.
     assert [o.order_id for o in snap.orders] == ["o3", "o2", "o1"]
     assert snap.orders[1].filled_amount == Decimal("3.49")
+
+
+def test_trader_sends_amount_order_with_key_and_maps_rejection(client: TossClient) -> None:
+    trader = TossTrader(client)
+    order = AmountOrder(key="ql-1-VOO-20261001", symbol="VOO", amount=Decimal("3.37"))
+    with respx.mock() as mock:
+        mock.post(TOKEN_URL).mock(return_value=token_response())
+        mock.get(f"{BASE_URL}/api/v1/accounts").mock(
+            return_value=httpx.Response(200, json={"result": [{"accountSeq": 7}]})
+        )
+        sent = mock.post(f"{BASE_URL}/api/v1/orders").mock(
+            side_effect=[
+                httpx.Response(200, json={"result": {"orderId": "A1", "clientOrderId": order.key}}),
+                error_response(422, "amount-order-outside-regular-hours"),
+            ]
+        )
+        assert trader.place_amount_buy(order) == "A1"
+        body = json.loads(sent.calls[0].request.content)
+        assert body == {
+            "clientOrderId": order.key,
+            "symbol": "VOO",
+            "side": "BUY",
+            "orderType": "MARKET",
+            "orderAmount": "3.37",
+        }
+        # 토스 오류 코드는 어댑터 안에서 증권사 무관 거절 이유로 바뀐다
+        with pytest.raises(OrderRejected) as rejected:
+            trader.place_amount_buy(order)
+    assert rejected.value.reason is RejectReason.OUTSIDE_HOURS

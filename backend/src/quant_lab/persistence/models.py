@@ -107,6 +107,10 @@ class BotRow(Base):
     next_evaluation_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # 실제로 따라 사기 (실거래 R2). 비율이 없으면 꺼짐. 켠 시각 이후의 모의 매수만 따라 산다.
+    live_ratio: Mapped[Decimal | None] = mapped_column(PRICE)
+    live_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    live_streak: Mapped[int] = mapped_column(Integer, server_default="0")  # 연속 문제없는 체결
 
 
 class BotAccountRow(Base):
@@ -325,3 +329,49 @@ class ExchangeRateRow(Base):
     as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     source: Mapped[str] = mapped_column(String(20))  # 출처 코드 (증권사 어댑터 또는 demo)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class LiveOrderRow(Base):
+    """실제 주문 1건 (실거래 R2). 모의 매수 1건에 최대 하나이고 지우지 않는다.
+
+    보내기 전에 SENDING으로 먼저 적고 보낸다. 같은 판단은 같은 중복 방지 키(key)를 쓴다.
+    봇을 지우거나 처음부터 다시 시작해도 실제 주문 기록은 남기고 연결만 비운다.
+    """
+
+    __tablename__ = "live_orders"
+    __table_args__ = (Index("ix_live_orders_state", "state"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bot_id: Mapped[int | None] = mapped_column(ForeignKey("bots.id", ondelete="SET NULL"))
+    sim_order_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sim_orders.id", ondelete="SET NULL"), unique=True
+    )
+    symbol: Mapped[str] = mapped_column(String(20))
+    signal_date: Mapped[date] = mapped_column(Date)
+    trade_date: Mapped[date] = mapped_column(Date)  # 낼 미국 거래일 (판단 다음 거래일)
+    amount: Mapped[Decimal] = mapped_column(PRICE)  # USD
+    key: Mapped[str] = mapped_column(String(36), unique=True)
+    state: Mapped[str] = mapped_column(String(20))
+    reason: Mapped[str | None] = mapped_column(String(30))  # 건너뜀·거절 이유 코드
+    note: Mapped[str | None] = mapped_column(Text)  # 로그용 원문
+    source: Mapped[str | None] = mapped_column(String(20))  # 보낸 증권사 출처 코드
+    broker_order_id: Mapped[str | None] = mapped_column(String(64))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # 처음 보낸 시각
+    filled_qty: Mapped[Decimal | None] = mapped_column(PRICE)
+    filled_amount: Mapped[Decimal | None] = mapped_column(PRICE)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class LiveControlRow(Base):
+    """실거래 전체 상태 1행: 비상 중지, Worker에 주문 어댑터가 있는지 (실거래 스위치)."""
+
+    __tablename__ = "live_control"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)  # 늘 1
+    halted: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    halted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    trader: Mapped[str | None] = mapped_column(
+        String(20)
+    )  # 켜져 있으면 출처 코드, 꺼져 있으면 NULL
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

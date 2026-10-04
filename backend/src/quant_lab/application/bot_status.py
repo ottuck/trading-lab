@@ -106,6 +106,8 @@ class BotStatus:
     data_latest_date: date | None
     data_fetched_at: datetime | None
     data_source: str | None
+    live_ratio: Decimal | None = None  # 실제로 따라 사기 비율 (꺼짐이면 None)
+    live_streak: int = 0  # 연속으로 문제없이 체결된 실제 주문
 
 
 @dataclass(frozen=True)
@@ -297,6 +299,8 @@ def bot_status(session: Session, bot: BotRow) -> BotStatus:
         data_latest_date=data_latest,
         data_fetched_at=data_fetched,
         data_source=last_bar.source if last_bar else None,
+        live_ratio=bot.live_ratio,
+        live_streak=bot.live_streak,
     )
 
 

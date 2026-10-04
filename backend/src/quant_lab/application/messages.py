@@ -14,6 +14,8 @@ from quant_lab.domain.events import (
     ConfigChangeData,
     ErrorReason,
     EventKind,
+    LiveControlData,
+    LiveOrderData,
     MissedSessionsData,
     RunData,
     SkipReason,
@@ -453,9 +455,30 @@ def event_message(
             "WARN",
             True,
         )
+    if kind == EventKind.LIVE_ORDER:
+        return _live_order_message(cast(LiveOrderData, d))
+    if kind == EventKind.LIVE_CONTROL:
+        if cast(LiveControlData, d).get("halted"):
+            return Message(
+                "⛔",
+                "실제 주문을 모두 멈췄어요",
+                "다시 시작할 때까지 실제 계좌로 주문을 내지 않아요.",
+                "WARN",
+                True,
+            )
+        return Message("▶️", "실제 주문을 다시 시작해요", "", "INFO", True)
     if kind == EventKind.CONFIG_CHANGE:
         change = cast(ConfigChangeData, d)
         kind_of = change.get("change")
+        if kind_of == ConfigChange.LIVE:
+            ratio = change["after"].get("live_ratio")
+            if ratio is None:
+                return Message("⚙️", "실제로 따라 사기를 껐어요", "", "INFO", False)
+            share = f"1/{round(1 / Decimal(str(ratio)))}"
+            body = (
+                f"모의 매수의 {share} 금액을 실제 계좌에서 따라 사요. 처음 몇 번은 승인을 받아요."
+            )
+            return Message("⚙️", "실제로 따라 사기를 켰어요", body, "INFO", False)
         if kind_of == ConfigChange.SYMBOLS:
             body = f"{_weights_label(change.get('before', {}).get('symbols') or [])} → {_weights_label(change['after']['symbols'])}"
             if change.get("dropped"):
@@ -477,6 +500,47 @@ def event_message(
         return Message(icon, title, "", "INFO", False)
     # worker_start, decision_repeat, watchlist_sync 등은 내부 기록이라 보여주지 않는다.
     return None
+
+
+# 실제 주문을 내지 않은 이유 (domain/live.py SkipReason, domain/broker.py RejectReason)
+_LIVE_REASONS = {
+    "declined": "이번엔 사지 않기로 했어요.",
+    "halted": "실제 주문을 멈춰 둔 동안이라 내지 않았어요.",
+    "missed": "주문을 받는 시간 안에 내지 못했어요. 이번 몫은 넘어가요.",
+    "no_session": "그날 장이 열리지 않아 넘어가요.",
+    "leveraged": "레버리지 상품은 실제로 사지 않아요.",
+    "too_small": "금액이 너무 작아 내지 않았어요.",
+    "outside_hours": "주문을 받는 시간이 아니었어요.",
+    "insufficient_funds": "실제 계좌에 돈이 부족해요. 달러를 채워 주세요.",
+    "prerequisite": "증권사 앱에서 이 종목의 사전 확인(위험 고지 등)을 먼저 해 주세요.",
+    "restricted": "지금 이 종목이나 계좌는 주문이 막혀 있어요.",
+    "other": "증권사가 주문을 받지 않았어요.",
+}
+
+
+def _live_order_message(d: LiveOrderData) -> Message | None:
+    sym, amount, state = d.get("symbol", ""), _usd(d.get("amount", 0)), d.get("state")
+    why = _LIVE_REASONS.get(d.get("reason", ""), "")
+    if state == "WAITING_APPROVAL":
+        body = f"다음 장이 열리면 실제 계좌에서 {amount}어치 사요. 앱에서 [승인]을 눌러 주세요."
+        return Message("🙋", f"실제로 살까요? · {sym}", body, "INFO", True)
+    if state == "APPROVED":
+        body = f"다음 장이 열리면 실제 계좌에서 {amount}어치 {'자동으로 ' if d.get('auto') else ''}사요."
+        return Message("🛒", f"실제로 사요 · {sym}", body, "INFO", False)
+    if state == "FILLED":
+        body = f"{sym} {_shares(d.get('filled_qty'))}주를 {amount}에 샀어요 (실제 계좌)."
+        return Message("✅", f"실제로 샀어요 · {sym}", body, "INFO", True)
+    if state == "SKIPPED":
+        warn = d.get("reason") in ("missed", "halted")
+        return Message("⏭️", f"실제 주문을 넘겼어요 · {sym}", why, "WARN" if warn else "INFO", warn)
+    if state in ("REJECTED", "CANCELED"):
+        title = "실제 주문이 거절됐어요" if state == "REJECTED" else "실제 주문이 취소됐어요"
+        body = f"{why} 다음 주문부터 다시 승인을 받아요.".strip()
+        return Message("⚠️", f"{title} · {sym}", body, "WARN", True)
+    if state == "UNKNOWN":
+        body = f"증권사 앱에서 {sym} {amount} 주문이 들어갔는지 확인해 주세요. 다음 주문부터 다시 승인을 받아요."
+        return Message("⚠️", f"실제 주문을 확인하지 못했어요 · {sym}", body, "WARN", True)
+    return None  # SENDING·SENT는 내부 상태
 
 
 def telegram_text(msg: Message, bot_name: str | None, at_kst: str) -> str:
