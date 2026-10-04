@@ -16,6 +16,7 @@ from quant_lab.domain.events import (
     EventKind,
     LiveControlData,
     LiveOrderData,
+    LiveReconcileData,
     MissedSessionsData,
     RunData,
     SkipReason,
@@ -457,6 +458,17 @@ def event_message(
         )
     if kind == EventKind.LIVE_ORDER:
         return _live_order_message(cast(LiveOrderData, d))
+    if kind == EventKind.LIVE_RECONCILE:
+        items = cast(LiveReconcileData, d).get("shortfall") or []
+        if not items:
+            return Message("✅", "실제 계좌가 봇 기록과 다시 맞아요", "", "INFO", True)
+        lines = [
+            f"{i['symbol']}: 계좌 {_shares(i['held'])}주 · 봇이 산 수량 {_shares(i['bought'])}주"
+            for i in items
+        ]
+        lines.append("직접 파셨다면 괜찮아요. 실제 주문은 맞을 때까지 매번 승인을 받아요.")
+        body = "\n".join(lines)
+        return Message("⚠️", "실제 계좌가 봇 기록보다 적어요", body, "WARN", True)
     if kind == EventKind.NOTIFY_TEST:
         return Message("🔔", "알림 테스트", "텔레그램 알림이 잘 와요.", "INFO", True)
     if kind == EventKind.LIVE_CONTROL:

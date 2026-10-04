@@ -200,6 +200,8 @@ class LiveView(BaseModel):
     per_order: Decimal
     per_month: Decimal
     ratios: list[str]
+    shortfall: list[dict[str, str]] = []  # 실제 계좌 대조 [{symbol, held, bought}]
+    checked_at: datetime | None = None
     orders: list[LiveOrderView]
 
 

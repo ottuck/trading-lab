@@ -22,8 +22,10 @@ from quant_lab.domain.events import (
     FillData,
     LiveControlData,
     LiveOrderData,
+    LiveReconcileData,
     MissedSessionsData,
     RunData,
+    ShortfallItem,
     SkipReason,
     WeeklyData,
 )
@@ -102,6 +104,9 @@ SAMPLES: dict[EventKind, Mapping[str, Any] | None] = {
     ),
     EventKind.LIVE_CONTROL: LiveControlData(halted=True),
     EventKind.NOTIFY_TEST: None,
+    EventKind.LIVE_RECONCILE: LiveReconcileData(
+        shortfall=[ShortfallItem(symbol="VOO", held="0.002", bought="0.0048")]
+    ),
 }
 HIDDEN = {EventKind.WORKER_START, EventKind.DECISION_REPEAT, EventKind.WATCHLIST_SYNC}
 
