@@ -60,7 +60,7 @@ class InstrumentView(BaseModel):
     live_at: datetime | None
 
 
-class TossHoldingView(BaseModel):
+class BrokerHoldingView(BaseModel):
     symbol: str
     name: str
     currency: str
@@ -70,7 +70,7 @@ class TossHoldingView(BaseModel):
     value: Decimal
 
 
-class TossOrderView(BaseModel):
+class BrokerOrderView(BaseModel):
     symbol: str
     side: str
     status: str
@@ -80,15 +80,16 @@ class TossOrderView(BaseModel):
     qty: Decimal
 
 
-class TossAccountView(BaseModel):
-    """실제 토스 계좌를 마지막으로 읽은 결과 (실거래 R1). 계좌번호는 없다."""
+class BrokerAccountView(BaseModel):
+    """실제 증권사 계좌를 마지막으로 읽은 결과 (실거래 R1). 계좌번호는 없다."""
 
+    source: str | None  # 증권사 출처 코드 (화면 이름은 frontend source.ts)
     cash_usd: Decimal | None
     cash_krw: Decimal | None
-    holdings: list[TossHoldingView]
-    orders: list[TossOrderView]
+    holdings: list[BrokerHoldingView]
+    orders: list[BrokerOrderView]
     fetched_at: datetime | None
-    error: str | None
+    error: Literal["access", "temporary"] | None
     error_at: datetime | None
 
 

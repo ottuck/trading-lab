@@ -29,6 +29,7 @@ from quant_lab.domain.broker import (
 )
 
 BASE_URL = "https://openapi.tossinvest.com"
+SOURCE = "toss"  # 저장한 봉·계좌의 출처 코드
 NEW_YORK = ZoneInfo("America/New_York")
 MAX_CANDLES_PER_PAGE = 200
 TOKEN_REFRESH_MARGIN = timedelta(hours=1)
@@ -96,6 +97,8 @@ def to_daily_bar(symbol: str, raw: Mapping[str, Any]) -> DailyBar:
 
 
 class TossClient:
+    source = SOURCE
+
     def __init__(
         self,
         client_id: str,
@@ -303,6 +306,7 @@ class TossClient:
         orders = self.orders("OPEN", since) + self.orders("CLOSED", since)
         orders.sort(key=lambda o: o.ordered_at, reverse=True)
         return AccountSnapshot(
+            source=SOURCE,
             cash_usd=self.buying_power("USD"),
             cash_krw=self.buying_power("KRW"),
             holdings=self.holdings(),

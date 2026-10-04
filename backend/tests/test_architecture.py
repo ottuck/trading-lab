@@ -58,3 +58,40 @@ def test_only_assembly_points_know_the_broker() -> None:
         and any(n.startswith("quant_lab.adapters.toss") for n in imported_modules(path))
     ]
     assert violations == []
+
+
+def test_engine_code_does_not_name_the_broker() -> None:
+    """엔진·저장소·API의 이름과 값에 증권사 이름이 없다 (project.md 4절).
+
+    출처 코드는 어댑터가 넘긴다.
+
+    주석·docstring은 문서 참조(tossApi.md)라 보지 않는다.
+    """
+    root = DOMAIN_DIR.parent
+    allowed = BROKER_ASSEMBLY | {"config.py"}
+    violations = []
+    for path in root.rglob("*.py"):
+        rel = path.relative_to(root)
+        if "adapters" in rel.parts or rel.as_posix() in allowed:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        docstrings = {
+            id(n.body[0].value)
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
+            and n.body
+            and isinstance(n.body[0], ast.Expr)
+        }
+        for node in ast.walk(tree):
+            match node:
+                case ast.Name(id=s) | ast.Attribute(attr=s) | ast.arg(arg=s):
+                    pass
+                case ast.FunctionDef(name=s) | ast.ClassDef(name=s) | ast.AsyncFunctionDef(name=s):
+                    pass
+                case ast.Constant(value=str(s)) if id(node) not in docstrings:
+                    pass
+                case _:
+                    continue
+            if "toss" in s.lower():
+                violations.append(f"{rel.as_posix()}:{getattr(node, 'lineno', '?')} {s[:40]}")
+    assert violations == []

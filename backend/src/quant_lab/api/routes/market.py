@@ -9,19 +9,19 @@ from quant_lab.api.deps import SessionDep
 from quant_lab.api.schemas import (
     ActivityItem,
     BarView,
+    BrokerAccountView,
     ChoiceOption,
     ChoiceView,
     EventView,
     InstrumentView,
     PresetView,
     StrategyInfo,
-    TossAccountView,
 )
 from quant_lab.application import queries
 from quant_lab.application.messages import CATALOG
 from quant_lab.config import get_settings
 from quant_lab.domain.strategy import STRATEGIES, deposit_plan
-from quant_lab.persistence.models import TossAccountRow
+from quant_lab.persistence.models import BrokerAccountRow
 
 router = APIRouter()
 
@@ -48,11 +48,11 @@ def instruments(session: SessionDep) -> list[InstrumentView]:
     ]
 
 
-@router.get("/toss-account")
-def toss_account(session: SessionDep) -> TossAccountView | None:
-    """실제 토스 계좌 (Worker가 한 시간마다 읽은 값). 읽기를 켜지 않았으면 null."""
-    row = session.get(TossAccountRow, 1)
-    return TossAccountView.model_validate(row, from_attributes=True) if row else None
+@router.get("/broker-account")
+def broker_account(session: SessionDep) -> BrokerAccountView | None:
+    """실제 증권사 계좌 (Worker가 한 시간마다 읽은 값). 읽기를 켜지 않았으면 null."""
+    row = session.get(BrokerAccountRow, 1)
+    return BrokerAccountView.model_validate(row, from_attributes=True) if row else None
 
 
 @router.get("/strategies")
