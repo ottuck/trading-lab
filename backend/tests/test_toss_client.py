@@ -170,6 +170,7 @@ def test_account_snapshot_reads_with_account_header(client: TossClient) -> None:
 
     def orders(request: httpx.Request) -> httpx.Response:
         params = request.url.params
+        page: dict[str, object]
         if params["status"] == "OPEN":
             page = {"orders": [order("o3", "2026-10-03T23:00:00+09:00", "PENDING")]}
         elif "cursor" not in params:
