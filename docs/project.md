@@ -216,7 +216,7 @@ Tailscale 앱 없이 폰·다른 PC에서 주소만으로 들어오기 위해 **
 | Tunnel | `cloudflared` 컨테이너를 운영 Compose에 추가해 서버에서 Cloudflare로 **밖으로만** 연결한다. 공개 인바운드 포트는 계속 0개, api는 지금처럼 127.0.0.1(컨테이너 네트워크)만 듣는다. Tunnel 토큰은 `.secrets/cloudflared.env` |
 | Access | 앱 앞에 Access 정책을 두고 **본인 이메일 한 개만** 허용 (이메일로 받은 일회용 코드로 로그인). 화면에 로그인을 따로 만들지 않는다. 세션 유지 기간은 길게(예: 1개월) 잡아 PWA로 열 때 자주 묻지 않게 한다. 무료 플랜 범위(사용자 수 한도)는 착수 시 확인 |
 | SSH | 서버 관리용 SSH는 Tailscale을 그대로 쓴다. 화면 접속만 옮긴 뒤 Tailscale을 완전히 뺄지는 그때 정한다 |
-| API 이중 확인 | Access가 막지만 정책 실수로 열리는 일에 대비해, api가 **Cloudflare를 거쳐 온 요청(`cf-ray` 헤더)**은 Access 토큰(`Cf-Access-Jwt-Assertion` 헤더 또는 `CF_Authorization` 쿠키, RS256)을 팀 공개 키와 AUD 태그로 확인하고 없으면 403 (`api/access.py`). Tailscale로 온 요청은 그대로 둔다. `.secrets/env`에 `CF_ACCESS_TEAM`·`CF_ACCESS_AUD`가 있을 때만 켜진다 |
+| API 이중 확인 | Access가 막지만 정책 실수로 열리는 일에 대비해, api가 **Cloudflare를 거쳐 온 요청(`cf-ray` 헤더)**은 Access 토큰(`Cf-Access-Jwt-Assertion` 헤더 또는 `CF_Authorization` 쿠키, RS256)을 팀 공개 키와 AUD 태그로 확인하고 없으면 403 (`api/access.py`). Tailscale로 온 요청은 그대로 둔다. `.secrets/env`에 `CF_ACCESS_TEAM`·`CF_ACCESS_AUD`가 있을 때만 켜진다. **Access 로그인은 되는데 화면에 `{"detail":"로그인이 필요해요"}`가 나오면** `CF_ACCESS_AUD`가 지금 Access 앱의 AUD 태그와 다른 것이다 (2026-10-04에 겪음: 로그인 페이지 주소의 `kid` 값이 AUD). `.secrets/env`를 고치고 `api`만 다시 띄운다 |
 | PWA | Access 뒤에서는 매니페스트 요청에도 로그인 쿠키가 필요하므로 `<link rel="manifest" crossorigin="use-credentials">` |
 | 확인 | Access 로그인 없이 도메인으로 열면 화면·API 모두 막히는지, 서버 공인 IP로 직접 들어오는 경로가 없는지 |
 
