@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
-import { api, botApi, type Bot, type SymbolWeight } from '../api'
-import { ago, money, shares } from '../format'
+import { api, botApi, type Bot, type SymbolWeight, type TossAccount } from '../api'
+import { ago, money, shares, won } from '../format'
 import { closeNewBot, selectBot, startMeEdit, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
 import { isMeBot, sameParams, useStrategies } from '../strategies'
 import { answersOf, describe } from '../me'
@@ -225,6 +225,80 @@ function DangerZone({ bot, others }: { bot: Bot; others: Bot[] }) {
   )
 }
 
+const ORDER_STATUS: Record<string, string> = {
+  PENDING: '기다리는 중',
+  PARTIAL_FILLED: '일부 체결',
+  FILLED: '체결',
+  CANCELED: '취소',
+  REJECTED: '거절',
+}
+
+function amountOf(value: string | null, currency: string) {
+  return currency === 'KRW' ? won(value) : money(value)
+}
+
+function orderTitle(o: TossAccount['orders'][number]) {
+  const verb = o.side === 'BUY' ? '샀어요' : '팔았어요'
+  const done = Number(o.qty) > 0
+  return `${o.symbol} ${o.amount ? amountOf(o.amount, o.currency) + ' ' : ''}${done ? verb : o.side === 'BUY' ? '사기 주문' : '팔기 주문'}`
+}
+
+/** 실제 토스 계좌 (실거래 R1). Worker가 한 시간마다 읽은 값을 보여주기만 하고 주문은 내지 않는다. */
+function TossAccountSection() {
+  const { data } = useQuery({ queryKey: ['toss-account'], queryFn: api.tossAccount, refetchInterval: 60_000 })
+  if (!data) return null
+  const failing = !!data.error_at && (!data.fetched_at || data.error_at > data.fetched_at)
+  return (
+    <Section title="토스 계좌" desc="실제 토스 계좌를 한 시간마다 읽어 와요. 아직 주문은 내지 않아요.">
+      {failing && (
+        <div className="notice">
+          {ago(data.error_at)}에 계좌를 읽지 못했어요. 집 인터넷 주소가 바뀌었다면 토스 Open API의 허용 IP를 다시 등록해 주세요.
+        </div>
+      )}
+      {data.fetched_at && (
+        <>
+          <div>
+            <div className="faint small">주문에 쓸 수 있는 돈</div>
+            <div>
+              {money(data.cash_usd)} <span className="muted">· {won(data.cash_krw)}</span>
+            </div>
+          </div>
+          <div>
+            <div className="faint small">들고 있는 주식</div>
+            {data.holdings.length ? (
+              data.holdings.map((h) => (
+                <div key={h.symbol}>
+                  {h.symbol} {shares(h.qty)}주 <span className="muted">· {amountOf(h.value, h.currency)}</span>
+                </div>
+              ))
+            ) : (
+              <div className="muted">없어요</div>
+            )}
+          </div>
+          <div className="set-log">
+            <div className="faint small">최근 30일 주문</div>
+            {data.orders.length ? (
+              data.orders.slice(0, 5).map((o) => (
+                <div key={o.ordered_at + o.symbol} className="log-item">
+                  <span className="pip" />
+                  <div>
+                    <div className="title">{orderTitle(o)}</div>
+                    <div className="body">{ORDER_STATUS[o.status] ?? o.status}</div>
+                  </div>
+                  <time dateTime={o.ordered_at}>{ago(o.ordered_at)}</time>
+                </div>
+              ))
+            ) : (
+              <div className="muted">없어요</div>
+            )}
+          </div>
+          <div className="faint small">{ago(data.fetched_at)}에 읽었어요</div>
+        </>
+      )}
+    </Section>
+  )
+}
+
 function sameStrategy(d: Draft, bot: Bot) {
   return d.strategy === bot.strategy && sameParams(d.params, bot.params)
 }
@@ -278,6 +352,7 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
       </div>
       <SymbolsField key={bot.symbols.map((s) => `${s.symbol}${s.weight}`).join()} bot={bot} />
       <NameField key={bot.name} bot={bot} />
+      <TossAccountSection />
       <History botId={bot.id} />
       <DangerZone bot={bot} others={others} />
     </>

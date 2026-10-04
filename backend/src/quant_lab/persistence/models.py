@@ -288,3 +288,22 @@ class LiveBarRow(Base):
     close: Mapped[Decimal] = mapped_column(PRICE)
     volume: Mapped[Decimal] = mapped_column(VOLUME)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class TossAccountRow(Base):
+    """실제 토스 계좌를 마지막으로 읽은 결과 1행 (실거래 R1, 화면 표시용).
+
+    Worker가 한 시간마다 덮어쓴다. 계좌번호와 원본 응답은 저장하지 않는다.
+    읽기에 실패하면 마지막 성공 값은 두고 error·error_at만 바꾼다.
+    """
+
+    __tablename__ = "toss_account"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)  # 늘 1
+    cash_usd: Mapped[Decimal | None] = mapped_column(PRICE)
+    cash_krw: Mapped[Decimal | None] = mapped_column(PRICE)
+    holdings: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)  # 금액·수량은 문자열
+    orders: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(Text)
+    error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

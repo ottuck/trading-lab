@@ -87,7 +87,9 @@ Base URL: `https://openapi.tossinvest.com`, WebSocket: `wss://openapi-ws.tossinv
 
 ## 5. 나중 단계(실거래·실시간)에서 쓸 사실
 
-- **주문 멱등성:** 주문 생성에 `clientOrderId`가 있다. 같은 값으로 처리 중이면 `409 request-in-progress`, 내용이 다르면 `422 idempotency-key-conflict`. 내부 판단 키(`bot_id + symbol + bar_ts + mode`)에서 `clientOrderId`를 만들면 외부 주문까지 중복 방지를 이어갈 수 있다.
+- **주문 멱등성:** 주문 생성에 `clientOrderId`가 있다 (최대 36자, 영숫자·`-`·`_`). 같은 값으로 다시 보내면 이전 주문 결과를 그대로 돌려주고, 처리 중이면 `409 request-in-progress`, 내용이 다르면 `422 idempotency-key-conflict`. 내부 판단 키(`bot_id + symbol + bar_ts + mode`)에서 `clientOrderId`를 만들면 외부 주문까지 중복 방지를 이어갈 수 있다.
+- **멱등성은 10분만 유효하다 (명세 v1.2.19, 2026-10-04 확인).** 10분이 지나 같은 값으로 보내면 **새 주문**이 된다. 또 주문 조회(`GET /orders`, `/orders/{orderId}`) 결과에는 `clientOrderId`가 없다 (주문 생성 응답에만 `orderId`와 함께 온다). 그래서 보내기 전에 DB에 먼저 적고, 응답의 `orderId`를 저장하며, 결과를 모르는 주문은 10분 안에서만 같은 키로 다시 보내고 그 뒤에는 종목·날짜·금액으로 주문 조회해 확인한다 (roadmap "실거래 트랙").
+- **매수 가능 금액:** `GET /api/v1/buying-power?currency=USD|KRW` → `cashBuyingPower`(decimal 문자열, 미수 없는 현금 기준). Rate limit 그룹 `ORDER_INFO`, 계좌 헤더 필요. 원화로 달러 금액 주문이 되는지(자동 환전)는 명세에 없어 실제 주문 단계에서 확인한다.
 - 동일 종목에 반대 방향 미체결 주문이 있으면 `409 opposite-pending-order-exists`.
 - 미국 금액 주문은 정규장에서만 가능 (`422 amount-order-outside-regular-hours`).
 - 레버리지·인버스 ETF는 앱에서 사전 요건(위험 고지 등)을 마쳐야 한다 (`422 prerequisite-required`).

@@ -81,7 +81,14 @@ def run(stop: threading.Event) -> None:
     market = build_market(settings)
     watchlist = [s.strip().upper() for s in settings.watchlist_symbols.split(",") if s.strip()]
     live = market if isinstance(market, TossMarket) else None  # 실시간 가격은 토스 모드에서만
-    worker = Worker(make_session, market, get_calendar(), watchlist=watchlist, live=live)
+    # 실제 토스 계좌 읽기 (실거래 R1). 시세와 같은 클라이언트라 토큰도 하나다 (원칙 6).
+    account = None
+    if settings.toss_account_enabled and isinstance(market, TossMarket):
+        account = market.client.account_snapshot
+        log.info("토스 계좌 읽기 켜짐 (한 시간마다, 주문 없음)")
+    worker = Worker(
+        make_session, market, get_calendar(), watchlist=watchlist, live=live, account=account
+    )
     notifier = build_notifier(settings, make_session)
     with make_session() as session:
         add_event(
