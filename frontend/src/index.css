@@ -953,10 +953,12 @@ button.seg.active .lev {
 .block-head {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap; /* 종목 버튼이 많으면(AI 봇 10개) 다음 줄로 */
   gap: 10px;
   margin-bottom: 12px;
 }
 .block-head h2 {
+  white-space: nowrap;
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.015em;
@@ -2351,4 +2353,105 @@ button.account-card:hover:not(:disabled) {
 button.seg.unsupported {
   color: var(--faint);
   border-style: dashed;
+}
+
+/* ---------- AI 봇 (마일스톤 4) ---------- */
+.ai-rows {
+  border-top: 1px solid var(--border);
+  margin-top: 12px;
+}
+.ai-row {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.ai-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ai-row-head .title {
+  font-weight: 600;
+  min-width: 52px;
+}
+.ai-weights {
+  font-size: 14px;
+}
+.ai-order {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+}
+.ai-order.rise {
+  color: var(--rise);
+}
+.ai-order.fall {
+  color: var(--fall);
+}
+.ai-bar {
+  position: relative;
+  height: 6px;
+  margin: 8px 0 6px;
+  border-radius: 3px;
+  background: var(--surface);
+}
+.ai-bar-before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+  background: var(--border-strong);
+}
+.ai-bar-target {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 12px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--text);
+}
+.ai-sources {
+  margin-top: 14px;
+}
+.ai-sources summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 14px;
+}
+.ai-queries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+}
+.ai-links {
+  margin: 8px 0;
+  padding-left: 18px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.ai-links a {
+  color: var(--text);
+  word-break: break-word;
+}
+button.line.ai-day {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  border-radius: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.ai-day .title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ai-day-summary {
+  margin-top: 6px;
+  color: var(--text);
 }

@@ -240,6 +240,7 @@ export type StrategyInfo = {
   presets: { key: string; label: string; params: Record<string, number> }[]
   default_params: Record<string, number>
   accumulates: boolean // 매달 입금하고 사 모으는 전략 (팔지 않음)
+  ai: boolean // AI가 판단하는 전략 (시험해 보기·전략 고르기에는 나오지 않는다)
   preset_label: string
   // 프리셋과 따로 고르는 규칙 (예: 고점에 쉬기). 프리셋을 바꿔도 유지된다.
   choices: { key: string; label: string; options: { value: number; label: string }[]; hint: string; requires: string }[]
@@ -258,6 +259,23 @@ export type World = {
   recent: { month: string; bought: string }[] // 지난달·이번 달에 산 금액 (월간 정리)
 }
 export type Parallel = { start: string | null; end: string | null; worlds: World[]; note: string | null }
+
+// AI 봇 (마일스톤 4): 하루 한 번 AI가 정한 목표 비중과 이유·출처. 현금은 CASH 키
+export type AiDay = {
+  session_date: string
+  status: 'OK' | 'FAILED' | 'INVALID' | 'OVER_BUDGET'
+  summary: string | null
+  weights: Record<string, number> | null // 목표 비중 %
+  weights_before: Record<string, Money> // 판단할 때의 비중 %
+  reasons: Record<string, string> | null
+  sources: { url: string; title: string }[]
+  queries: string[]
+  model: string | null
+  cost: Money | null
+  error: string | null
+  created_at: string
+}
+export type AiOverview = { latest: AiDay | null; history: AiDay[]; spent: Money; budget: Money }
 export type ParallelRequest = {
   symbol: string
   symbols?: SymbolWeight[]
@@ -389,6 +407,8 @@ export const botApi = {
   create: (body: BotCreate) => request<Bot>('/api/bots', json('POST', body)),
   updateConfig: (botId: number, body: BotConfig) => request<Bot>(`/api/bots/${botId}/config`, json('PUT', body)),
   parallel: (botId: number) => request<Parallel>(`/api/bots/${botId}/parallel`),
+  ai: (botId: number) => request<AiOverview>(`/api/bots/${botId}/ai`),
+  aiCompare: (botId: number) => request<Parallel>(`/api/bots/${botId}/ai/compare`),
   plan: (botId: number) => request<Plan | null>(`/api/bots/${botId}/plan`),
   updateSymbols: (botId: number, symbols: SymbolWeight[]) => request<Bot>(`/api/bots/${botId}/symbols`, json('PUT', { symbols })),
   rename: (botId: number, name: string) => request<Bot>(`/api/bots/${botId}`, json('PATCH', { name })),

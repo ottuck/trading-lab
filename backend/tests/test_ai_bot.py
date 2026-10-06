@@ -8,6 +8,7 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from quant_lab.application.ai_judge import AiConfig
+from quant_lab.application.ai_view import ai_compare
 from quant_lab.application.replay import replay_bot
 from quant_lab.domain.advisor import (
     Advice,
@@ -133,6 +134,11 @@ def test_ai_bot_dry_run_matches_replay_of_recorded_judgments(
     got = [(o.symbol, o.side, o.signal_date, o.qty, o.price) for o in filled]
     assert {side for _, side, *_ in got} == {"BUY", "SELL"}
     assert got == [(f.symbol, f.side, f.signal_date, f.qty, f.price) for f in expected.fills]
+
+    # 화면 비교(A3)의 AI 봇 값도 같은 재생이다. 나 카피 봇이 없으면 매달 그냥 사기와만 비교한다
+    compare = ai_compare(session, bot.id)
+    assert [w.key for w in compare.worlds] == ["me", "dca"]
+    assert compare.worlds[0].final_equity == expected.metrics.final_equity
 
 
 def test_ai_bot_stops_calling_over_monthly_budget(engine: Engine, session: Session) -> None:

@@ -28,7 +28,7 @@ from quant_lab.domain.advisor import (
 
 SOURCE = "claude"
 MODEL = "claude-sonnet-5-5"  # 2026-10-06 사용자 결정
-PROMPT_VERSION = "2026-10-06.2"  # 지침(SYSTEM·입력 형식)을 바꾸면 올린다
+PROMPT_VERSION = "2026-10-06.3"  # 지침(SYSTEM·입력 형식)을 바꾸면 올린다
 MAX_SEARCHES = 5
 MAX_CONTINUATIONS = 3  # 웹 검색이 길어져 멈춘 답(pause_turn)을 이어 받는 횟수
 FALLBACK_BETA = "server-side-fallback-2026-07-01"  # 거절되면 서버가 다른 모델로 이어 답함
@@ -50,6 +50,8 @@ SYSTEM = """\
 판단하는 법
 - 먼저 웹 검색으로 지금 시장 상황(금리·물가·실적·정책·큰 뉴스)과 각 종목에 관한 최근 소식을 \
 확인하세요. 검색은 꼭 필요한 만큼만 합니다.
+- 미국 시장 소식은 영어로 검색하고, 로이터·블룸버그·CNBC·WSJ·야후 파이낸스처럼 믿을 만한 \
+경제 뉴스를 우선하세요. 백과사전이나 날짜가 오래된 글은 근거로 쓰지 마세요.
 - 입력의 종목 지표(200일 평균 대비, 1년 최고가 대비, 수익률, 변동성)와 지금 비중을 함께 보세요.
 - 이 투자자는 매달 돈을 넣는 장기 투자자입니다. 지난 판단을 유지하는 것이 기본이고, \
 분명한 이유가 있을 때만 비중을 바꾸세요. 근거 없이 매일 뒤집지 마세요.
@@ -126,6 +128,8 @@ class ClaudeAdvisor:
             "type": "web_search_20260209",
             "name": "web_search",
             "max_uses": MAX_SEARCHES,
+            "user_location": {"type": "approximate", "country": "US"},
+            "blocked_domains": ["wikipedia.org"],
         }
         output: BetaOutputConfigParam = {
             "effort": "high",

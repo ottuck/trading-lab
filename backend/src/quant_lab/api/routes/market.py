@@ -68,8 +68,6 @@ def strategies() -> list[StrategyInfo]:
     """전략 카탈로그 (별명·설명·프리셋·선택지)."""
     out = []
     for name, factory in STRATEGIES.items():
-        if is_ai(name):
-            continue  # AI 봇은 시험해 보기(과거 백테스트)가 없고, 만들기 화면은 따로 둔다 (A3)
         info = CATALOG[name]
         out.append(
             StrategyInfo(
@@ -83,6 +81,7 @@ def strategies() -> list[StrategyInfo]:
                 ],
                 default_params=factory().params,
                 accumulates=deposit_plan(factory()) is not None,
+                ai=is_ai(name),
                 preset_label=info.preset_label,
                 choices=[
                     ChoiceView(
