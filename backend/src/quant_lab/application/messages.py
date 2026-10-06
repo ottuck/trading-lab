@@ -15,6 +15,7 @@ from quant_lab.domain.events import (
     ErrorReason,
     EventKind,
     LiveControlData,
+    LiveFundsData,
     LiveOrderData,
     LiveReconcileData,
     MissedSessionsData,
@@ -458,6 +459,15 @@ def event_message(
         )
     if kind == EventKind.LIVE_ORDER:
         return _live_order_message(cast(LiveOrderData, d))
+    if kind == EventKind.LIVE_FUNDS:
+        funds = cast(LiveFundsData, d)
+        needed, available = Decimal(funds["needed"]), Decimal(funds["available"])
+        when = f"{funds['deadline']}에 " if funds.get("deadline") else "다음 장이 열리면 "
+        body = (
+            f"{when}실제 주문 {_usd(needed)}를 내야 하는데 달러가 {_usd(available)} 있어요. "
+            f"그 전에 {_usd(needed - available)} 이상 채워 주세요. 못 채우면 이번 몫은 넘어가요."
+        )
+        return Message("💵", "실제 주문할 달러가 모자라요", body, "WARN", True)
     if kind == EventKind.LIVE_RECONCILE:
         items = cast(LiveReconcileData, d).get("shortfall") or []
         if not items:
@@ -525,6 +535,7 @@ _LIVE_REASONS = {
     "leveraged": "레버리지 상품은 실제로 사지 않아요.",
     "too_small": "금액이 너무 작아 내지 않았어요.",
     "carried": "금액이 작아 모아 뒀어요. 같은 종목 몫이 $1을 넘으면 함께 사요.",
+    "no_funds": "실제 계좌에 달러가 모자라 사지 않았어요. 이번 몫은 넘어가요.",
     "outside_hours": "주문을 받는 시간이 아니었어요.",
     "insufficient_funds": "실제 계좌에 돈이 부족해요. 달러를 채워 주세요.",
     "prerequisite": "증권사 앱에서 이 종목의 사전 확인(위험 고지 등)을 먼저 해 주세요.",
@@ -550,7 +561,10 @@ def _live_order_message(d: LiveOrderData) -> Message | None:
         return Message("⏭️", f"실제 주문을 넘겼어요 · {sym}", why, "WARN" if warn else "INFO", warn)
     if state in ("REJECTED", "CANCELED"):
         title = "실제 주문이 거절됐어요" if state == "REJECTED" else "실제 주문이 취소됐어요"
-        body = f"{why} 다음 주문부터 다시 승인을 받아요.".strip()
+        if d.get("reason") == "insufficient_funds":  # 돈 부족은 고장이 아니라 자동은 그대로
+            body = f"{why} 이번 몫은 넘어가요."
+        else:
+            body = f"{why} 다음 주문부터 다시 승인을 받아요.".strip()
         return Message("⚠️", f"{title} · {sym}", body, "WARN", True)
     if state == "UNKNOWN":
         body = f"증권사 앱에서 {sym} {amount} 주문이 들어갔는지 확인해 주세요. 다음 주문부터 다시 승인을 받아요."

@@ -22,6 +22,7 @@ from quant_lab.domain.broker import (
 from quant_lab.domain.live import AUTO_AFTER, LiveState
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.persistence.bots import create_bot
+from quant_lab.persistence.broker_account import save_snapshot
 from quant_lab.persistence.models import (
     BotRow,
     DecisionRow,
@@ -50,6 +51,11 @@ class FakeTrader:
 
     def order_window(self, day: date) -> tuple[datetime, datetime] | None:
         return (OPEN, CLOSE_CUTOFF) if day == TRADE else None
+
+    cash = Decimal("100")
+
+    def available_cash(self) -> Decimal:
+        return self.cash
 
     def place_amount_buy(self, order: AmountOrder) -> str:
         self.placed.append(order)
@@ -214,3 +220,31 @@ def test_account_with_fewer_shares_than_bot_bought_goes_back_to_approval(
     assert bot.live_streak == 0  # 다시 승인부터
     kinds = session.scalars(select(EventRow.kind).where(EventRow.kind == "live_reconcile")).all()
     assert len(kinds) == 1
+
+
+def test_short_of_dollars_warns_early_then_skips_without_turning_off_auto(
+    make_session: Callable[[], Session], session: Session
+) -> None:
+    bot = live_bot(session, streak=1)
+    snapshot = AccountSnapshot("test", Decimal("2.86"), Decimal(0), [], [])
+    save_snapshot(session, snapshot, OPEN - timedelta(hours=13))
+    sim_buy(session, bot, "675")  # 실제 주문 $6.75
+    trader = FakeTrader()
+    trader.cash = Decimal("2.86")
+    desk = LiveDesk(make_session, trader, WeekdayCalendar())
+
+    desk.plan(OPEN - timedelta(hours=12))  # 만들 때 미리 알린다 (채울 시간을 준다)
+    session.expire_all()
+    warned = session.scalars(select(EventRow).where(EventRow.kind == "live_funds")).one()
+    assert warned.data == {
+        "needed": "6.75", "available": "2.86", "trade_date": "2026-10-02",
+        "deadline": "10/02 22:35",
+    }  # fmt: skip
+
+    approve(session, live_order(session).id, SEND)
+    desk.tick(SEND)  # 그때도 모자라면 보내지 않고 이번 몫은 넘긴다
+    order = live_order(session)
+    assert (order.state, order.reason) == (LiveState.SKIPPED, "no_funds")
+    assert trader.placed == []
+    session.refresh(bot)
+    assert bot.live_streak == 1  # 돈 부족은 고장이 아니라 자동 단계(연속 성공)를 지우지 않는다

@@ -30,6 +30,7 @@ const REASON: Record<string, string> = {
   leveraged: '레버리지 상품',
   too_small: '금액이 너무 작음',
   carried: '$1이 넘으면 함께 사요',
+  no_funds: '달러가 모자라 넘김',
   outside_hours: '주문 시간이 아님',
   insufficient_funds: '계좌에 돈이 부족함',
   prerequisite: '증권사 앱에서 사전 확인 필요',
