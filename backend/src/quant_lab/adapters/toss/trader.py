@@ -5,6 +5,7 @@
 """
 
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 
 from quant_lab.adapters.toss.client import SOURCE, TossClient, TossError, _to_order
 from quant_lab.domain.broker import (
@@ -52,6 +53,9 @@ class TossTrader:
             end = datetime.fromisoformat(regular["endTime"]) - AMOUNT_ORDER_CUTOFF
             return start, end
         return None
+
+    def available_cash(self) -> Decimal:
+        return self.client.buying_power("USD")
 
     def place_amount_buy(self, order: AmountOrder) -> str:
         body = {

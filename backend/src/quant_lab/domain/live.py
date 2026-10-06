@@ -52,6 +52,7 @@ class SkipReason(StrEnum):
     LEVERAGED = "leveraged"  # 레버리지 ETF는 실제로 사지 않는다
     TOO_SMALL = "too_small"  # 2026-10-04 이전 기록만 (지금은 CARRIED로 모아 둔다)
     CARRIED = "carried"  # 금액이 작아 모아 둠. 같은 종목 다음 주문에 더해 함께 산다
+    NO_FUNDS = "no_funds"  # 보내기 직전 달러가 모자라 넘김 (다음 달에 더하지 않는다)
 
 
 def scaled_amount(budget: Decimal, ratio: Decimal) -> Decimal:
