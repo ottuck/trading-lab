@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { botApi, type AiDay, type Bot, type Order, type World } from '../api'
+import { useDemo } from '../demo'
 import { money, percent } from '../format'
 import { Chart } from './Parallel'
 
@@ -116,6 +117,7 @@ function Sources({ day }: { day: AiDay }) {
 /** 오늘의 AI 판단: 시장 요약, 종목마다 지금 → 목표 비중과 이유, 내일 낼 주문. */
 export function AiToday({ bot }: { bot: Bot }) {
   const { data, error } = useAi(bot)
+  const demo = useDemo()
   const [all, setAll] = useState(false)
   const day = data?.latest
   const rows = day ? rowsOf(day, bot) : []
@@ -153,7 +155,10 @@ export function AiToday({ bot }: { bot: Bot }) {
           <Sources day={day} />
         </>
       )}
-      {data && (
+      {data && demo && (
+        <div className="strategy-meta">예시 판단이에요. 데모는 실제 AI가 아니라 정해진 규칙으로 판단을 만들어요 (비용 없음).</div>
+      )}
+      {data && !demo && (
         <div className="strategy-meta">
           {day?.model && `${day.model} · `}
           {day?.cost != null && `이 판단 ${money(day.cost)} · `}
