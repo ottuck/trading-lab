@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import { api, botApi, liveApi, notifyApi, type Bot, type NotifyScope, type SymbolWeight, type BrokerAccount } from '../api'
 import { useLive } from '../live'
+import { useDemo } from '../demo'
 import { LiveOrderList } from './Live'
 import { ago, dollars, money, shares, won } from '../format'
 import { closeNewBot, selectBot, startMeEdit, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
@@ -524,6 +525,8 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
     },
   })
   const changing = !sameStrategy(draft, bot)
+  const saved = toDraft(bot)
+  const dirty = changing || draft.slippage !== saved.slippage || draft.maxPosition !== saved.maxPosition
   const ai = isAiBot(bot)
   return (
     <>
@@ -564,14 +567,16 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
       )}
       <Section title="체결과 투자 금액" desc="모의 체결을 얼마나 보수적으로 볼지, 한 번에 얼마까지 넣을지 정해요.">
         <TradeFields draft={draft} onChange={setDraft} />
+        {/* 저장은 이 섹션(과 위의 전략·규칙)에 속한다: 섹션 밖에 혼자 두지 않는다 */}
+        <div className="set-actions">
+          <button className="primary" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
+            저장
+          </button>
+          {dirty && !ai && <span className="faint small">위의 {isMeBot(bot) ? '내 규칙' : '전략'}도 함께 저장돼요.</span>}
+          {!dirty && save.isSuccess && <span className="ok small">저장했어요. 다음 판단부터 적용돼요.</span>}
+          {save.error && <span className="bad small">{save.error.message}</span>}
+        </div>
       </Section>
-      <div className="save-bar">
-        <button className="primary" disabled={save.isPending} onClick={() => save.mutate()}>
-          저장
-        </button>
-        {save.isSuccess && <span className="ok small">저장했어요. 다음 판단부터 적용돼요.</span>}
-        {save.error && <span className="bad small">{save.error.message}</span>}
-      </div>
       {!ai && <SymbolsField key={bot.symbols.map((s) => `${s.symbol}${s.weight}`).join()} bot={bot} />}
       {ai ? (
         <Section title="실제로 따라 하기" desc="AI 봇은 아직 실제 돈으로 따라 하지 않아요.">
@@ -689,9 +694,11 @@ export function SettingsView({ bots }: { bots: Bot[] }) {
   const selected = useSelectedBot(bots)
   const { byName } = useStrategies()
   const creating = seed !== null || !bots.length
+  const demo = useDemo()
   return (
     <div className="settings">
-      <AccountAndNotify />
+      {/* 데모: 실제 계좌·알림이 없고, 봇 설정은 무엇을 고를 수 있는지 보기만 한다 (바꾸기 요청은 서버가 막는다) */}
+      {!demo && <AccountAndNotify />}
       <div className="settings-head bots-head">
         <Switcher bots={bots} current={selected} creating={creating} />
         <p className="muted small">
@@ -699,14 +706,17 @@ export function SettingsView({ bots }: { bots: Bot[] }) {
             ? seed?.strategy
               ? '시험해 본 전략과 종목으로 채워 뒀어요.'
               : '새 모의 투자 봇을 만들어요.'
-            : `${basketLabel(selected.symbols, selected.symbol)} · ${byName[selected.strategy]?.nickname ?? selected.strategy} · 시작 금액 ${money(selected.account.initial_cash)}`}
+            : `${isAiBot(selected) ? `관심 종목 ${selected.symbols.length}개` : basketLabel(selected.symbols, selected.symbol)} · ${byName[selected.strategy]?.nickname ?? selected.strategy} · 시작 금액 ${money(selected.account.initial_cash)}`}
         </p>
       </div>
-      {creating ? (
-        <NewBotForm key={JSON.stringify(seed)} seed={seed ?? {}} taken={bots.map((b) => b.name)} />
-      ) : (
-        <BotSettings key={selected.id} bot={selected} others={bots.filter((b) => b.id !== selected.id)} />
-      )}
+      {demo && <div className="notice">데모에서는 설정을 바꿀 수 없어요. 어떤 것을 고를 수 있는지만 보여 드려요.</div>}
+      <fieldset className="set-lock" disabled={demo}>
+        {creating ? (
+          <NewBotForm key={JSON.stringify(seed)} seed={seed ?? {}} taken={bots.map((b) => b.name)} />
+        ) : (
+          <BotSettings key={selected.id} bot={selected} others={bots.filter((b) => b.id !== selected.id)} />
+        )}
+      </fieldset>
     </div>
   )
 }

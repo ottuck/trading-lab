@@ -17,9 +17,10 @@ from quant_lab.adapters.claude.advisor import ClaudeAdvisor
 from quant_lab.adapters.market_calendar import get_calendar
 from quant_lab.adapters.telegram import TelegramClient
 from quant_lab.adapters.toss.client import TossClient
-from quant_lab.application.ai_judge import judge
+from quant_lab.application.ai_judge import AiConfig, judge
 from quant_lab.application.backtesting import backtest_symbol
 from quant_lab.application.bar_sync import sync_daily_bars
+from quant_lab.application.demo_advisor import DemoAdvisor
 from quant_lab.application.demo_prices import DEMO_START, DEMO_USD_KRW, LEVERAGE, demo_bars
 from quant_lab.application.dry_run import latest_completed_session
 from quant_lab.application.replay import replay_bot
@@ -321,6 +322,14 @@ DEMO_BOTS: tuple[tuple[str, str, dict[str, int], dict[str, int], Decimal], ...] 
     ),
     ("QQQ 봇", "sma_cross", {}, {"QQQ": 100}, Decimal(10_000)),
     ("TQQQ 봇", "trend_filter", {}, {"TQQQ": 100}, Decimal(10_000)),
+    # AI 봇 (마일스톤 4): 데모에는 AI 키가 없어 규칙으로 만든 예시 판단(DemoAdvisor)을 쓴다
+    (
+        "AI 봇",
+        "ai_judge",
+        {"deposit": 1350, "day": 25},
+        {s: 10 for s in ("QQQ", "VOO", "QLD", "TQQQ", "SOXL", "NVDA", "GLD", "MAGS", "EWY", "EWJ")},
+        Decimal(1350),
+    ),
 )
 
 
@@ -356,7 +365,8 @@ def _seed_demo_bots(end: date, now: datetime) -> None:
             session.commit()
             bot_id = bot.id
         if first <= end:
-            outcomes = replay_bot(make_session, bot_id, calendar, first, end)
+            ai = AiConfig(DemoAdvisor(), Decimal(1_000_000))  # 예시 판단은 비용이 없다
+            outcomes = replay_bot(make_session, bot_id, calendar, first, end, ai=ai)
             print(f"  {name}: {first} ~ {end} 평가 {len(outcomes)}회")
 
 

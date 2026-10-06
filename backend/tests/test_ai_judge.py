@@ -1,6 +1,7 @@
 """AI 판단 (마일스톤 4 A1): 입력 요약, 응답 해석, 규칙에 맞지 않는 답은 판단하지 않기."""
 
 import json
+from dataclasses import replace
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any, cast
@@ -171,3 +172,15 @@ def test_judge_accepts_only_given_symbols_summing_to_100(
     assert judgment.status is status
     assert (judgment.advice is not None) == (status is JudgmentStatus.OK)
     assert judge(None, _request()).status is JudgmentStatus.FAILED  # 키 없음
+
+
+def test_demo_advisor_follows_rules_and_keeps_previous() -> None:
+    from quant_lab.application.demo_advisor import DemoAdvisor
+
+    first = judge(DemoAdvisor(), _request())
+    assert first.status is JudgmentStatus.OK and first.advice is not None
+    assert first.usage is not None and first.usage.cost == 0
+    # 오르는 QQQ만 담고, 담을 종목이 같으면 지난 비중을 그대로 둔다
+    assert first.advice.weights == {"QQQ": 80, "GLD": 0, "CASH": 20}
+    again = DemoAdvisor().advise(replace(_request(), previous={"QQQ": 70, "GLD": 0, "CASH": 30}))
+    assert again.advice.weights == {"QQQ": 70, "GLD": 0, "CASH": 30}

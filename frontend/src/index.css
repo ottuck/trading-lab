@@ -1493,6 +1493,13 @@ button.switcher-btn:hover:not(:disabled) {
   padding-block: 20px 28px;
   border-top: 1px solid var(--border);
 }
+.set-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 18px;
+}
 .save-bar .toggle {
   flex-basis: 100%;
 }
@@ -2454,4 +2461,12 @@ button.line.ai-day {
 .ai-day-summary {
   margin-top: 6px;
   color: var(--text);
+}
+
+/* 설정 묶음 (데모에서는 disabled로 모든 입력을 막는다) */
+.set-lock {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
 }
