@@ -30,7 +30,7 @@ from quant_lab.domain.bars import outlier_limit
 from quant_lab.domain.bot import BotState, CommandKind
 from quant_lab.domain.broker import ExchangeRate, Instrument
 from quant_lab.domain.portfolio import CostModel, RiskLimits
-from quant_lab.domain.strategy import STRATEGIES, AiJudge
+from quant_lab.domain.strategy import STRATEGIES, AiJudge, is_ai
 from quant_lab.persistence.ai_judgments import save_judgment
 from quant_lab.persistence.bars import load_daily_bars, upsert_daily_bars
 from quant_lab.persistence.bots import (
@@ -334,11 +334,15 @@ DEMO_BOTS: tuple[tuple[str, str, dict[str, int], dict[str, int], Decimal], ...] 
 
 
 def _seed_demo_bots(end: date, now: datetime) -> None:
-    """예시 봇을 2년 전부터 정기 평가로 돌려 둔다. 이미 있으면 마지막 판단 다음 날부터 이어서."""
+    """예시 봇을 2년 전부터(AI 봇은 1년 전부터) 정기 평가로 돌려 둔다.
+
+    이미 있으면 마지막 판단 다음 날부터 이어서. AI 봇은 하루 평가가 무거워(종목 10개) 1년만 채운다.
+    """
     make_session = sessionmaker(get_engine())
     calendar = get_calendar()
-    start = calendar.sessions(date(end.year - 2, end.month, 1), end)[0]
     for name, strategy_name, params, weights, cash in DEMO_BOTS:
+        years = 1 if is_ai(strategy_name) else 2
+        start = calendar.sessions(date(end.year - years, end.month, 1), end)[0]
         strategy = STRATEGIES[strategy_name](**params)
         with make_session() as session:
             bot = next((b for b in list_bots(session) if b.name == name), None)

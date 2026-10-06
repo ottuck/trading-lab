@@ -4,7 +4,8 @@
 늘 같은 판단이고 비용은 0이다. 화면은 "예시 판단"이라고 알린다.
 
 규칙: 레버리지가 아닌 종목 중 200일 평균 위에 있고 3개월 수익이 플러스인 종목을 3개월 수익이 큰
-순서로 5개까지 담는다. 변동성이 작을수록 많이 담고, 현금은 20%(담을 종목이 없으면 모두 현금) 남긴다.
+순서로 5개까지 담는다. 변동성이 작을수록 많이 담되 한 종목은 30%까지, 현금은 20% 이상 남긴다
+(담을 종목이 없으면 모두 현금).
 담을 종목이 지난 판단과 같으면 지난 비중을 그대로 둔다 (실제 AI 지침처럼 이유 없이 바꾸지 않음).
 """
 
@@ -21,6 +22,7 @@ from quant_lab.domain.advisor import (
 
 SOURCE = "demo"
 MAX_PICKS = 5
+MAX_WEIGHT = 30  # 한 종목에 담는 최대 비중 (%)
 
 
 def _rising(b: SymbolBrief) -> bool:
@@ -39,7 +41,7 @@ def _split(picks: list[SymbolBrief], total: int) -> dict[str, int]:
     out = {s: int((total * v / whole).to_integral_value(ROUND_DOWN)) for s, v in inv.items()}
     for s in list(out)[: total - sum(out.values())]:
         out[s] += 1
-    return out
+    return {s: min(w, MAX_WEIGHT) for s, w in out.items()}
 
 
 def _reason(b: SymbolBrief, weight: int) -> str:
@@ -79,6 +81,7 @@ class DemoAdvisor:
             kept = True
         else:
             weights |= _split(rising, 100 - cash) if rising else {}
+            cash = 100 - sum(weights.values())  # 한 종목 상한에 걸려 못 담은 몫은 현금
             kept = False
         reasons = {b.symbol: _reason(b, weights[b.symbol]) for b in request.symbols}
         reasons[CASH] = "갑자기 떨어질 때와 다음 달 사기를 위해 남겨 둬요."

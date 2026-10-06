@@ -180,7 +180,7 @@ def test_demo_advisor_follows_rules_and_keeps_previous() -> None:
     first = judge(DemoAdvisor(), _request())
     assert first.status is JudgmentStatus.OK and first.advice is not None
     assert first.usage is not None and first.usage.cost == 0
-    # 오르는 QQQ만 담고, 담을 종목이 같으면 지난 비중을 그대로 둔다
-    assert first.advice.weights == {"QQQ": 80, "GLD": 0, "CASH": 20}
+    # 오르는 QQQ만 한 종목 상한(30%)까지 담고, 담을 종목이 같으면 지난 비중을 그대로 둔다
+    assert first.advice.weights == {"QQQ": 30, "GLD": 0, "CASH": 70}
     again = DemoAdvisor().advise(replace(_request(), previous={"QQQ": 70, "GLD": 0, "CASH": 30}))
     assert again.advice.weights == {"QQQ": 70, "GLD": 0, "CASH": 30}
