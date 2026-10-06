@@ -20,17 +20,26 @@ export function LiveApprovals() {
   return (
     <section className="block live-ask">
       <div className="block-head">
-        <h2>실제로 살까요?</h2>
+        <h2>{waiting.some((o) => o.side === 'SELL') ? '실제로 주문할까요?' : '실제로 살까요?'}</h2>
       </div>
       {data.halted && <div className="notice">실제 주문을 멈춰 둔 상태예요. 설정에서 다시 시작해야 승인할 수 있어요.</div>}
       {waiting.map((o) => (
         <div key={o.id} className="live-ask-row">
           <div>
             <div className="title">
-              {o.symbol} <b className="tnum">{dollars(o.amount)}</b>어치
+              {o.side === 'SELL' ? (
+                <>
+                  {o.symbol} <b className="tnum">{shares(o.quantity)}주</b> 모두 팔기{' '}
+                  <span className="muted">(약 {dollars(o.amount)})</span>
+                </>
+              ) : (
+                <>
+                  {o.symbol} <b className="tnum">{dollars(o.amount)}</b>어치 사기
+                </>
+              )}
             </div>
             <div className="faint small">
-              {dayLabel(o.trade_date)} 장이 열리면 실제 계좌에서 사요 · {o.bot_name ?? '봇'}
+              {dayLabel(o.trade_date)} 장이 열리면 실제 계좌에서 {o.side === 'SELL' ? '팔아요' : '사요'} · {o.bot_name ?? '봇'}
             </div>
           </div>
           <div className="controls">
@@ -58,6 +67,7 @@ export function LiveOrderList({ orders, limit = 5 }: { orders: LiveOrder[]; limi
           <span className={`pip ${o.state === 'FILLED' ? 'rise' : ['REJECTED', 'CANCELED', 'UNKNOWN'].includes(o.state) ? 'warn' : ''}`} />
           <div>
             <div className="title">
+              {o.side === 'SELL' ? '팔기 · ' : ''}
               {o.symbol} {dollars(o.filled_amount ?? o.amount)}
               {o.filled_qty && Number(o.filled_qty) > 0 ? ` · ${shares(o.filled_qty)}주` : ''}
             </div>

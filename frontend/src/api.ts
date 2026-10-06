@@ -149,6 +149,8 @@ export type LiveOrder = {
   bot_id: number | null
   bot_name: string | null
   symbol: string
+  side: 'BUY' | 'SELL'
+  quantity: Money | null // 파는 수량 (이 봇이 실제로 산 만큼)
   signal_date: string
   trade_date: string
   amount: Money
@@ -167,6 +169,7 @@ export type Live = {
   auto_after: number
   per_order: Money
   per_month: Money
+  per_trade: Money // 사고팔기 봇 한 건 한도
   ratios: string[]
   shortfall: { symbol: string; held: Money; bought: Money }[] // 실제 계좌 대조: 봇이 산 것보다 적은 종목
   checked_at: string | null

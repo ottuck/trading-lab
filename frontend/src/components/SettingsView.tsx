@@ -312,6 +312,8 @@ const RATIO_OF: Record<string, string> = { '0.01': '1/100', '0.1': '1/10' }
 function LiveSection({ bot }: { bot: Bot }) {
   const qc = useQueryClient()
   const { data: live } = useLive()
+  const { byName } = useStrategies()
+  const [unsupported, setUnsupported] = useState(false)
   const setRatio = useMutation({
     mutationFn: (ratio: string | null) => botApi.setLive(bot.id, ratio),
     onSuccess: () => {
@@ -321,26 +323,36 @@ function LiveSection({ bot }: { bot: Bot }) {
     },
   })
   if (!live) return null
+  // 모으기 봇은 매달 사기만, 사고팔기 봇은 사고팔기를 따라 한다
+  const trading = !byName[bot.strategy]?.accumulates
   const current = bot.live_ratio == null ? null : (RATIO_OF[String(Number(bot.live_ratio))] ?? bot.live_ratio)
   const pick = (ratio: string | null) => {
+    setUnsupported(false)
     if (ratio === current) return
-    if (
-      ratio &&
-      !window.confirm(
-        `모의 매수의 ${ratio} 금액을 실제 ${sourceLabel(live.trader)} 계좌에서 사요. 실제 돈이 나가요.
-` +
+    const what = trading
+      ? `모의로 살 때 봇 현금의 ${ratio}만큼 사고, 모의로 팔 때 실제로 산 만큼 모두 팔아요.`
+      : `모의 매수의 ${ratio} 금액을 같은 날 같은 종목으로 사요.`
+    const ok =
+      !ratio ||
+      window.confirm(
+        `${what} 실제 ${sourceLabel(live.trader)} 계좌의 돈이 움직여요.\n` +
           `처음 ${live.auto_after}번은 앱에서 승인해야 나가고, 그다음부터 자동이에요. 켤까요?`,
       )
-    )
-      return
-    setRatio.mutate(ratio)
+    if (ok) setRatio.mutate(ratio)
   }
   const mine = live.orders.filter((o) => o.bot_id === bot.id)
   const left = Math.max(0, live.auto_after - bot.live_streak)
+  const limits = trading
+    ? `한도: 사는 주문 1건 ${dollars(live.per_trade)}.`
+    : `한도: 주문 1건 ${dollars(live.per_order)}, 한 달 ${dollars(live.per_month)}.`
   return (
     <Section
-      title="실제로 따라 사기"
-      desc={`모의 매수를 줄인 금액으로 실제 계좌에서 같은 날 같은 종목을 사요. 파는 주문은 내지 않아요. 한도: 주문 1건 ${dollars(live.per_order)}, 한 달 ${dollars(live.per_month)}.`}
+      title={trading ? '실제로 따라 하기' : '실제로 따라 사기'}
+      desc={
+        trading
+          ? `모의로 살 때 봇 현금의 1/100만큼 실제 계좌에서 사고, 모의로 팔 때 이 봇이 실제로 산 만큼 모두 팔아요. 레버리지는 QLD·TQQQ만 해요. ${limits}`
+          : `모의 매수를 1/100 금액으로 실제 계좌에서 같은 날 같은 종목을 사요. 파는 주문은 내지 않아요. ${limits}`
+      }
     >
       {!live.trader && (
         <div className="notice">서버의 실거래 스위치가 꺼져 있어요. 켜기 전에는 실제 주문이 나가지 않아요.</div>
@@ -354,8 +366,19 @@ function LiveSection({ bot }: { bot: Bot }) {
             {r}
           </button>
         ))}
+        <button className="seg unsupported" aria-disabled="true" onClick={() => setUnsupported(true)}>
+          1/10
+        </button>
         {setRatio.error && <span className="bad small">{setRatio.error.message}</span>}
       </div>
+      {unsupported && (
+        <div className="notice">
+          <b>1/10은 지원하지 않아요.</b> 실제 돈은 1/100로만 따라 해요. 1/10이면{' '}
+          {trading ? '한 번에 $1,000 안팎(약 135만원)을 사고팔게 되고' : '한 달 약 $68(약 9만원)이 나가고'}, 지금 안전장치의 한도(
+          {trading ? `1건 ${dollars(live.per_trade)}` : `1건 ${dollars(live.per_order)}, 한 달 ${dollars(live.per_month)}`})도 훨씬 넘어요.
+          이 앱의 실제 계좌는 같은 판단이 진짜 돈으로도 그대로 움직이는지 작은 금액으로 확인하는 곳이라 비율은 키우지 않기로 했어요.
+        </div>
+      )}
       {current && (
         <div className="faint small">
           {left > 0
@@ -538,7 +561,7 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
         {save.error && <span className="bad small">{save.error.message}</span>}
       </div>
       <SymbolsField key={bot.symbols.map((s) => `${s.symbol}${s.weight}`).join()} bot={bot} />
-      {isMeBot(bot) && <LiveSection bot={bot} />}
+      <LiveSection bot={bot} />
       <NameField key={bot.name} bot={bot} />
       <History botId={bot.id} />
       <DangerZone bot={bot} others={others} />

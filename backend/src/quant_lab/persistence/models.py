@@ -347,9 +347,11 @@ class LiveOrderRow(Base):
         ForeignKey("sim_orders.id", ondelete="SET NULL"), unique=True
     )
     symbol: Mapped[str] = mapped_column(String(20))
+    side: Mapped[str] = mapped_column(String(4), server_default="BUY")  # BUY | SELL
     signal_date: Mapped[date] = mapped_column(Date)
     trade_date: Mapped[date] = mapped_column(Date)  # 낼 미국 거래일 (판단 다음 거래일)
-    amount: Mapped[Decimal] = mapped_column(PRICE)  # USD
+    amount: Mapped[Decimal] = mapped_column(PRICE)  # USD (파는 주문은 수량 × 최근 종가 어림값)
+    quantity: Mapped[Decimal | None] = mapped_column(PRICE)  # 파는 수량 (사는 주문은 NULL)
     key: Mapped[str] = mapped_column(String(36), unique=True)
     state: Mapped[str] = mapped_column(String(20))
     reason: Mapped[str | None] = mapped_column(String(30))  # 건너뜀·거절 이유 코드
