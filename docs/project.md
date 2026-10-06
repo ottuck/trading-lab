@@ -157,6 +157,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | `notify_settings` | 텔레그램 알림 설정 1행: 켜기, 범위(`live` 실제 주문만 / `all`), Worker에 토큰이 있는지 |
 | `broker_account` | 실제 증권사 계좌를 마지막으로 읽은 결과 1행 (실거래 R1): 출처 코드, 주문 가능 금액(달러·원), 보유·최근 주문(JSONB, 금액은 문자열), 읽은 시각, 마지막 실패 종류. 모의 봇 기록과 섞지 않는다 |
 | `live_bars` | 종목별 진행 중 일봉 1행. API `/bars`가 완료 봉보다 새 날짜일 때만 `live: true`로 끝에 붙인다. `daily_bars`와 섞지 않는다 |
+| `ai_judgments` | AI 판단 기록 (마일스톤 4, 14절). 봇·판단일마다 1행(유일), 지우지 않는다. 결과(`OK`·`FAILED`·`INVALID`·`OVER_BUDGET`), 넘긴 입력 요약, 목표 비중(현금은 `CASH`)·이유·시장 요약, 검색한 말·출처(주소·제목), 모델·지침 버전·출처 코드, 토큰·검색 횟수·비용, 실패 이유. 시험 판단(CLI)은 봇 없이 |
 | `worker_heartbeat` | Worker 마지막 생존 시각, 버전 |
 
 ## 5. 기술 스택

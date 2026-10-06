@@ -2,6 +2,7 @@
 
 import argparse
 import io
+import json
 import logging
 import sys
 from collections import Counter
@@ -12,21 +13,25 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
 
+from quant_lab.adapters.claude.advisor import ClaudeAdvisor
 from quant_lab.adapters.market_calendar import get_calendar
 from quant_lab.adapters.telegram import TelegramClient
 from quant_lab.adapters.toss.client import TossClient
+from quant_lab.application.ai_judge import judge
 from quant_lab.application.backtesting import backtest_symbol
 from quant_lab.application.bar_sync import sync_daily_bars
 from quant_lab.application.demo_prices import DEMO_START, DEMO_USD_KRW, LEVERAGE, demo_bars
 from quant_lab.application.dry_run import latest_completed_session
 from quant_lab.application.replay import replay_bot
 from quant_lab.config import get_settings
+from quant_lab.domain.advisor import make_request
 from quant_lab.domain.bars import outlier_limit
 from quant_lab.domain.bot import BotState, CommandKind
 from quant_lab.domain.broker import ExchangeRate, Instrument
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.domain.strategy import STRATEGIES
-from quant_lab.persistence.bars import upsert_daily_bars
+from quant_lab.persistence.ai_judgments import save_judgment
+from quant_lab.persistence.bars import load_daily_bars, upsert_daily_bars
 from quant_lab.persistence.bots import (
     create_bot,
     delete_bot,
@@ -36,7 +41,11 @@ from quant_lab.persistence.bots import (
     load_account,
 )
 from quant_lab.persistence.db import get_engine
-from quant_lab.persistence.market_info import upsert_exchange_rate, upsert_instruments
+from quant_lab.persistence.market_info import (
+    leverage_of,
+    upsert_exchange_rate,
+    upsert_instruments,
+)
 from quant_lab.persistence.models import DailyBarRow, DecisionRow, SimOrderRow
 
 
@@ -354,6 +363,55 @@ def cmd_notify_test(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ai_judge(args: argparse.Namespace) -> int:
+    """현금만 든 봇이라 치고 AI 판단을 한 번 받아 기록한다 (마일스톤 4 A1, 비용이 든다)."""
+    settings = get_settings()
+    make_session = sessionmaker(get_engine())
+    with make_session() as session:
+        start = (args.date or datetime.now(UTC).date()) - timedelta(days=550)
+        histories = {s: load_daily_bars(session, s, start, args.date) for s in args.symbols}
+        missing = [s for s, h in histories.items() if not h]
+        if missing:
+            raise SystemExit(f"저장된 일봉이 없는 종목: {', '.join(missing)}")
+        days = {h[-1].session_date for h in histories.values()}
+        if len(days) != 1:
+            raise SystemExit(f"종목마다 마지막 봉 날짜가 다릅니다: {sorted(days)}")
+        request = make_request(
+            histories,
+            cash=args.cash,
+            qtys={},
+            contributed=args.cash,
+            monthly_deposit=args.deposit,
+            leverage={s: leverage_of(session, s) for s in args.symbols},
+        )
+        if args.show:
+            print(json.dumps(request.as_dict(), ensure_ascii=False, indent=1))
+            return 0
+        key = settings.anthropic_api_key
+        advisor = ClaudeAdvisor(key.get_secret_value()) if key else None
+        judgment = judge(advisor, request)
+        save_judgment(session, None, judgment, datetime.now(UTC))
+        session.commit()
+    print(f"{judgment.session_date} 판단: {judgment.status.value}")
+    if judgment.usage:
+        u = judgment.usage
+        print(
+            f"  {u.model} 입력 {u.input_tokens:,} 출력 {u.output_tokens:,}"
+            f" 검색 {u.web_searches}번 ${u.cost:.4f}"
+        )
+    if judgment.error:
+        print(f"  이유: {judgment.error}")
+    if judgment.advice:
+        a = judgment.advice
+        print(f"  시장: {a.summary}")
+        for symbol, weight in a.weights.items():
+            print(f"  {symbol:5} {weight:3}%  {a.reasons.get(symbol, '')}")
+        for query in a.queries:
+            print(f"  검색: {query}")
+        print(f"  출처 {len(a.sources)}곳")
+    return 0 if judgment.advice else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="quant_lab.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -401,6 +459,14 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("--keep", action="store_true", help="재생에 쓴 임시 봇과 기록을 남김")
     _add_cost_args(rp)
     rp.set_defaults(func=cmd_replay)
+
+    ai = sub.add_parser("ai-judge", help="AI 판단 1회 시험 (현금만 든 봇, Claude API 비용이 듦)")
+    ai.add_argument("symbols", nargs="+", type=str.upper)
+    ai.add_argument("--date", type=date.fromisoformat, help="판단일 (기본: 저장된 마지막 봉)")
+    ai.add_argument("--cash", type=Decimal, default=Decimal(10_000))
+    ai.add_argument("--deposit", type=Decimal, default=Decimal(675), help="매달 넣는 돈")
+    ai.add_argument("--show", action="store_true", help="AI에 넘길 입력만 보여 주고 부르지 않음")
+    ai.set_defaults(func=cmd_ai_judge)
 
     notify = sub.add_parser("notify", help="텔레그램 알림 설정 확인")
     notify_sub = notify.add_subparsers(dest="notify_command", required=True)
