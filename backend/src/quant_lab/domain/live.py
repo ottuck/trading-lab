@@ -55,7 +55,8 @@ class SkipReason(StrEnum):
     MISSED = "missed"  # 접수 시간 안에 내지 못함 (PC 꺼짐 등)
     NO_SESSION = "no_session"  # 그날 장이 열리지 않음
     LEVERAGED = "leveraged"  # 레버리지 ETF는 실제로 사지 않는다
-    TOO_SMALL = "too_small"  # 2026-10-04 이전 기록만 (지금은 CARRIED로 모아 둔다)
+    # 사기: 2026-10-04 이전 기록만 (지금은 CARRIED로 모아 둔다). 팔기: AI 봇의 일부 팔기가 $1 미만
+    TOO_SMALL = "too_small"
     CARRIED = "carried"  # 금액이 작아 모아 둠. 같은 종목 다음 주문에 더해 함께 산다
     NO_FUNDS = "no_funds"  # 보내기 직전 달러가 모자라 넘김 (다음 달에 더하지 않는다)
     NOTHING_HELD = "nothing_held"  # 팔 신호지만 이 봇이 실제로 산 주식이 없음 (켜기 전 모의 보유)
@@ -84,6 +85,23 @@ def needs_approval(
     else:
         over = amount > limits.per_order or month_total + amount > limits.per_month
     return streak < AUTO_AFTER or over
+
+
+QTY = Decimal("0.000001")  # 소수점 수량 최소 단위 (6자리)
+
+
+def partial_sell_qty(
+    live_qty: Decimal, sim_qty: Decimal, sim_amount: Decimal, close: Decimal
+) -> Decimal:
+    """AI 봇의 일부 팔기 (마일스톤 4): 모의 보유 중 판 비율만큼 이 봇이 실제로 산 수량에서 판다.
+
+    sim_amount는 모의로 팔 금액(판단일 종가 어림), sim_qty는 그때 모의 보유 수량이다.
+    비율을 알 수 없으면(보유·가격 0) 모두 판다. 소수점 6자리 아래는 버린다.
+    """
+    if sim_qty <= 0 or close <= 0:
+        return live_qty
+    fraction = min(Decimal(1), sim_amount / (sim_qty * close))
+    return (live_qty * fraction).quantize(QTY, rounding=ROUND_DOWN)
 
 
 def order_key(bot_id: int, symbol: str, signal_date: date, side: str = "BUY") -> str:

@@ -50,12 +50,14 @@ from quant_lab.domain.live import (
     live_allowed,
     needs_approval,
     order_key,
+    partial_sell_qty,
     scaled_amount,
 )
 from quant_lab.persistence.bots import add_event
 from quant_lab.persistence.market_info import leverage_of
 from quant_lab.persistence.models import (
     BotAccountRow,
+    BotPositionRow,
     BotRow,
     BrokerAccountRow,
     DailyBarRow,
@@ -203,10 +205,19 @@ class LiveDesk:
             created_at=now,
             updated_at=now,
         )
+        partial = sell and sim.budget is not None  # AI 봇: 판 금액이 정해진 일부 팔기
         if sell:
-            # 이 봇이 실제로 산 만큼만 모두 판다. 켜기 전부터 있던 모의 보유는 실제로 없다.
+            # 이 봇이 실제로 산 만큼만 판다 (켜기 전부터 있던 모의 보유는 실제로 없다).
+            # 사고팔기 봇은 모두, AI 봇은 모의 보유 중 판 비율만큼
+            close = last_close(session, sim.symbol)
             order.quantity = live_position(session, bot.id, sim.symbol)
-            order.amount = (order.quantity * last_close(session, sim.symbol)).quantize(CENT)
+            if partial:
+                assert sim.budget is not None
+                held = session.get(BotPositionRow, (bot.id, sim.symbol))
+                order.quantity = partial_sell_qty(
+                    order.quantity, held.qty if held else Decimal(0), sim.budget, close
+                )
+            order.amount = (order.quantity * close).quantize(CENT)
         else:
             budget = sim.budget if sim.budget is not None else bot_cash(session, bot.id)
             order.amount = scaled_amount(budget, bot.live_ratio)
@@ -218,6 +229,11 @@ class LiveDesk:
             return order, False
         if sell and not order.quantity:
             order.state, order.reason = LiveState.SKIPPED, SkipReason.NOTHING_HELD
+            return order, False
+        if partial and order.amount < MIN_AMOUNT:
+            # 1/100로 줄인 일부 팔기는 몇십 센트일 수 있다. 모아 두지 않고 넘긴다
+            # (다음 팔기에서 그때의 비율로 다시 계산한다)
+            order.state, order.reason = LiveState.SKIPPED, SkipReason.TOO_SMALL
             return order, False
         if not sell:
             carried = self._carried(session, bot.id, sim.symbol)
