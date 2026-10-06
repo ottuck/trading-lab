@@ -415,13 +415,17 @@ class AiJudgmentRow(Base):
     source: Mapped[str | None] = mapped_column(String(20))  # AI 공급자 출처 코드
     model: Mapped[str | None] = mapped_column(String(64))
     prompt_version: Mapped[str | None] = mapped_column(String(32))
-    request: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # 넘긴 입력 요약 전부
+    request: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True)
+    )  # 넘긴 입력 요약 전부
     # 목표 비중 {종목: %}, 현금은 "CASH" (OK가 아니면 NULL)
-    weights: Mapped[dict[str, int] | None] = mapped_column(JSONB)
-    reasons: Mapped[dict[str, str] | None] = mapped_column(JSONB)
+    weights: Mapped[dict[str, int] | None] = mapped_column(JSONB(none_as_null=True))
+    reasons: Mapped[dict[str, str] | None] = mapped_column(JSONB(none_as_null=True))
     summary: Mapped[str | None] = mapped_column(Text)
-    sources: Mapped[list[dict[str, str]] | None] = mapped_column(JSONB)  # [{url, title}]
-    queries: Mapped[list[str] | None] = mapped_column(JSONB)
+    sources: Mapped[list[dict[str, str]] | None] = mapped_column(
+        JSONB(none_as_null=True)
+    )  # [{url, title}]
+    queries: Mapped[list[str] | None] = mapped_column(JSONB(none_as_null=True))
     input_tokens: Mapped[int | None] = mapped_column(Integer)
     output_tokens: Mapped[int | None] = mapped_column(Integer)
     web_searches: Mapped[int | None] = mapped_column(Integer)

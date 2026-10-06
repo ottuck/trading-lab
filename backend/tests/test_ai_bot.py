@@ -1,0 +1,168 @@
+"""AI 봇 (마일스톤 4 A2): 목표 비중 → 팔기·사기, 매일 판단 1번, 기록된 판단으로 재생 = DRY RUN."""
+
+from collections.abc import Callable
+from datetime import UTC, datetime
+from decimal import Decimal
+
+from sqlalchemy import Engine, select
+from sqlalchemy.orm import Session, sessionmaker
+
+from quant_lab.application.ai_judge import AiConfig
+from quant_lab.application.replay import replay_bot
+from quant_lab.domain.advisor import (
+    Advice,
+    AdviceRequest,
+    AdviceResult,
+    AdviceUsage,
+    AdvisorError,
+)
+from quant_lab.domain.backtest import run_backtest
+from quant_lab.domain.bot import BotState
+from quant_lab.domain.portfolio import CostModel, Portfolio, RiskLimits
+from quant_lab.domain.strategy import AiJudge
+from quant_lab.domain.trading import Action, rebalance
+from quant_lab.persistence.bars import upsert_daily_bars
+from quant_lab.persistence.bots import create_bot
+from quant_lab.persistence.models import AiJudgmentRow, EventRow, SimOrderRow
+from tests.fakes import WeekdayCalendar, make_bars
+
+COSTS = CostModel()
+QQQ = make_bars("QQQ", [100 + (i % 9) * 2 - (i % 4) * 3 for i in range(45)])
+VOO = make_bars("VOO", [80 + (i % 7) * 3 - (i % 5) * 2 for i in range(45)])
+HISTORIES = {"QQQ": QQQ[:30], "VOO": VOO[:30]}
+
+
+def test_rebalance_sells_first_and_ignores_small_gaps() -> None:
+    pf = Portfolio(cash=Decimal(10_000))
+    pf.buy("QQQ", 6000 / QQQ[29].close, QQQ[29].close, Decimal(0))  # QQQ 60%, 현금 40%
+    closes = {s: h[-1].close for s, h in HISTORIES.items()}
+    equity = pf.equity(closes)
+
+    records = rebalance({"QQQ": 50, "VOO": 40}, HISTORIES, pf, COSTS, RiskLimits())
+    sell, buy = records
+    assert (sell.symbol, sell.action, buy.symbol, buy.action) == (
+        "QQQ",
+        Action.SELL,
+        "VOO",
+        Action.BUY,
+    )
+    assert sell.budget == pf.qty("QQQ") * closes["QQQ"] - equity / 2  # 팔 금액 (일부만)
+    assert buy.budget == equity * 40 / 100  # 판 돈과 현금으로 살 수 있는 만큼
+
+    # 목표와 1%p 차이는 그대로 둔다. 목표 0이면 남김없이 판다. 판단이 없으면 모두 그대로
+    now_qqq = int(pf.qty("QQQ") * closes["QQQ"] / equity * 100)
+    small = rebalance({"QQQ": now_qqq + 1}, HISTORIES, pf, COSTS, RiskLimits())
+    assert [r.action for r in small if r.symbol == "QQQ"] == [Action.HOLD]
+    out = rebalance({"VOO": 100}, HISTORIES, pf, COSTS, RiskLimits())
+    assert out[0].symbol == "QQQ" and out[0].action is Action.SELL and out[0].budget is None
+    none = rebalance(None, HISTORIES, pf, COSTS, RiskLimits(), missing="그대로")
+    assert {r.action for r in none} == {Action.HOLD} and none[0].reason == "그대로"
+
+
+class CyclingAdvisor:
+    """날마다 비중을 바꾸고, 세 번째 날은 실패하는 가짜 AI."""
+
+    source = "fake"
+
+    def __init__(self) -> None:
+        self.calls: list[AdviceRequest] = []
+
+    def advise(self, request: AdviceRequest) -> AdviceResult:
+        self.calls.append(request)
+        n = len(self.calls)
+        if n == 3:
+            raise AdvisorError("네트워크", AdviceUsage("m", 10, 1, 0, Decimal("0.02")))
+        weights = [
+            {"QQQ": 70, "VOO": 20, "CASH": 10},
+            {"QQQ": 20, "VOO": 60, "CASH": 20},
+            {"QQQ": 0, "VOO": 50, "CASH": 50},
+        ][n % 3]
+        usage = AdviceUsage("m", 10, 1, 1, Decimal("0.05"))
+        return AdviceResult(Advice(weights, {"QQQ": "이유"}, "요약"), usage, "v")
+
+
+def test_ai_bot_dry_run_matches_replay_of_recorded_judgments(
+    engine: Engine, session: Session
+) -> None:
+    upsert_daily_bars(session, QQQ + VOO, "test", datetime(2026, 1, 1, tzinfo=UTC))
+    strategy = AiJudge(deposit=500, day=1)
+    weights = {"QQQ": 50, "VOO": 50}
+    bot = create_bot(
+        session,
+        name="ai",
+        symbol="QQQ",
+        strategy="ai_judge",
+        params=strategy.params,
+        initial_cash=Decimal(1000),
+        costs=COSTS,
+        limits=RiskLimits(),
+        now=datetime.now(UTC),
+        weights=weights,
+    )
+    bot.state = BotState.RUNNING
+    session.commit()
+    advisor = CyclingAdvisor()
+    make_session: Callable[[], Session] = sessionmaker(engine)
+    start, end = QQQ[strategy.warmup - 1].session_date, QQQ[-1].session_date
+    ai = AiConfig(advisor, Decimal(15))
+    outcomes = replay_bot(make_session, bot.id, WeekdayCalendar(), start, end, ai=ai)
+    # 같은 날을 다시 평가해도 AI는 다시 부르지 않는다
+    replay_bot(make_session, bot.id, WeekdayCalendar(), end, end, ai=ai)
+
+    rows = list(session.scalars(select(AiJudgmentRow).order_by(AiJudgmentRow.session_date)))
+    assert len(advisor.calls) == len(outcomes) == len(rows)
+    assert [r.status for r in rows[:4]] == ["OK", "OK", "FAILED", "OK"]
+    assert rows[2].cost == Decimal("0.02")  # 돈이 든 실패도 비용을 남긴다
+    assert advisor.calls[1].previous == rows[0].weights  # 지난 판단을 함께 넘긴다
+    warn = session.scalars(select(EventRow).where(EventRow.kind == "ai_judgment")).all()
+    assert len(warn) == 1 and warn[0].level == "WARN"
+
+    # 원칙 3·9: 기록된 판단으로 다시 돌린 결과가 DRY RUN 체결과 같다
+    judgments = {r.session_date: (r.weights if r.status == "OK" else None) for r in rows}
+    expected = run_backtest(
+        {"QQQ": QQQ, "VOO": VOO},
+        strategy,
+        Decimal(1000),
+        COSTS,
+        weights=weights,
+        judgments=judgments,
+    )
+    filled = session.scalars(
+        select(SimOrderRow).where(SimOrderRow.status == "FILLED").order_by(SimOrderRow.id)
+    )
+    got = [(o.symbol, o.side, o.signal_date, o.qty, o.price) for o in filled]
+    assert {side for _, side, *_ in got} == {"BUY", "SELL"}
+    assert got == [(f.symbol, f.side, f.signal_date, f.qty, f.price) for f in expected.fills]
+
+
+def test_ai_bot_stops_calling_over_monthly_budget(engine: Engine, session: Session) -> None:
+    upsert_daily_bars(session, QQQ + VOO, "test", datetime(2026, 1, 1, tzinfo=UTC))
+    bot = create_bot(
+        session,
+        name="ai",
+        symbol="QQQ",
+        strategy="ai_judge",
+        params=AiJudge(deposit=500, day=1).params,
+        initial_cash=Decimal(1000),
+        costs=COSTS,
+        limits=RiskLimits(),
+        now=datetime.now(UTC),
+        weights={"QQQ": 50, "VOO": 50},
+    )
+    bot.state = BotState.RUNNING
+    session.commit()
+    advisor = CyclingAdvisor()
+    days = (QQQ[25].session_date, QQQ[30].session_date)
+    replay_bot(
+        sessionmaker(engine), bot.id, WeekdayCalendar(), *days, ai=AiConfig(advisor, Decimal("0.1"))
+    )
+
+    statuses = list(
+        session.scalars(select(AiJudgmentRow.status).order_by(AiJudgmentRow.session_date))
+    )
+    assert len(advisor.calls) == 2  # $0.05 두 번이면 상한 $0.1
+    assert statuses[2:] == ["OVER_BUDGET"] * (len(statuses) - 2)
+    notices = session.scalars(
+        select(EventRow.level).where(EventRow.kind == "ai_judgment").order_by(EventRow.id)
+    ).all()
+    assert notices[0] == "WARN" and set(notices[1:]) == {"INFO"}  # 상한은 한 번만 알린다

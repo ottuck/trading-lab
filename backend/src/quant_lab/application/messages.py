@@ -9,6 +9,7 @@ from typing import Any, cast
 from zoneinfo import ZoneInfo
 
 from quant_lab.domain.events import (
+    AiJudgmentData,
     CommandData,
     ConfigChange,
     ConfigChangeData,
@@ -149,6 +150,18 @@ CATALOG: dict[str, StrategyInfo] = {
             ),
         ],
     ),
+    "ai_judge": StrategyInfo(
+        name="ai_judge",
+        nickname="AI에게 맡기기",
+        summary=(
+            "매달 돈을 넣고, 고른 종목 안에서 무엇을 얼마나 들고 있을지 AI가 매일 시장을 "
+            "조사해 정해요. 이유와 참고한 뉴스를 함께 보여줘요."
+        ),
+        risk="보통",
+        trades="AI가 정해요 (매일 판단)",
+        presets=[Preset("small", "월 $675", {"deposit": 675, "day": 25})],
+        preset_label="매달 넣는 돈",
+    ),
 }
 
 
@@ -200,9 +213,12 @@ def decision_reason(
     target_long: bool,
     holding: bool,
     action: str | None = None,
+    raw: str = "",
 ) -> str:
-    """전략 지표를 일상어 한두 문장으로 바꾼다."""
+    """전략 지표를 일상어 한두 문장으로 바꾼다. AI 봇은 AI가 쓴 이유(raw)를 그대로 쓴다."""
     p = params
+    if strategy == "ai_judge":
+        return raw or "AI가 정한 비중에 맞춰요."
     if strategy == "dip_saver":
         drop = -float(indicators.get("drawdown", 0)) * 100
         up = float(indicators.get("premium", 0)) * 100
@@ -331,6 +347,7 @@ def event_message(
             bool(d.get("target_long")),
             bool(d.get("holding")),
             action=d.get("action"),
+            raw=str(d.get("reason", "")),
         )
         phrase = action_phrase(action, bool(d.get("holding")), sym)
         if action == "BUY":
@@ -479,6 +496,16 @@ def event_message(
         lines.append("직접 파셨다면 괜찮아요. 실제 주문은 맞을 때까지 매번 승인을 받아요.")
         body = "\n".join(lines)
         return Message("⚠️", "실제 계좌가 봇 기록보다 적어요", body, "WARN", True)
+    if kind == EventKind.AI_JUDGMENT:
+        ai = cast(AiJudgmentData, d)
+        if ai.get("status") == "OVER_BUDGET":
+            body = (
+                f"이번 달 AI 비용이 상한({_usd(ai.get('budget', 0))})에 닿았어요 "
+                f"(쓴 돈 {_usd(ai.get('spent', 0))}). 이번 달 남은 날은 판단하지 않고 지금 그대로 둬요."
+            )
+            return Message("💸", "AI 비용 상한에 닿았어요", body, level, level == "WARN")
+        body = "오늘은 사고팔지 않고 지금 그대로 둬요. 다음 거래일에 다시 판단해요."
+        return Message("🤖", "AI가 오늘 판단하지 못했어요", body, "WARN", True)
     if kind == EventKind.NOTIFY_TEST:
         return Message("🔔", "알림 테스트", "텔레그램 알림이 잘 와요.", "INFO", True)
     if kind == EventKind.LIVE_CONTROL:

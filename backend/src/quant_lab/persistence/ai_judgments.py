@@ -1,6 +1,6 @@
 """AI 판단 기록 (ai_judgments). 재현의 원본이라 고치거나 지우지 않는다."""
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -47,3 +47,25 @@ def spent(session: Session, start: datetime, end: datetime) -> Decimal:
         )
     )
     return Decimal(total or 0)
+
+
+def judgment_for(session: Session, bot_id: int, day: date) -> AiJudgmentRow | None:
+    return session.scalars(
+        select(AiJudgmentRow).where(
+            AiJudgmentRow.bot_id == bot_id, AiJudgmentRow.session_date == day
+        )
+    ).first()
+
+
+def last_ok(session: Session, bot_id: int, before: date) -> AiJudgmentRow | None:
+    """before 전 마지막으로 받은 판단 (AI에게 "지난 판단"으로 넘긴다)."""
+    return session.scalars(
+        select(AiJudgmentRow)
+        .where(
+            AiJudgmentRow.bot_id == bot_id,
+            AiJudgmentRow.session_date < before,
+            AiJudgmentRow.status == "OK",
+        )
+        .order_by(AiJudgmentRow.session_date.desc())
+        .limit(1)
+    ).first()

@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import Connection, func, select
 from sqlalchemy.orm import Session
 
+from quant_lab.application.ai_judge import AiConfig
 from quant_lab.application.dry_run import (
     EvaluationOutcome,
     Trigger,
@@ -91,6 +92,7 @@ class Worker:
         live: LiveSource | None = None,
         account: Callable[[date], AccountSnapshot] | None = None,
         desk: LiveDesk | None = None,
+        ai: AiConfig | None = None,
     ) -> None:
         self.make_session = make_session
         self.market = market
@@ -100,6 +102,7 @@ class Worker:
         self.live = live
         self.account = account
         self.desk = desk
+        self.ai = ai  # AI 봇 판단 (마일스톤 4). 없으면 AI 봇은 판단하지 않고 그대로 둔다
         self._account_at: datetime | None = None
         self._watchlist_checked_at: datetime | None = None
         self._watchlist_failing: set[str] = set()
@@ -311,6 +314,7 @@ class Worker:
                 calendar=self.calendar,
                 now=now,
                 trigger=Trigger.MANUAL,
+                ai=self.ai,
             )
             cmd.detail = outcome.detail
             session.commit()
@@ -360,6 +364,7 @@ class Worker:
                     calendar=self.calendar,
                     now=now,
                     trigger=Trigger.SCHEDULED,
+                    ai=self.ai,
                 )
                 log.info("평가 bot=%s %s %s", bot_id, outcome.status, outcome.detail)
                 outcomes.append(outcome)

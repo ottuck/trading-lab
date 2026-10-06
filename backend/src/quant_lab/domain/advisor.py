@@ -6,7 +6,7 @@ AI는 정해 준 종목과 현금 사이의 목표 비중만 정한다. 주문·
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
 from itertools import pairwise
@@ -115,6 +115,7 @@ class AdviceRequest:
     monthly_deposit: Decimal  # 매달 넣는 돈
     previous: Mapping[str, int] | None = None  # 지난 판단의 목표 비중 (현금은 "CASH")
     previous_date: date | None = None
+    as_of: datetime | None = None  # 판단을 부른 시각 (AI가 검색할 때 "지금"을 알게)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -126,6 +127,7 @@ class AdviceRequest:
             "monthly_deposit": str(self.monthly_deposit),
             "previous": dict(self.previous) if self.previous is not None else None,
             "previous_date": self.previous_date.isoformat() if self.previous_date else None,
+            "as_of": self.as_of.isoformat() if self.as_of else None,
         }
 
 
@@ -217,6 +219,7 @@ def make_request(
     leverage: Mapping[str, Decimal | None] | None = None,
     previous: Mapping[str, int] | None = None,
     previous_date: date | None = None,
+    as_of: datetime | None = None,
 ) -> AdviceRequest:
     """판단일(모든 종목의 마지막 봉) 종가로 봇 상태를 요약한다. 이력이 짧은 종목은 빠진다."""
     closes = {s: h[-1].close for s, h in histories.items()}
@@ -237,4 +240,5 @@ def make_request(
         monthly_deposit=monthly_deposit,
         previous=previous,
         previous_date=previous_date,
+        as_of=as_of,
     )
