@@ -105,7 +105,7 @@ export function AccountCard() {
         <EyeIcon off={hidden} />
       </span>
       <span className="value tnum">{amount(dollars(account.cash_usd), '4.2em')}</span>
-      <span className="faint small">원화로 약 {amount(won(account.cash_krw), '5em')}</span>
+      <span className="faint small">원화 {amount(won(account.cash_krw), '5em')}</span>
       {live?.trader && (
         <span className="small muted">
           이번 달 실제로 산 금액 {amount(dollars(String(bought)), '3.4em')}
