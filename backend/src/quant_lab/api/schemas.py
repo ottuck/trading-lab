@@ -334,6 +334,7 @@ class StrategyInfo(BaseModel):
     presets: list[PresetView]
     default_params: dict[str, int]
     accumulates: bool = False  # 매달 입금하고 사 모으는 전략 (팔지 않음)
+    ai: bool = False  # AI가 판단하는 전략 (시험해 보기·전략 고르기에는 나오지 않는다)
     preset_label: str = "반응 속도"
     choices: list[ChoiceView] = []
 
@@ -427,6 +428,30 @@ class ParallelView(BaseModel):
     end: date | None
     worlds: list[WorldView]
     note: str | None = None  # 계산하지 못한 이유 (예: 시작한 지 얼마 안 됨)
+
+
+class AiDayView(BaseModel):
+    """AI 판단 하루 (마일스톤 4). 실패한 날은 weights 등이 없고 error에 이유가 있다."""
+
+    session_date: date
+    status: str  # OK | FAILED | INVALID | OVER_BUDGET
+    summary: str | None
+    weights: dict[str, int] | None  # 목표 비중 %, 현금은 CASH
+    weights_before: dict[str, Decimal]  # 판단할 때의 비중 %, 현금은 CASH
+    reasons: dict[str, str] | None
+    sources: list[dict[str, str]]  # [{url, title}]
+    queries: list[str]
+    model: str | None
+    cost: Decimal | None
+    error: str | None
+    created_at: datetime
+
+
+class AiView(BaseModel):
+    latest: AiDayView | None
+    history: list[AiDayView]  # 최근 판단부터
+    spent: Decimal  # 이번 달 AI 비용 (모든 AI 봇 합계)
+    budget: Decimal  # 한 달 상한
 
 
 class BotConfig(BaseModel):

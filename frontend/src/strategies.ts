@@ -5,7 +5,8 @@ import { backtestApi, type StrategyInfo } from './api'
 export function useStrategies() {
   const { data } = useQuery({ queryKey: ['strategies'], queryFn: backtestApi.strategies, staleTime: Infinity })
   const byName: Record<string, StrategyInfo> = Object.fromEntries((data ?? []).map((s) => [s.name, s]))
-  return { list: data ?? [], byName }
+  // AI 봇은 시험해 보기(과거 백테스트)가 없고 따로 만든다: 전략 고르기 목록에서는 뺀다
+  return { list: (data ?? []).filter((s) => !s.ai), byName }
 }
 
 export function strategyTitle(info: StrategyInfo | undefined, fallback: string) {
@@ -36,3 +37,6 @@ export const SLIPPAGE_CHOICES = [
 
 /** 나 카피 봇 (나처럼 투자). 있으면 홈 첫 화면이 "나 vs 매달 그냥 사기"와 평행세계의 나가 된다. */
 export const isMeBot = (b: { strategy: string }) => b.strategy === 'dip_saver'
+
+/** AI 봇 (마일스톤 4): 고른 종목 안에서 AI가 매일 비중을 정한다. */
+export const isAiBot = (b: { strategy: string }) => b.strategy === 'ai_judge'

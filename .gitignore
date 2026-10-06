@@ -41,3 +41,6 @@ crash.log
 
 # 운영 비밀값 (deploy/compose.prod.yaml이 읽음)
 .secrets/
+
+# DB 덤프 (토스 시세 포함 가능, 커밋 금지)
+*.sql

@@ -24,7 +24,7 @@ function diff(me: Record<string, number>, other: Record<string, number> | null):
   return key ? `${said[key](of(me, key))} → ${said[key](of(other, key))}` : ''
 }
 
-function Chart({ me, other }: { me: World; other: World }) {
+export function Chart({ me, other }: { me: World; other: World }) {
   const el = useRef<HTMLDivElement>(null)
   const { theme } = useTheme()
   const { currency, rate } = useCurrency()

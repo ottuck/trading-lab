@@ -57,7 +57,7 @@ def judge(advisor: Advisor | None, request: AdviceRequest) -> Judgment:
     )
 
 
-def _month(now: datetime) -> tuple[datetime, datetime]:
+def month_of(now: datetime) -> tuple[datetime, datetime]:
     start = datetime(now.year, now.month, 1, tzinfo=UTC)
     end = datetime(now.year + now.month // 12, now.month % 12 + 1, 1, tzinfo=UTC)
     return start, end
@@ -78,7 +78,7 @@ def judge_bot(
     )
     if exists is not None:
         return
-    start, end = _month(now)
+    start, end = month_of(now)
     used = spent(session, start, end)
     data = AiJudgmentData(status="", session_date=request.session_date.isoformat())
     if ai is not None and ai.advisor is not None and used >= ai.monthly_budget:

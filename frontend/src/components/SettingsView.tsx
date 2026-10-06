@@ -5,7 +5,7 @@ import { useLive } from '../live'
 import { LiveOrderList } from './Live'
 import { ago, dollars, money, shares, won } from '../format'
 import { closeNewBot, selectBot, startMeEdit, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
-import { isMeBot, sameParams, useStrategies } from '../strategies'
+import { isAiBot, isMeBot, sameParams, useStrategies } from '../strategies'
 import { answersOf, describe } from '../me'
 import { toConfig, toDraft, type Draft } from '../botConfig'
 import { useDismiss } from '../useDismiss'
@@ -524,9 +524,21 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
     },
   })
   const changing = !sameStrategy(draft, bot)
+  const ai = isAiBot(bot)
   return (
     <>
-      {isMeBot(bot) ? (
+      {ai ? (
+        <Section title="AI에게 맡기기" desc="고른 종목 안에서 무엇을 얼마나 들고 있을지 AI가 매일 장이 끝난 뒤 정해요.">
+          <ul className="me-summary">
+            <li>
+              매달 {bot.params.day}일 ${bot.params.deposit?.toLocaleString('en-US')}를 넣어요
+            </li>
+            <li>관심 종목 {bot.symbols.length}개({bot.symbols.map((s) => s.symbol).join(' · ')}) 안에서만 사고팔아요</li>
+            <li>목표 비중과 지금 비중이 자산의 2%보다 덜 차이 나면 그대로 둬요</li>
+            <li>AI 비용이 한 달 상한을 넘으면 그달은 판단하지 않고 그대로 둬요</li>
+          </ul>
+        </Section>
+      ) : isMeBot(bot) ? (
         <Section title="내 규칙" desc="나 카피하기로 정한 규칙이에요. 바꾸면 다음 판단부터 적용되고, 지금까지의 기록은 그대로예요.">
           <ul className="me-summary">
             {describe(answersOf(bot)).map((line) => (
@@ -560,8 +572,14 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
         {save.isSuccess && <span className="ok small">저장했어요. 다음 판단부터 적용돼요.</span>}
         {save.error && <span className="bad small">{save.error.message}</span>}
       </div>
-      <SymbolsField key={bot.symbols.map((s) => `${s.symbol}${s.weight}`).join()} bot={bot} />
-      <LiveSection bot={bot} />
+      {!ai && <SymbolsField key={bot.symbols.map((s) => `${s.symbol}${s.weight}`).join()} bot={bot} />}
+      {ai ? (
+        <Section title="실제로 따라 하기" desc="AI 봇은 아직 실제 돈으로 따라 하지 않아요.">
+          <p className="muted small">모의로 먼저 지켜보며 나 카피 봇과 비교한 뒤 정해요.</p>
+        </Section>
+      ) : (
+        <LiveSection bot={bot} />
+      )}
       <NameField key={bot.name} bot={bot} />
       <History botId={bot.id} />
       <DangerZone bot={bot} others={others} />

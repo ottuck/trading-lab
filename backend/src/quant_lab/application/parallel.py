@@ -75,8 +75,16 @@ def _recent(end: date, buys: list[tuple[date, Decimal]]) -> list[tuple[str, Deci
     return [(k, sum((v for d, v in buys if f"{d:%Y-%m}" == k), Decimal(0))) for k in months]
 
 
-def _world(key: str, title: str, params: dict[str, int], result: BacktestResult) -> World:
+def world(
+    key: str,
+    title: str,
+    params: dict[str, int] | None,
+    result: BacktestResult,
+    daily: bool = False,
+) -> World:
+    """daily면 그래프를 날마다 (시작한 지 얼마 안 된 봇), 아니면 달마다 마지막 날."""
     m = result.metrics
+    points = [(p.session_date, p.equity) for p in result.equity]
     return World(
         key,
         title,
@@ -86,8 +94,48 @@ def _world(key: str, title: str, params: dict[str, int], result: BacktestResult)
         m.final_equity,
         m.contributed,
         m.cagr,
-        _monthly([(p.session_date, p.equity) for p in result.equity]),
+        points if daily else _monthly(points),
         _recent(m.end, [(f.fill_date, f.qty * f.price + f.commission) for f in result.fills]),
+    )
+
+
+def dca_world(
+    result: BacktestResult, title: str = "매달 그냥 사는 나", daily: bool = False
+) -> World:
+    """같은 날 같은 돈을 넣자마자 비율대로 사는 비교 기준 (백테스트의 benchmark)."""
+    m = result.metrics
+    points = [(p.session_date, p.benchmark) for p in result.equity]
+    return World(
+        "dca",
+        title,
+        None,
+        m.start,
+        m.end,
+        m.benchmark_final_equity,
+        m.contributed,
+        m.benchmark_cagr,
+        points if daily else _monthly(points),
+        # 매달 그냥 사기는 넣은 돈을 다음 날 바로 다 산다
+        _recent(m.end, [(p.session_date, p.deposit) for p in result.equity]),
+    )
+
+
+def copy_world(
+    session: Session,
+    weights: dict[str, int],
+    params: dict[str, int],
+    *,
+    start: date,
+    initial_cash: Decimal,
+    costs: CostModel,
+) -> tuple[World, World]:
+    """나 카피 봇 규칙으로 start부터 산 결과와 그 종목·비율로 매달 그냥 산 결과 (날마다 그래프)."""
+    me = DipSaver(**params)
+    series = load_series(session, weights, me.warmup, start, None)
+    base = run_backtest(series, me, initial_cash, costs, RiskLimits(), weights=weights)
+    return (
+        world("copy", "나 카피 봇 규칙", me.params, base, daily=True),
+        dca_world(base, "매달 그냥 사기", daily=True),
     )
 
 
@@ -108,25 +156,9 @@ def parallel_worlds(
     me = DipSaver(**params)
     series = load_series(session, weights, me.warmup, start, end)
     base = run_backtest(series, me, initial_cash, costs, RiskLimits(), weights=weights)
-    m = base.metrics
-    worlds = [
-        _world("me", "나", me.params, base),
-        World(
-            "dca",
-            "매달 그냥 사는 나",
-            None,
-            m.start,
-            m.end,
-            m.benchmark_final_equity,
-            m.contributed,
-            m.benchmark_cagr,
-            _monthly([(p.session_date, p.benchmark) for p in base.equity]),
-            # 매달 그냥 사기는 넣은 돈을 다음 날 바로 다 산다
-            _recent(m.end, [(p.session_date, p.deposit) for p in base.equity]),
-        ),
-    ]
+    worlds = [world("me", "나", me.params, base), dca_world(base)]
     for key, title, other in variants(me.params, multi=len(weights) > 1):
         strategy = DipSaver(**other)
         result = run_backtest(series, strategy, initial_cash, costs, RiskLimits(), weights=weights)
-        worlds.append(_world(key, title, strategy.params, result))
+        worlds.append(world(key, title, strategy.params, result))
     return worlds
