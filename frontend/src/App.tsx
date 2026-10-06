@@ -85,7 +85,7 @@ export default function App() {
         <header className="topbar">
           <Brand />
           <nav className="tabs">
-            {(Object.keys(TABS) as Tab[]).filter((t) => !(demo && t === 'settings')).map((t) => {
+            {(Object.keys(TABS) as Tab[]).map((t) => {
               // 봇 자세히 보기(#bot)는 홈 탭 안의 화면이다.
               const on = t === tab || (t === 'dashboard' && tab === 'bot')
               return (
@@ -111,7 +111,7 @@ export default function App() {
       </div>
       {demo && (
         <div className="demo-bar">
-          <b>예시 데이터로 보는 데모예요.</b> 가격은 실제가 아니고, 봇을 만들거나 바꿀 수는 없어요. 나 카피하기와 시험해 보기는
+          <b>예시 데이터로 보는 데모예요.</b> 가격은 실제가 아니고, 봇을 만들거나 설정을 바꿀 수는 없어요(설정은 보기만 돼요). 나 카피하기와 시험해 보기는
           마음껏 해 보세요.
         </div>
       )}
@@ -121,7 +121,7 @@ export default function App() {
         {tab === 'bot' && !!bots.data?.length && <Home bots={bots.data} />}
         {tab === 'backtest' && <BacktestView />}
         {tab === 'me' && <MeView />}
-        {tab === 'settings' && !demo && bots.data && <SettingsView bots={bots.data} />}
+        {tab === 'settings' && bots.data && <SettingsView bots={bots.data} />}
       </main>
     </>
   )
