@@ -21,7 +21,7 @@ from quant_lab.domain.broker import (
     OrderStatus,
     SellOrder,
 )
-from quant_lab.domain.live import AUTO_AFTER, LiveState
+from quant_lab.domain.live import AUTO_AFTER, LiveState, partial_sell_qty
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.persistence.bots import create_bot
 from quant_lab.persistence.broker_account import save_snapshot
@@ -326,3 +326,11 @@ def test_trading_bot_buys_a_hundredth_of_cash_and_sells_only_what_it_bought(
     desk.tick(SEND + timedelta(days=3))  # 월요일 장이 열리고 5분 뒤
     assert [(s.symbol, s.quantity) for s in trader.sold] == [("TQQQ", Decimal("0.0048"))]
     assert live_position(session, bot.id, "TQQQ") == 0  # 산 만큼 모두 팔았다
+
+
+def test_ai_bot_sells_the_same_share_of_what_it_really_bought() -> None:
+    """AI 봇의 일부 팔기: 모의 보유 2주 중 $100어치($200 종가, 1/4)를 팔면 실제로 산 수량도 1/4."""
+    live = Decimal("0.02")
+    assert partial_sell_qty(live, Decimal(2), Decimal(100), Decimal(200)) == Decimal("0.005")
+    assert partial_sell_qty(live, Decimal(2), Decimal(1000), Decimal(200)) == live  # 넘치면 모두
+    assert partial_sell_qty(live, Decimal(0), Decimal(100), Decimal(200)) == live  # 모르면 모두

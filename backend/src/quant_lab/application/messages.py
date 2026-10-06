@@ -560,7 +560,7 @@ _LIVE_REASONS = {
     "missed": "주문을 받는 시간 안에 내지 못했어요. 이번 몫은 넘어가요.",
     "no_session": "그날 장이 열리지 않아 넘어가요.",
     "leveraged": "이 레버리지 상품은 실제로 사고팔지 않아요 (QLD·TQQQ만 해요).",
-    "too_small": "금액이 너무 작아 내지 않았어요.",
+    "too_small": "금액이 $1보다 작아 내지 않았어요.",
     "carried": "금액이 작아 모아 뒀어요. 같은 종목 몫이 $1을 넘으면 함께 사요.",
     "no_funds": "실제 계좌에 달러가 모자라 사지 않았어요. 이번 몫은 넘어가요.",
     "nothing_held": "이 봇이 실제로 산 주식이 없어 팔지 않아요 (따라 하기를 켜기 전 모의 보유예요).",
@@ -603,13 +603,13 @@ def _live_order_message(d: LiveOrderData) -> Message | None:
 
 
 def _live_sell_message(d: LiveOrderData) -> Message | None:
-    """파는 실제 주문 (사고팔기 봇, 실거래 R3). 이 봇이 실제로 산 만큼을 모두 판다."""
+    """파는 실제 주문 (사고팔기 봇은 이 봇이 실제로 산 만큼 모두, AI 봇은 그중 일부)."""
     sym, state = d.get("symbol", ""), d.get("state")
     qty = f"{_shares(d.get('quantity'))}주"
     about = f"{qty}(약 {_usd(d.get('amount', 0))})"
     why = _LIVE_REASONS.get(d.get("reason", ""), "")
     if state == "WAITING_APPROVAL":
-        body = f"다음 장이 열리면 실제 계좌의 {sym} {about}를 모두 팔아요. 앱에서 [승인]을 눌러 주세요."
+        body = f"다음 장이 열리면 실제 계좌의 {sym} {about}를 팔아요. 앱에서 [승인]을 눌러 주세요."
         return Message("🙋", f"실제로 팔까요? · {sym}", body, "INFO", True)
     if state == "APPROVED":
         auto = "자동으로 " if d.get("auto") else ""
