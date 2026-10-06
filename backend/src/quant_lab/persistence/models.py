@@ -396,3 +396,35 @@ class NotifySettingsRow(Base):
     scope: Mapped[str] = mapped_column(String(10), server_default="live")  # live | all
     available: Mapped[bool] = mapped_column(Boolean, server_default="false")  # Worker에 토큰이 있음
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AiJudgmentRow(Base):
+    """AI 판단 1건 (마일스톤 4, project.md 14절). 재현의 원본이라 지우지 않는다.
+
+    봇·판단일마다 하나. 판단하지 못한 날(실패·형식 오류·비용 상한)도 이유와 든 비용을 남긴다.
+    """
+
+    __tablename__ = "ai_judgments"
+    __table_args__ = (UniqueConstraint("bot_id", "session_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # 봇을 지워도 기록은 남긴다. 시험 판단(CLI)은 NULL
+    bot_id: Mapped[int | None] = mapped_column(ForeignKey("bots.id", ondelete="SET NULL"))
+    session_date: Mapped[date] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(20))  # OK | FAILED | INVALID | OVER_BUDGET
+    source: Mapped[str | None] = mapped_column(String(20))  # AI 공급자 출처 코드
+    model: Mapped[str | None] = mapped_column(String(64))
+    prompt_version: Mapped[str | None] = mapped_column(String(32))
+    request: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # 넘긴 입력 요약 전부
+    # 목표 비중 {종목: %}, 현금은 "CASH" (OK가 아니면 NULL)
+    weights: Mapped[dict[str, int] | None] = mapped_column(JSONB)
+    reasons: Mapped[dict[str, str] | None] = mapped_column(JSONB)
+    summary: Mapped[str | None] = mapped_column(Text)
+    sources: Mapped[list[dict[str, str]] | None] = mapped_column(JSONB)  # [{url, title}]
+    queries: Mapped[list[str] | None] = mapped_column(JSONB)
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    web_searches: Mapped[int | None] = mapped_column(Integer)
+    cost: Mapped[Decimal | None] = mapped_column(PRICE)  # USD
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
