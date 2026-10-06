@@ -378,4 +378,5 @@ def _to_order(raw: Mapping[str, Any]) -> AccountOrder:
         order_amount=_decimal_or_none(raw.get("orderAmount")),
         filled_quantity=Decimal(execution.get("filledQuantity") or "0"),
         filled_amount=_decimal_or_none(execution.get("filledAmount")),
+        quantity=_decimal_or_none(raw.get("quantity")),
     )

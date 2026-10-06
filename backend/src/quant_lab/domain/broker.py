@@ -118,6 +118,7 @@ class AccountOrder:
     order_amount: Decimal | None  # 금액 주문의 금액 (USD)
     filled_quantity: Decimal
     filled_amount: Decimal | None
+    quantity: Decimal | None = None  # 수량 주문의 수량 (파는 주문)
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,6 +174,15 @@ class AmountOrder:
     amount: Decimal  # USD, 센트 단위
 
 
+@dataclass(frozen=True, slots=True)
+class SellOrder:
+    """수량만큼 시장가로 파는 주문 (소수점 6자리까지). 봇이 실제로 산 만큼만 판다."""
+
+    key: str  # 중복 방지 키 (AmountOrder와 같은 규칙)
+    symbol: str
+    quantity: Decimal
+
+
 class Trader(Protocol):
     """실제 주문 규약. 실거래 스위치가 켜졌을 때만 조립 지점이 만든다 (Broker는 읽기만 한다).
 
@@ -196,6 +206,10 @@ class Trader(Protocol):
 
         거절은 OrderRejected, 일시 장애는 BrokerError (같은 키로 다시 보내도 된다).
         """
+        ...
+
+    def place_quantity_sell(self, order: SellOrder) -> str:
+        """수량만큼 판다. 오류 규칙은 place_amount_buy와 같다."""
         ...
 
     def get_order(self, order_id: str) -> AccountOrder: ...

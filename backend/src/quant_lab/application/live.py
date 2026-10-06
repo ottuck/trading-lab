@@ -18,7 +18,7 @@ from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from quant_lab.domain.bars import TradingCalendar
@@ -29,6 +29,7 @@ from quant_lab.domain.broker import (
     OrderRejected,
     OrderStatus,
     RejectReason,
+    SellOrder,
     Trader,
 )
 from quant_lab.domain.events import (
@@ -39,12 +40,14 @@ from quant_lab.domain.events import (
     ShortfallItem,
 )
 from quant_lab.domain.live import (
+    CENT,
     MIN_AMOUNT,
     SEND_DELAY_MINUTES,
     LiveLimits,
     LiveState,
     SkipReason,
     holding_shortfalls,
+    live_allowed,
     needs_approval,
     order_key,
     scaled_amount,
@@ -52,8 +55,10 @@ from quant_lab.domain.live import (
 from quant_lab.persistence.bots import add_event
 from quant_lab.persistence.market_info import leverage_of
 from quant_lab.persistence.models import (
+    BotAccountRow,
     BotRow,
     BrokerAccountRow,
+    DailyBarRow,
     LiveControlRow,
     LiveOrderRow,
     SimOrderRow,
@@ -64,6 +69,10 @@ RETRY_MARGIN = timedelta(minutes=1)  # 멱등 유효 시간이 끝나기 이만�
 CHECK_INTERVAL = timedelta(minutes=1)  # 보낸 주문의 체결 확인 간격
 COMMITTED = (LiveState.APPROVED, LiveState.SENDING, LiveState.SENT, LiveState.FILLED)
 WAITING_TO_SEND = (LiveState.WAITING_APPROVAL, LiveState.APPROVED)
+# 체결 수량: 사면 +, 팔면 - (봇이 실제 계좌에 남긴 수량 계산)
+SIGNED_QTY = case(
+    (LiveOrderRow.side == "SELL", -LiveOrderRow.filled_qty), else_=LiveOrderRow.filled_qty
+)
 
 LIMITS = LiveLimits()
 
@@ -87,6 +96,10 @@ def live_event(
         data["reason"] = order.reason
     if order.filled_qty is not None:
         data["filled_qty"] = str(order.filled_qty)
+    if order.side == "SELL":
+        data["side"] = "SELL"
+        if order.quantity is not None:
+            data["quantity"] = str(order.quantity)
     data.update(extra)  # type: ignore[typeddict-item]
     message = f"실제 주문 {order.symbol} ${order.amount} {order.state} {order.reason or ''}"
     add_event(session, now, level, EventKind.LIVE_ORDER, message, bot_id=order.bot_id, data=data)
@@ -130,7 +143,7 @@ class LiveDesk:
     # --- 1) 모의 매수 → 실제 주문 계획 ---
 
     def plan(self, now: datetime) -> list[LiveOrderRow]:
-        """따라 사기를 켠 봇의 새 모의 매수마다 실제 주문을 하나 만든다."""
+        """따라 하기를 켠 봇의 새 모의 주문마다 실제 주문을 하나 만든다 (사기·팔기)."""
         made: list[LiveOrderRow] = []
         with self.make_session() as session:
             ctl = control(session, now)
@@ -141,52 +154,13 @@ class LiveDesk:
                 .outerjoin(LiveOrderRow, LiveOrderRow.sim_order_id == SimOrderRow.id)
                 .where(
                     BotRow.live_ratio.is_not(None),
-                    SimOrderRow.side == "BUY",
-                    SimOrderRow.budget.is_not(None),
                     SimOrderRow.created_at >= BotRow.live_since,
                     LiveOrderRow.id.is_(None),
                 )
                 .order_by(SimOrderRow.id)
             ).all()
             for sim, bot in rows:
-                assert sim.budget is not None and bot.live_ratio is not None
-                order = LiveOrderRow(
-                    bot_id=bot.id,
-                    sim_order_id=sim.id,
-                    symbol=sim.symbol,
-                    signal_date=sim.signal_date,
-                    trade_date=self._next_session(sim.signal_date),
-                    amount=scaled_amount(sim.budget, bot.live_ratio),
-                    key=order_key(bot.id, sim.symbol, sim.signal_date),
-                    state=LiveState.APPROVED,
-                    created_at=now,
-                    updated_at=now,
-                )
-                auto = False
-                leverage = leverage_of(session, sim.symbol)
-                if leverage is not None and leverage > 1:
-                    order.state, order.reason = LiveState.SKIPPED, SkipReason.LEVERAGED
-                elif halted:
-                    order.state, order.reason = LiveState.SKIPPED, SkipReason.HALTED
-                else:
-                    carried = self._carried(session, bot.id, sim.symbol)
-                    total = order.amount + sum((c.amount for c in carried), Decimal(0))
-                    if total < MIN_AMOUNT:
-                        # 작은 몫은 버리지 않고 모아 둔다. 같은 종목 다음 주문에 더해 함께 산다.
-                        order.state, order.reason = LiveState.SKIPPED, SkipReason.CARRIED
-                    else:
-                        order.amount = total
-                        session.add(order)
-                        session.flush()
-                        for c in carried:
-                            c.carried_into, c.updated_at = order.id, now
-                        month = self._month_total(session, bot.id, order.trade_date)
-                        # 실제 계좌가 봇 기록과 맞지 않는 동안은 늘 승인을 받는다
-                        streak = 0 if shortfall else bot.live_streak
-                        if needs_approval(order.amount, month, streak, self.limits):
-                            order.state = LiveState.WAITING_APPROVAL
-                        else:
-                            auto = True
+                order, auto = self._plan_one(session, sim, bot, halted, shortfall, now)
                 session.add(order)
                 session.flush()
                 warn = order.reason in (SkipReason.HALTED, SkipReason.LEVERAGED)
@@ -202,6 +176,70 @@ class LiveDesk:
             session.commit()
         return made
 
+    def _plan_one(
+        self,
+        session: Session,
+        sim: SimOrderRow,
+        bot: BotRow,
+        halted: bool,
+        shortfall: bool,
+        now: datetime,
+    ) -> tuple[LiveOrderRow, bool]:
+        """모의 주문 1건 → 실제 주문 1건 (상태까지). 두 번째 값은 묻지 않고 자동으로 낼지."""
+        assert bot.live_ratio is not None
+        sell = sim.side == "SELL"
+        side = "SELL" if sell else "BUY"
+        trading = sim.budget is None  # 현금 전부로 사고 전부 파는 봇 (모으기 봇은 예산이 있다)
+        order = LiveOrderRow(
+            bot_id=bot.id,
+            sim_order_id=sim.id,
+            symbol=sim.symbol,
+            side=side,
+            signal_date=sim.signal_date,
+            trade_date=self._next_session(sim.signal_date),
+            amount=Decimal(0),
+            key=order_key(bot.id, sim.symbol, sim.signal_date, side),
+            state=LiveState.APPROVED,
+            created_at=now,
+            updated_at=now,
+        )
+        if sell:
+            # 이 봇이 실제로 산 만큼만 모두 판다. 켜기 전부터 있던 모의 보유는 실제로 없다.
+            order.quantity = live_position(session, bot.id, sim.symbol)
+            order.amount = (order.quantity * last_close(session, sim.symbol)).quantize(CENT)
+        else:
+            budget = sim.budget if sim.budget is not None else bot_cash(session, bot.id)
+            order.amount = scaled_amount(budget, bot.live_ratio)
+        if not live_allowed(sim.symbol, leverage_of(session, sim.symbol)):
+            order.state, order.reason = LiveState.SKIPPED, SkipReason.LEVERAGED
+            return order, False
+        if halted:
+            order.state, order.reason = LiveState.SKIPPED, SkipReason.HALTED
+            return order, False
+        if sell and not order.quantity:
+            order.state, order.reason = LiveState.SKIPPED, SkipReason.NOTHING_HELD
+            return order, False
+        if not sell:
+            carried = self._carried(session, bot.id, sim.symbol)
+            total = order.amount + sum((c.amount for c in carried), Decimal(0))
+            if total < MIN_AMOUNT:
+                # 작은 몫은 버리지 않고 모아 둔다. 같은 종목 다음 주문에 더해 함께 산다.
+                order.state, order.reason = LiveState.SKIPPED, SkipReason.CARRIED
+                return order, False
+            order.amount = total
+            session.add(order)
+            session.flush()
+            for c in carried:
+                c.carried_into, c.updated_at = order.id, now
+        # 실제 계좌가 봇 기록과 맞지 않는 동안은 늘 승인을 받는다. 파는 주문은 한도를 보지 않는다.
+        streak = 0 if shortfall else bot.live_streak
+        month = Decimal(0) if sell else self._month_total(session, bot.id, order.trade_date)
+        amount = Decimal(0) if sell else order.amount
+        if needs_approval(amount, month, streak, self.limits, trading=trading):
+            order.state = LiveState.WAITING_APPROVAL
+            return order, False
+        return order, True
+
     def _warn_low_funds(self, session: Session, made: list[LiveOrderRow], now: datetime) -> None:
         """새로 만든 실제 주문을 내기 전에 달러가 모자라 보이면 미리 알린다 (채울 시간을 준다).
 
@@ -211,12 +249,15 @@ class LiveDesk:
         account = session.get(BrokerAccountRow, 1)
         if account is None or account.cash_usd is None or account.fetched_at is None:
             return
-        days = sorted({o.trade_date for o in made if o.state in WAITING_TO_SEND})
+        days = sorted(
+            {o.trade_date for o in made if o.side == "BUY" and o.state in WAITING_TO_SEND}
+        )
         for day in days:
             needed = Decimal(
                 session.scalar(
                     select(func.coalesce(func.sum(LiveOrderRow.amount), 0)).where(
                         LiveOrderRow.trade_date == day,
+                        LiveOrderRow.side == "BUY",
                         LiveOrderRow.state.in_(WAITING_TO_SEND),
                     )
                 )
@@ -262,6 +303,7 @@ class LiveDesk:
         total = session.scalar(
             select(func.coalesce(func.sum(LiveOrderRow.amount), 0)).where(
                 LiveOrderRow.bot_id == bot_id,
+                LiveOrderRow.side == "BUY",
                 LiveOrderRow.state.in_(COMMITTED),
                 LiveOrderRow.trade_date >= start,
             )
@@ -316,7 +358,7 @@ class LiveDesk:
                 return
             if now < start + timedelta(minutes=SEND_DELAY_MINUTES):
                 return
-            if not self._has_cash(order):
+            if order.side == "BUY" and not self._has_cash(order):
                 # 달러가 모자라면 보내지 않고 이번 몫은 넘긴다 (다음 달에 더하지 않는다).
                 # 돈 부족은 고장이 아니라 자동 단계(연속 성공)는 그대로 둔다.
                 self._skip(session, order, SkipReason.NO_FUNDS, now)
@@ -341,9 +383,14 @@ class LiveDesk:
 
     def _place(self, session: Session, order: LiveOrderRow, now: datetime) -> None:
         assert self.trader is not None
-        request = AmountOrder(key=order.key, symbol=order.symbol, amount=order.amount)
         try:
-            broker_id = self.trader.place_amount_buy(request)
+            if order.side == "SELL":
+                assert order.quantity is not None
+                sell = SellOrder(key=order.key, symbol=order.symbol, quantity=order.quantity)
+                broker_id = self.trader.place_quantity_sell(sell)
+            else:
+                buy = AmountOrder(key=order.key, symbol=order.symbol, amount=order.amount)
+                broker_id = self.trader.place_amount_buy(buy)
         except OrderRejected as exc:
             order.state, order.reason, order.note = LiveState.REJECTED, exc.reason, str(exc)
             if exc.reason != RejectReason.INSUFFICIENT_FUNDS:  # 돈 부족은 고장이 아니다
@@ -374,9 +421,13 @@ class LiveDesk:
         matches = [
             o
             for o in self.trader.find_orders(order.symbol, sent_day)
-            if o.side == "BUY"
-            and o.order_amount == order.amount
+            if o.side == order.side
             and o.ordered_at >= order.sent_at - RETRY_MARGIN
+            and (
+                o.quantity == order.quantity
+                if order.side == "SELL"
+                else o.order_amount == order.amount
+            )
         ]
         if len(matches) == 1:
             order.state, order.broker_order_id = LiveState.SENT, matches[0].order_id
@@ -455,7 +506,7 @@ def check_holdings(session: Session, snap: AccountSnapshot, now: datetime) -> No
     따라 사기를 하는 모든 봇을 다시 승인 단계로 돌린다 (부족이 풀릴 때까지 자동으로 내지 않는다).
     """
     rows = session.execute(
-        select(LiveOrderRow.symbol, func.sum(LiveOrderRow.filled_qty))
+        select(LiveOrderRow.symbol, func.sum(SIGNED_QTY))
         .where(
             LiveOrderRow.filled_qty.is_not(None),
             LiveOrderRow.state.in_([LiveState.FILLED, LiveState.CANCELED]),
@@ -485,3 +536,32 @@ def check_holdings(session: Session, snap: AccountSnapshot, now: datetime) -> No
         )
     row.shortfall = [dict(i) for i in items] or None
     row.checked_at = now
+
+
+def live_position(session: Session, bot_id: int, symbol: str) -> Decimal:
+    """이 봇이 실제 계좌에서 사고판 결과 남은 수량 (체결 기준)."""
+    total = session.scalar(
+        select(func.coalesce(func.sum(SIGNED_QTY), 0)).where(
+            LiveOrderRow.bot_id == bot_id,
+            LiveOrderRow.symbol == symbol,
+            LiveOrderRow.filled_qty.is_not(None),
+        )
+    )
+    return max(Decimal(total or 0), Decimal(0))
+
+
+def last_close(session: Session, symbol: str) -> Decimal:
+    """파는 주문 금액 어림용 최근 종가 (없으면 0)."""
+    close = session.scalar(
+        select(DailyBarRow.close)
+        .where(DailyBarRow.symbol == symbol)
+        .order_by(DailyBarRow.session_date.desc())
+        .limit(1)
+    )
+    return Decimal(close) if close is not None else Decimal(0)
+
+
+def bot_cash(session: Session, bot_id: int) -> Decimal:
+    """사고팔기 봇은 현금 전부로 산다. 실제 주문은 그 현금 × 비율."""
+    account = session.get(BotAccountRow, bot_id)
+    return account.cash if account is not None else Decimal(0)

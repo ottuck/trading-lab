@@ -11,8 +11,12 @@ from enum import StrEnum
 
 CENT = Decimal("0.01")
 
-# 화면에서 고르는 비율 (프리셋). 값은 실제 주문 금액 = 모의 매수 금액 × 비율
-RATIOS: dict[str, Decimal] = {"1/100": Decimal("0.01"), "1/10": Decimal("0.1")}
+# 화면에서 고르는 비율 (프리셋). 값은 실제 주문 금액 = 모의 매수 금액 × 비율.
+# 1/10은 지원하지 않는다 (2026-10-06 사용자 결정: 1/100로만 운영). 화면은 이유를 보여준다.
+RATIOS: dict[str, Decimal] = {"1/100": Decimal("0.01")}
+
+# 실제로 사고팔 수 있는 레버리지 ETF (2026-10-06 사용자 결정). 그 밖의 레버리지 상품은 넘긴다.
+LEVERAGED_ALLOWED = frozenset({"QLD", "TQQQ"})
 
 AUTO_AFTER = 3  # 승인한 주문이 이만큼 연속으로 문제없이 체결되면 그다음부터 자동으로 낸다
 MIN_AMOUNT = Decimal("1")  # 이보다 작은 몫은 모아 두었다가 넘으면 함께 산다 (소수점 금액 주문 최소)
@@ -23,8 +27,9 @@ SEND_DELAY_MINUTES = 5  # 주문 접수 시간이 열리고 이만큼 뒤에 낸
 class LiveLimits:
     """실제 주문 안전망. 넘는 주문은 자동으로 내지 않고 사람에게 묻는다."""
 
-    per_order: Decimal = Decimal("20")
+    per_order: Decimal = Decimal("20")  # 모으기 봇 (매달 나눠 사기)
     per_month: Decimal = Decimal("50")
+    per_trade: Decimal = Decimal("150")  # 사고팔기 봇: 현금 전부로 사서 1/100이면 $100 안팎
 
 
 class LiveState(StrEnum):
@@ -53,6 +58,7 @@ class SkipReason(StrEnum):
     TOO_SMALL = "too_small"  # 2026-10-04 이전 기록만 (지금은 CARRIED로 모아 둔다)
     CARRIED = "carried"  # 금액이 작아 모아 둠. 같은 종목 다음 주문에 더해 함께 산다
     NO_FUNDS = "no_funds"  # 보내기 직전 달러가 모자라 넘김 (다음 달에 더하지 않는다)
+    NOTHING_HELD = "nothing_held"  # 팔 신호지만 이 봇이 실제로 산 주식이 없음 (켜기 전 모의 보유)
 
 
 def scaled_amount(budget: Decimal, ratio: Decimal) -> Decimal:
@@ -60,19 +66,36 @@ def scaled_amount(budget: Decimal, ratio: Decimal) -> Decimal:
     return (budget * ratio).quantize(CENT, rounding=ROUND_DOWN)
 
 
-def needs_approval(amount: Decimal, month_total: Decimal, streak: int, limits: LiveLimits) -> bool:
-    """처음 AUTO_AFTER번은 늘 묻고, 한도를 넘는 주문은 자동 단계에서도 묻는다.
+def needs_approval(
+    amount: Decimal,
+    month_total: Decimal,
+    streak: int,
+    limits: LiveLimits,
+    *,
+    trading: bool = False,
+) -> bool:
+    """처음 AUTO_AFTER번은 늘 묻고, 한도를 넘는 사기 주문은 자동 단계에서도 묻는다.
 
-    month_total은 이번 달에 이미 내기로 한(승인·보냄·체결) 금액이다.
+    month_total은 이번 달에 이미 내기로 한(승인·보냄·체결) 사기 금액이다.
+    trading이면 사고팔기 봇: 드물게 현금 전부로 사므로 한 건 한도(per_trade)만 본다.
     """
-    over = amount > limits.per_order or month_total + amount > limits.per_month
+    if trading:
+        over = amount > limits.per_trade
+    else:
+        over = amount > limits.per_order or month_total + amount > limits.per_month
     return streak < AUTO_AFTER or over
 
 
-def order_key(bot_id: int, symbol: str, signal_date: date) -> str:
-    """판단 키(봇·종목·판단일)에서 만든 중복 방지 키. 같은 판단의 주문은 늘 같은 키다."""
+def order_key(bot_id: int, symbol: str, signal_date: date, side: str = "BUY") -> str:
+    """판단 키(봇·종목·판단일·방향)에서 만든 중복 방지 키. 같은 판단의 주문은 늘 같은 키다."""
     safe = "".join(c if c.isalnum() else "_" for c in symbol)
-    return f"ql-{bot_id}-{safe}-{signal_date:%Y%m%d}"[:36]
+    suffix = "-S" if side == "SELL" else ""
+    return f"ql-{bot_id}-{safe}-{signal_date:%Y%m%d}"[: 36 - len(suffix)] + suffix
+
+
+def live_allowed(symbol: str, leverage: Decimal | None) -> bool:
+    """실제로 사고팔 수 있는 종목인지. 레버리지는 허용한 ETF만."""
+    return leverage is None or leverage <= 1 or symbol in LEVERAGED_ALLOWED
 
 
 QTY_TOLERANCE = Decimal("0.000001")  # 소수점 6자리 반올림 차이

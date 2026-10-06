@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from quant_lab.application.live import LiveDesk, check_holdings
+from quant_lab.application.live import LiveDesk, check_holdings, live_position
 from quant_lab.application.live_admin import approve
 from quant_lab.domain.broker import (
     AccountOrder,
@@ -17,12 +17,15 @@ from quant_lab.domain.broker import (
     AmountOrder,
     BrokerError,
     Holding,
+    Instrument,
     OrderStatus,
+    SellOrder,
 )
 from quant_lab.domain.live import AUTO_AFTER, LiveState
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.persistence.bots import create_bot
 from quant_lab.persistence.broker_account import save_snapshot
+from quant_lab.persistence.market_info import upsert_instruments
 from quant_lab.persistence.models import (
     BotRow,
     DecisionRow,
@@ -46,11 +49,16 @@ class FakeTrader:
 
     def __init__(self) -> None:
         self.placed: list[AmountOrder] = []
+        self.sold: list[SellOrder] = []
         self.fail_next = 0
         self.orders: dict[str, AccountOrder] = {}
 
     def order_window(self, day: date) -> tuple[datetime, datetime] | None:
-        return (OPEN, CLOSE_CUTOFF) if day == TRADE else None
+        """평일마다 같은 시각에 열린다 (TRADE 날 기준으로 옮김)."""
+        if day.weekday() >= 5:
+            return None
+        shift = day - TRADE
+        return OPEN + shift, CLOSE_CUTOFF + shift
 
     cash = Decimal("100")
 
@@ -66,6 +74,15 @@ class FakeTrader:
         self.orders[order_id] = AccountOrder(
             order_id, order.symbol, "BUY", OrderStatus.FILLED, "USD", SEND,
             order.amount, Decimal("0.0048"), order.amount,
+        )  # fmt: skip
+        return order_id
+
+    def place_quantity_sell(self, order: SellOrder) -> str:
+        self.sold.append(order)
+        order_id = f"o-{order.key}"
+        self.orders[order_id] = AccountOrder(
+            order_id, order.symbol, "SELL", OrderStatus.FILLED, "USD", SEND,
+            None, order.quantity, Decimal("1.2"), order.quantity,
         )  # fmt: skip
         return order_id
 
@@ -102,21 +119,30 @@ def live_bot(session: Session, streak: int = 0) -> BotRow:
     return bot
 
 
-def sim_buy(session: Session, bot: BotRow, budget: str, signal: date = SIGNAL) -> SimOrderRow:
-    """모의 판단이 만든 매수 주문 (dry_run이 남기는 것과 같은 모양)."""
+def sim_buy(
+    session: Session,
+    bot: BotRow,
+    budget: str | None,
+    signal: date = SIGNAL,
+    *,
+    symbol: str = "VOO",
+    side: str = "BUY",
+) -> SimOrderRow:
+    """모의 판단이 만든 주문 (dry_run이 남기는 것과 같은 모양). 사고팔기 봇은 예산이 없다."""
     run = RunRow(id=uuid.uuid4(), bot_id=bot.id, trigger="SCHEDULED", started_at=OPEN, status="OK")
     session.add(run)
     session.flush()
     decision = DecisionRow(
-        bot_id=bot.id, symbol="VOO", session_date=signal, mode="DRY_RUN", run_id=run.id,
-        strategy={}, action="BUY", target_long=True, holding=False, reason="", indicators={},
-        created_at=OPEN - timedelta(hours=12),
+        bot_id=bot.id, symbol=symbol, session_date=signal, mode="DRY_RUN", run_id=run.id,
+        strategy={}, action=side, target_long=side == "BUY", holding=False, reason="",
+        indicators={}, created_at=OPEN - timedelta(hours=12),
     )  # fmt: skip
     session.add(decision)
     session.flush()
     sim = SimOrderRow(
-        bot_id=bot.id, symbol="VOO", decision_id=decision.id, side="BUY", status="PENDING",
-        signal_date=signal, created_at=OPEN - timedelta(hours=12), budget=Decimal(budget),
+        bot_id=bot.id, symbol=symbol, decision_id=decision.id, side=side, status="PENDING",
+        signal_date=signal, created_at=OPEN - timedelta(hours=12),
+        budget=Decimal(budget) if budget else None,
     )  # fmt: skip
     session.add(sim)
     session.commit()
@@ -248,3 +274,55 @@ def test_short_of_dollars_warns_early_then_skips_without_turning_off_auto(
     assert trader.placed == []
     session.refresh(bot)
     assert bot.live_streak == 1  # 돈 부족은 고장이 아니라 자동 단계(연속 성공)를 지우지 않는다
+
+
+def test_trading_bot_buys_a_hundredth_of_cash_and_sells_only_what_it_bought(
+    make_session: Callable[[], Session], session: Session
+) -> None:
+    bot = create_bot(
+        session, name="TQQQ 봇", symbol="TQQQ", strategy="sma_cross",
+        params={"fast": 50, "slow": 200}, initial_cash=Decimal(10_000), costs=CostModel(),
+        limits=RiskLimits(), now=OPEN - timedelta(days=3),
+    )  # fmt: skip
+    bot.live_ratio, bot.live_since = Decimal("0.01"), OPEN - timedelta(days=2)
+    upsert_instruments(
+        session,
+        [
+            Instrument("TQQQ", "TQQQ", "NASDAQ", "ETF", "ACTIVE", "USD", Decimal(3)),
+            Instrument("SOXL", "SOXL", "AMEX", "ETF", "ACTIVE", "USD", Decimal(3)),
+        ],
+        OPEN,
+    )
+    session.commit()
+    trader = FakeTrader()
+    desk = LiveDesk(make_session, trader, WeekdayCalendar())
+
+    # 켜기 전부터 들고 있던 모의 보유를 파는 신호: 실제로는 없으니 넘긴다
+    sim_buy(session, bot, None, date(2026, 9, 28), symbol="TQQQ", side="SELL").status = "FILLED"
+    # 허용하지 않은 레버리지 ETF는 넘긴다
+    sim_buy(session, bot, None, date(2026, 9, 29), symbol="SOXL").status = "FILLED"
+    sim_buy(session, bot, None, symbol="TQQQ")  # 현금 $10,000의 1/100로 산다 (TQQQ는 허용)
+    desk.plan(SEND)
+    session.expire_all()
+    orders = list(session.scalars(select(LiveOrderRow).order_by(LiveOrderRow.id)))
+    assert [(o.symbol, o.side, o.state, o.reason) for o in orders] == [
+        ("TQQQ", "SELL", LiveState.SKIPPED, "nothing_held"),
+        ("SOXL", "BUY", LiveState.SKIPPED, "leveraged"),
+        ("TQQQ", "BUY", LiveState.WAITING_APPROVAL, None),
+    ]
+    assert orders[2].amount == Decimal("100.00")
+
+    approve(session, orders[2].id, SEND)
+    desk.tick(SEND)  # 사서 체결 (0.0048주)
+    session.scalars(select(SimOrderRow).where(SimOrderRow.symbol == "TQQQ")).all()[
+        -1
+    ].status = "FILLED"
+    session.commit()
+    sim_buy(session, bot, None, TRADE, symbol="TQQQ", side="SELL")  # 다음 판단에서 팔 신호
+    desk.plan(SEND)
+    sell = session.scalars(select(LiveOrderRow).order_by(LiveOrderRow.id.desc())).first()
+    assert sell is not None and sell.side == "SELL" and sell.quantity == Decimal("0.0048")
+    approve(session, sell.id, SEND)
+    desk.tick(SEND + timedelta(days=3))  # 월요일 장이 열리고 5분 뒤
+    assert [(s.symbol, s.quantity) for s in trader.sold] == [("TQQQ", Decimal("0.0048"))]
+    assert live_position(session, bot.id, "TQQQ") == 0  # 산 만큼 모두 팔았다

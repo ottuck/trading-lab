@@ -111,7 +111,9 @@ class FillData(TypedDict):
 
 class LiveOrderData(TypedDict):
     symbol: str
-    amount: str  # USD
+    side: NotRequired[str]  # BUY(없으면) | SELL
+    quantity: NotRequired[str]  # 파는 수량
+    amount: str  # USD (파는 주문은 어림값)
     state: str  # domain/live.py LiveState
     reason: NotRequired[
         str
