@@ -341,10 +341,51 @@ class DipSaver:
         return Signal(True, f"보통 ({state}): 입금액만큼 매수", indicators, Spend.DEPOSIT)
 
 
+@dataclass(frozen=True)
+class AiJudge:
+    """AI 봇 (마일스톤 4): 매달 입금하고, 종목 비중은 그날의 AI 판단이 정한다 (domain/advisor.py).
+
+    signal은 쓰지 않는다. 판단은 trading.rebalance가 기록된 목표 비중으로 한다.
+    과거 백테스트는 하지 않는다 (모델이 과거 시장의 결과를 알아서, project.md 14절).
+    """
+
+    deposit: int = 675  # 매달 넣는 돈 (나 카피 봇과 같게)
+    day: int = 25  # 입금일 (1~28)
+    name: ClassVar[str] = "ai_judge"
+
+    def __post_init__(self) -> None:
+        if self.deposit <= 0 or not 1 <= self.day <= 28:
+            raise ValueError("deposit은 양수, day는 1~28이어야 합니다")
+
+    @property
+    def params(self) -> dict[str, int]:
+        return {"deposit": self.deposit, "day": self.day}
+
+    @property
+    def warmup(self) -> int:
+        return 21  # 요약에 필요한 최소 이력 (domain/advisor.py MIN_BARS)
+
+    @property
+    def deposit_plan(self) -> DepositPlan:
+        return DepositPlan(Decimal(self.deposit), self.day)
+
+    def signal(self, history: Sequence[DailyBar], holding: bool) -> Signal | None:
+        return None
+
+
+AI_STRATEGY = AiJudge.name
+
+
+def is_ai(strategy: object) -> bool:
+    """AI가 판단하는 전략인지 (규칙 함수 대신 기록된 AI 판단으로 사고판다)."""
+    return getattr(strategy, "name", strategy) == AI_STRATEGY
+
+
 STRATEGIES: dict[str, Callable[..., Strategy]] = {
     "sma_cross": SmaCross,
     "donchian": DonchianBreakout,
     "trend_filter": TrendFilter,
     "rsi2": ConnorsRsi2,
     "dip_saver": DipSaver,
+    "ai_judge": AiJudge,
 }

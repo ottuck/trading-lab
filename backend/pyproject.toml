@@ -5,6 +5,7 @@ description = "토스증권 시세 기반 퀀트 전략 DRY RUN 도구"
 requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.16",
+    "anthropic>=1.11.0",
     "exchange-calendars>=4.13.2",
     "fastapi>=0.118",
     "httpx>=0.28",

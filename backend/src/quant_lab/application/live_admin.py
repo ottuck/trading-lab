@@ -21,6 +21,7 @@ from quant_lab.domain.events import (
     LiveControlData,
 )
 from quant_lab.domain.live import AUTO_AFTER, RATIOS, LiveLimits, LiveState, SkipReason
+from quant_lab.domain.strategy import is_ai
 from quant_lab.persistence.bots import add_event, drop_unsent_live_orders
 from quant_lab.persistence.models import BotRow, LiveControlRow, LiveOrderRow
 
@@ -109,6 +110,8 @@ def set_bot_ratio(session: Session, bot_id: int, ratio: str | None, now: datetim
     모으기 봇은 매달 사기만, 사고팔기 봇은 사고팔기를 따라 한다 (실거래 R3, 2026-10-06).
     """
     bot = require_bot(session, bot_id, for_update=True)
+    if ratio is not None and is_ai(bot.strategy):
+        raise Invalid("AI 봇은 아직 실제로 따라 하지 않아요. 모의로 먼저 지켜본 뒤 정해요.")
     if ratio is not None and ratio not in RATIOS:
         raise Invalid(
             "1/10은 아직 지원하지 않아요. 실제 돈은 1/100로만 따라 해요 "

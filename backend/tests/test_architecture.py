@@ -44,8 +44,10 @@ def test_domain_has_no_forbidden_imports() -> None:
     assert violations == []
 
 
-# 증권사(토스)를 직접 아는 곳은 어댑터와 조립 지점(Worker 진입점·CLI)뿐이다 (domain/broker.py 규약).
+# 증권사(토스)·AI 공급자(Claude)를 직접 아는 곳은 어댑터와 조립 지점(Worker 진입점·CLI)뿐이다
+# (domain/broker.py·domain/advisor.py 규약).
 BROKER_ASSEMBLY = {"cli.py", "worker/__main__.py"}
+PROVIDERS = ("toss", "claude", "anthropic")
 
 
 def test_only_assembly_points_know_the_broker() -> None:
@@ -55,13 +57,16 @@ def test_only_assembly_points_know_the_broker() -> None:
         for path in root.rglob("*.py")
         if "adapters" not in path.relative_to(root).parts
         and path.relative_to(root).as_posix() not in BROKER_ASSEMBLY
-        and any(n.startswith("quant_lab.adapters.toss") for n in imported_modules(path))
+        and any(
+            n.startswith(("quant_lab.adapters.toss", "quant_lab.adapters.claude"))
+            for n in imported_modules(path)
+        )
     ]
     assert violations == []
 
 
 def test_engine_code_does_not_name_the_broker() -> None:
-    """엔진·저장소·API의 이름과 값에 증권사 이름이 없다 (project.md 4절).
+    """엔진·저장소·API의 이름과 값에 증권사·AI 공급자 이름이 없다 (project.md 4절·14절).
 
     출처 코드는 어댑터가 넘긴다.
 
@@ -92,6 +97,6 @@ def test_engine_code_does_not_name_the_broker() -> None:
                     pass
                 case _:
                     continue
-            if "toss" in s.lower():
+            if any(p in s.lower() for p in PROVIDERS):
                 violations.append(f"{rel.as_posix()}:{getattr(node, 'lineno', '?')} {s[:40]}")
     assert violations == []

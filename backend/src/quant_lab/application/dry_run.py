@@ -15,9 +15,11 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from quant_lab.application.ai_judge import AiConfig, judge_bot
 from quant_lab.application.bar_sync import DEFAULT_SETTLE
 from quant_lab.application.market import MarketData
 from quant_lab.application.weekly import is_week_end, weekly_summary
+from quant_lab.domain.advisor import AdviceRequest, JudgmentStatus, make_request
 from quant_lab.domain.bars import (
     DailyBar,
     TradingCalendar,
@@ -28,6 +30,7 @@ from quant_lab.domain.bars import (
 from quant_lab.domain.bot import BotState
 from quant_lab.domain.broker import BrokerAccessError, BrokerError
 from quant_lab.domain.events import (
+    AiDecisionData,
     BalanceSummary,
     DecisionData,
     DecisionRepeatData,
@@ -40,8 +43,23 @@ from quant_lab.domain.events import (
     SkipReason,
 )
 from quant_lab.domain.portfolio import Portfolio, money
-from quant_lab.domain.strategy import STRATEGIES, Strategy, deposit_plan, min_bars, month_key
-from quant_lab.domain.trading import Action, DecisionRecord, Fill, decide_basket, execute
+from quant_lab.domain.strategy import (
+    STRATEGIES,
+    Strategy,
+    deposit_plan,
+    is_ai,
+    min_bars,
+    month_key,
+)
+from quant_lab.domain.trading import (
+    Action,
+    DecisionRecord,
+    Fill,
+    decide_basket,
+    execute,
+    rebalance,
+)
+from quant_lab.persistence.ai_judgments import judgment_for, last_ok
 from quant_lab.persistence.backtests import to_jsonable
 from quant_lab.persistence.bars import load_daily_bars
 from quant_lab.persistence.bots import (
@@ -95,6 +113,14 @@ class _Skip(Exception):
         self.reason = reason
 
 
+class _NeedJudgment(Exception):
+    """AI 봇의 그날 판단이 아직 없다. request는 그날 체결·입금까지 반영한 봇 상태."""
+
+    def __init__(self, request: AdviceRequest) -> None:
+        super().__init__("AI 판단이 필요합니다")
+        self.request = request
+
+
 def build_strategy(bot: BotRow) -> Strategy:
     return STRATEGIES[bot.strategy](**bot.params)
 
@@ -127,6 +153,7 @@ def evaluate_bot(
     calendar: TradingCalendar,
     now: datetime,
     trigger: Trigger,
+    ai: AiConfig | None = None,
 ) -> EvaluationOutcome:
     if session.get(BotRow, bot_id) is None:
         # 평가 대상을 고른 뒤 화면에서 봇이 지워진 경우. 실행 기록도 남기지 않는다.
@@ -137,7 +164,14 @@ def evaluate_bot(
     run_id = run.id
 
     try:
-        outcome = _evaluate(session, bot_id, run_id, market, calendar, now)
+        try:
+            outcome = _evaluate(session, bot_id, run_id, market, calendar, now)
+        except _NeedJudgment as need:
+            # AI 봇의 그날 판단이 없다: 봇 행을 잠근 채 AI를 기다리지 않게 되돌리고,
+            # 판단을 받아 기록한 뒤 처음부터 다시 평가한다 (이번엔 기록된 판단을 쓴다).
+            session.rollback()
+            judge_bot(session, bot_id, need.request, ai, now)
+            outcome = _evaluate(session, bot_id, run_id, market, calendar, now)
     except _Skip as skip:
         session.rollback()
         outcome = EvaluationOutcome(run_id, RunStatus.SKIPPED, None, str(skip), reason=skip.reason)
@@ -382,9 +416,12 @@ def _evaluate(
     # 6) 전략 판단·위험 검사·모의 주문 (종목별, 비율 순서대로)
     # 첫 판단(시작·처음부터 다시 시작)은 시작 금액도 새로 들어온 돈으로 본다 (백테스트와 같음).
     fresh = deposit + (bot.initial_cash if last_decided is None else Decimal(0))
-    active = active_weights(bot)
-    histories = {s: series[s] for s in active}
-    decisions = decide_basket(strategy, histories, active, pf, costs, limits, fresh)
+    if is_ai(strategy):
+        decisions = _ai_decisions(session, bot, strategy, series, pf, now)
+    else:
+        active = active_weights(bot)
+        histories = {s: series[s] for s in active}
+        decisions = decide_basket(strategy, histories, active, pf, costs, limits, fresh)
     if not decisions:
         raise _Skip(SkipReason.NOT_ENOUGH_BARS, f"봉이 부족합니다 (필요 {min_bars(strategy)}개)")
     snapshot = {
@@ -446,6 +483,53 @@ def _evaluate(
     return _commit_ok(session, bot, outcome, calendar, now, _summary(bot, pf, closes))
 
 
+_NO_JUDGMENT = {
+    JudgmentStatus.OVER_BUDGET: "이번 달 AI 비용 상한을 넘어 오늘은 지금 그대로 둬요",
+}
+
+
+def _ai_decisions(
+    session: Session,
+    bot: BotRow,
+    strategy: Strategy,
+    series: dict[str, list[DailyBar]],
+    pf: Portfolio,
+    now: datetime,
+) -> list[DecisionRecord]:
+    """AI 봇: 그날 기록된 AI 판단의 목표 비중으로 사고판다 (없으면 _NeedJudgment)."""
+    target = max(b[-1].session_date for b in series.values())
+    row = judgment_for(session, bot.id, target)
+    if row is None:
+        prev = last_ok(session, bot.id, target)
+        plan = deposit_plan(strategy)
+        raise _NeedJudgment(
+            make_request(
+                series,
+                cash=pf.cash,
+                qtys={s: pf.qty(s) for s in series},
+                contributed=pf.contributed or bot.initial_cash,
+                monthly_deposit=plan.amount if plan else Decimal(0),
+                leverage={s: leverage_of(session, s) for s in series},
+                previous=prev.weights if prev else None,
+                previous_date=prev.session_date if prev else None,
+                as_of=now,
+            )
+        )
+    ok = row.status == JudgmentStatus.OK
+    missing = _NO_JUDGMENT.get(
+        JudgmentStatus(row.status), "AI가 오늘 판단하지 못해 지금 그대로 둬요"
+    )
+    return rebalance(
+        row.weights if ok else None,
+        series,
+        pf,
+        bot_costs(bot),
+        bot_limits(bot),
+        row.reasons,
+        missing=missing,
+    )
+
+
 def _summary(bot: BotRow, pf: Portfolio, closes: dict[str, Decimal]) -> BalanceSummary:
     """알림·로그용 잔고 요약 (판단일 종가 기준 평가). 수익률은 넣은 돈 대비.
 
@@ -461,6 +545,22 @@ def _summary(bot: BotRow, pf: Portfolio, closes: dict[str, Decimal]) -> BalanceS
         "close": str(closes[bot.symbol]),
         "closes": {s: str(c) for s, c in closes.items()},
     }
+
+
+def _decision_data(bot: BotRow, d: DecisionRecord, summary: BalanceSummary) -> DecisionData:
+    data = DecisionData(
+        **summary,
+        symbol=d.symbol,
+        action=d.action,
+        target_long=d.target_long,
+        holding=d.holding,
+        indicators=to_jsonable(d.indicators),
+        strategy=bot.strategy,
+        params=bot.params,
+    )
+    if is_ai(bot.strategy):
+        return AiDecisionData(**data, reason=d.reason)
+    return data
 
 
 def _commit_ok(
@@ -512,16 +612,7 @@ def _commit_ok(
             outcome.detail,
             bot_id=bot.id,
             run_id=outcome.run_id,
-            data=DecisionData(
-                **summary,
-                symbol=d.symbol,
-                action=d.action,
-                target_long=d.target_long,
-                holding=d.holding,
-                indicators=to_jsonable(d.indicators),
-                strategy=bot.strategy,
-                params=bot.params,
-            ),
+            data=_decision_data(bot, d, summary),
         )
     if not outcome.decisions:
         add_event(

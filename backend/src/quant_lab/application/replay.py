@@ -8,6 +8,7 @@ from datetime import date, timedelta
 
 from sqlalchemy.orm import Session
 
+from quant_lab.application.ai_judge import AiConfig
 from quant_lab.application.bar_sync import DEFAULT_SETTLE
 from quant_lab.application.dry_run import EvaluationOutcome, Trigger, evaluate_bot
 from quant_lab.application.market import StoredMarket
@@ -20,6 +21,7 @@ def replay_bot(
     calendar: TradingCalendar,
     start: date,
     end: date,
+    ai: AiConfig | None = None,
 ) -> list[EvaluationOutcome]:
     outcomes = []
     for day in calendar.sessions(start, end):
@@ -33,6 +35,7 @@ def replay_bot(
                     calendar=calendar,
                     now=now,
                     trigger=Trigger.SCHEDULED,
+                    ai=ai,
                 )
             )
     return outcomes
