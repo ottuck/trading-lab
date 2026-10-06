@@ -13,9 +13,9 @@ import {
   type Order,
 } from '../api'
 import { ago, isPast, kstTime, money, percent, roundMoney, shares, signedMoney, tone } from '../format'
-import { leverageOf, useInstruments } from '../instruments'
+import { FALLBACK, leverageOf, useInstruments } from '../instruments'
 import { sourceLabel } from '../source'
-import { isMeBot, useStrategies } from '../strategies'
+import { isAiBot, isMeBot, useStrategies } from '../strategies'
 import { useDemo } from '../demo'
 import { FxNote } from './Currency'
 import { AccountCard, LiveApprovals } from './Live'
@@ -23,11 +23,12 @@ import { Term } from './Help'
 import { goTo, selectBot, startNewBot, useSelectedBot } from '../selectedBot'
 import { PriceChart } from './PriceChart'
 import { useDismiss } from '../useDismiss'
-import { activeOf, basketLabel } from '../basket'
+import { activeOf, basketLabel, evenSplit } from '../basket'
 import { LeverageNotice } from './SymbolPicker'
 import { ParallelWorlds } from './Parallel'
 import { NextPlan } from './NextPlan'
 import { toConfig, toDraft } from '../botConfig'
+import { AiCompare, AiHistory, AiToday } from './AiBot'
 
 const STATE: Record<BotState, { label: string; dot: string }> = {
   RUNNING: { label: '실행 중', dot: 'ok pulse' },
@@ -264,7 +265,11 @@ function Overview({ bot }: { bot: Bot }) {
   const { byName } = useStrategies()
   const instruments = useInstruments().data
   const lev = leverageOf(instruments, bot.symbol)
-  const leveraged = bot.symbols.map((s) => [s.symbol, leverageOf(instruments, s.symbol)] as const).filter(([, x]) => x > 1)
+  // AI 봇은 관심 종목을 모두 담아 두고 실제로 들고 있는 레버리지 종목만 안내한다
+  const held = (symbol: string) => bot.account.positions.some((p) => p.symbol === symbol && Number(p.qty) > 0)
+  const leveraged = bot.symbols
+    .map((s) => [s.symbol, leverageOf(instruments, s.symbol)] as const)
+    .filter(([symbol, x]) => x > 1 && (!isAiBot(bot) || held(symbol)))
   const equity = useEquity(bot.id)
   const orders = useOrders(bot.id)
   const [rangeKey, setRangeKey] = useState<string | null>(null)
@@ -289,6 +294,7 @@ function Overview({ bot }: { bot: Bot }) {
   const near = 0.005 * (mine.base || 1)
   const demo = useDemo()
   const me = isMeBot(bot)
+  const ai = isAiBot(bot)
 
   return (
     <>
@@ -302,7 +308,9 @@ function Overview({ bot }: { bot: Bot }) {
             <span className={`dot ${state.dot}`}>{state.label}</span>
             <span>
               · {byName[bot.strategy]?.nickname ?? bot.strategy}
-              {activeOf(bot.symbols).length > 1 && ` · ${basketLabel(bot.symbols, bot.symbol)}`}
+              {ai
+                ? ` · 관심 종목 ${bot.symbols.length}개 안에서`
+                : activeOf(bot.symbols).length > 1 && ` · ${basketLabel(bot.symbols, bot.symbol)}`}
             </span>
           </div>
           <div className="hero-value">{money(String(end.eq))}</div>
@@ -355,14 +363,15 @@ function Overview({ bot }: { bot: Bot }) {
           </span>
           <span className="legend">
             <i className="bench" />
-            {me ? '매달 그냥 사기' : <Term k="그냥 들고 있었다면">그냥 보유</Term>} {money(String(end.b))} ({percent(ratio(hold))})
+            {me ? '매달 그냥 사기' : ai ? '똑같이 나눠 매달 사기' : <Term k="그냥 들고 있었다면">그냥 보유</Term>}{' '}
+            {money(String(end.b))} ({percent(ratio(hold))})
           </span>
           <span className="legend">
             <i className="paid" />
             <Term k="넣은 돈" /> {money(String(end.c))}
           </span>
-          {/* 나 카피 봇은 판정하지 않는다 (평가가 아니라 구경, project.md 1절) */}
-          {!me && <span className="compare-verdict">
+          {/* 나 카피 봇·AI 봇은 판정하지 않는다 (평가가 아니라 구경, project.md 1절) */}
+          {!me && !ai && <span className="compare-verdict">
             {mine.gain - hold.gain > near
               ? '그냥 들고 있을 때보다 나아요'
               : hold.gain - mine.gain > near
@@ -539,7 +548,7 @@ function Holding({ bot }: { bot: Bot }) {
                 <div>
                   <div className="title">
                     {p.symbol}
-                    {multi && <span className="sub"> · {p.weight > 0 ? `비율 ${p.weight}%` : '더 사지 않고 들고만 있어요'}</span>}
+                    {multi && !isAiBot(bot) && <span className="sub"> · {p.weight > 0 ? `비율 ${p.weight}%` : '더 사지 않고 들고만 있어요'}</span>}
                   </div>
                   <div className="muted small tnum">
                     {shares(p.qty)}주 · 산 가격 {money(p.avg_cost)} · 지금 {money(price)}
@@ -744,11 +753,55 @@ function BotParallel({ bot }: { bot: Bot }) {
   )
 }
 
-/** 오른쪽 봇 목록: 나 카피 봇이 위, 다른 봇은 아래 묶음. */
+/** AI 봇 만들기: 관심 종목 전부, 입금은 나 카피 봇과 같게 (같은 돈으로 비교하려고). 만들자마자 시작한다. */
+function useCreateAiBot(bots: Bot[]) {
+  const qc = useQueryClient()
+  const watchlist = useInstruments().data?.map((i) => i.symbol)
+  return useMutation({
+    mutationFn: async () => {
+      const me = bots.find(isMeBot)
+      const deposit = me?.params.deposit ?? 675
+      const day = me?.params.day ?? 25
+      const symbols = watchlist?.length ? watchlist : FALLBACK
+      const ok = window.confirm(
+        `AI 봇을 만들까요?
+관심 종목 ${symbols.length}개(${symbols.join(' · ')}) 안에서 AI가 매일 장이 끝난 뒤 시장을 조사해 비중을 정해요.
+매달 ${day}일 $${deposit.toLocaleString('en-US')}를 넣어요${me ? ' (나 카피 봇과 같게)' : ''}. 모의 투자예요.
+AI 판단 비용은 하루 약 $0.1이고, 한 달 상한을 넘으면 그달은 쉬어요.`,
+      )
+      if (!ok) return null
+      const bot = await botApi.create({
+        strategy: 'ai_judge',
+        params: { deposit, day },
+        commission_rate: '0.001',
+        slippage_bps: '5',
+        max_position_value: null,
+        max_order_value: null,
+        name: 'AI 봇',
+        symbol: symbols[0],
+        symbols: evenSplit(symbols), // AI 봇은 비율을 쓰지 않는다 (AI가 정한다)
+        initial_cash: String(deposit),
+      })
+      await api.command(bot.id, 'START')
+      return bot
+    },
+    onSuccess: async (bot) => {
+      if (!bot) return
+      await qc.invalidateQueries({ queryKey: ['bots'] })
+      selectBot(bot.id)
+      goTo('bot')
+    },
+    onError: (e) => window.alert(`AI 봇을 만들지 못했어요: ${e.message}`),
+  })
+}
+
+/** 오른쪽 봇 목록: 나 카피 봇이 위, AI 봇, 다른 봇은 아래 묶음. */
 function BotSide({ bots, current, onPick }: { bots: Bot[]; current?: Bot; onPick: (b: Bot) => void }) {
   const demo = useDemo()
   const mine = bots.filter(isMeBot)
-  const others = bots.filter((b) => !isMeBot(b))
+  const ais = bots.filter(isAiBot)
+  const others = bots.filter((b) => !isMeBot(b) && !isAiBot(b))
+  const createAi = useCreateAiBot(bots)
   const row = (b: Bot) => <BotItem key={b.id} bot={b} active={b.id === current?.id} onPick={() => onPick(b)} />
   return (
     <aside className="home-side">
@@ -760,6 +813,17 @@ function BotSide({ bots, current, onPick }: { bots: Bot[]; current?: Bot; onPick
           </button>
         </div>
         {mine.length ? mine.map(row) : <div className="bot-list-empty">아직 없어요</div>}
+        {(ais.length > 0 || !demo) && (
+          <div className="bot-list-head sub">
+            AI 봇
+            {!demo && !ais.length && (
+              <button className="link" disabled={createAi.isPending} onClick={() => createAi.mutate()}>
+                + 만들기
+              </button>
+            )}
+          </div>
+        )}
+        {ais.length ? ais.map(row) : !demo && <div className="bot-list-empty">AI가 매일 시장을 보고 비중을 정해요</div>}
         <div className="bot-list-head sub">
           다른 봇
           {!demo && (
@@ -789,10 +853,18 @@ export function Home({ bots }: { bots: Bot[] }) {
           </button>
         )}
         <Overview bot={bot} />
-        <Decision bot={bot} />
+        {isAiBot(bot) ? (
+          <>
+            <AiToday bot={bot} />
+            <AiCompare bot={bot} />
+          </>
+        ) : (
+          <Decision bot={bot} />
+        )}
         <Holding bot={bot} />
         <PriceChart bot={bot} />
         <Trades bot={bot} onOpenLog={() => setLogOpen(true)} />
+        {isAiBot(bot) && <AiHistory bot={bot} />}
         <Strategy bot={bot} />
       </div>
       <BotSide bots={bots} current={bot} onPick={(b) => selectBot(b.id)} />

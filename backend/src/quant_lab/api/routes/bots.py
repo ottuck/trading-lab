@@ -9,6 +9,7 @@ from quant_lab.adapters.market_calendar import get_calendar
 from quant_lab.api.deps import SessionDep
 from quant_lab.api.routes.research import parallel_view
 from quant_lab.api.schemas import (
+    AiView,
     BotConfig,
     BotCreate,
     BotRename,
@@ -23,9 +24,10 @@ from quant_lab.api.schemas import (
     SymbolsUpdate,
     SymbolWeight,
 )
-from quant_lab.application import bot_status, bots, queries, research
+from quant_lab.application import ai_view, bot_status, bots, queries, research
 from quant_lab.application.bot_status import BotStatus
 from quant_lab.application.bots import BotSettings
+from quant_lab.config import get_settings
 
 router = APIRouter()
 
@@ -151,6 +153,22 @@ def plan(session: SessionDep, bot_id: int) -> PlanView | None:
     """따라 하기: 다음 입금일에 할 일 (나 카피 봇만)."""
     result = research.bot_plan(session, bot_id, get_calendar())
     return PlanView.model_validate(result, from_attributes=True) if result else None
+
+
+@router.get("/bots/{bot_id}/ai")
+def ai(session: SessionDep, bot_id: int) -> AiView:
+    """AI 봇: 오늘의 판단·출처·판단 기록·이번 달 비용."""
+    result = ai_view.ai_overview(session, bot_id, get_settings().ai_monthly_budget, _now())
+    return AiView.model_validate(result, from_attributes=True)
+
+
+@router.get("/bots/{bot_id}/ai/compare")
+def ai_compare(session: SessionDep, bot_id: int) -> ParallelView:
+    """AI 봇 vs 나 카피 봇 규칙 vs 매달 그냥 사기 (AI 봇이 처음 판단한 날부터, 같은 돈)."""
+    result = ai_view.ai_compare(session, bot_id)
+    if not result.worlds:
+        return ParallelView(start=result.start, end=None, worlds=[], note=result.note)
+    return parallel_view(result.worlds)
 
 
 @router.get("/bots/{bot_id}/parallel")
