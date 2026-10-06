@@ -32,6 +32,7 @@ class EventKind(StrEnum):
     NOTIFY_TEST = "notify_test"  # 화면의 "테스트 메시지 보내기"
     LIVE_RECONCILE = "live_reconcile"  # 실제 계좌 대조 결과가 바뀜 (부족 생김·풀림)
     LIVE_FUNDS = "live_funds"  # 곧 낼 실제 주문에 달러가 모자람 (미리 알림)
+    AI_JUDGMENT = "ai_judgment"  # AI 봇이 그날 판단을 받지 못함 (실패·형식 오류·비용 상한)
 
 
 class SkipReason(StrEnum):
@@ -162,6 +163,19 @@ class DecisionData(BalanceSummary):
     strategy: str
     params: dict[str, Any]
     indicators: dict[str, Any]
+
+
+class AiDecisionData(DecisionData):
+    """AI 봇의 판단: AI가 쓴 이유를 함께 담는다 (규칙 봇은 지표로 문장을 만든다)."""
+
+    reason: str
+
+
+class AiJudgmentData(TypedDict):
+    status: str  # domain/advisor.py JudgmentStatus (OK 말고)
+    session_date: str
+    spent: NotRequired[str]  # 이번 달 쓴 AI 비용 (USD, 비용 상한일 때)
+    budget: NotRequired[str]
 
 
 class DecisionRepeatData(BalanceSummary):

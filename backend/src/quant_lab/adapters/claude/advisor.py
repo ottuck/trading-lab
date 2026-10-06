@@ -28,7 +28,7 @@ from quant_lab.domain.advisor import (
 
 SOURCE = "claude"
 MODEL = "claude-sonnet-5-5"  # 2026-10-06 사용자 결정
-PROMPT_VERSION = "2026-10-06.1"  # 지침(SYSTEM·입력 형식)을 바꾸면 올린다
+PROMPT_VERSION = "2026-10-06.2"  # 지침(SYSTEM·입력 형식)을 바꾸면 올린다
 MAX_SEARCHES = 5
 MAX_CONTINUATIONS = 3  # 웹 검색이 길어져 멈춘 답(pause_turn)을 이어 받는 횟수
 FALLBACK_BETA = "server-side-fallback-2026-07-01"  # 거절되면 서버가 다른 모델로 이어 답함
@@ -89,7 +89,10 @@ def _schema(symbols: Sequence[str]) -> dict[str, Any]:
 
 def _prompt(request: AdviceRequest) -> str:
     return (
-        "오늘 판단할 봇의 상태입니다. 비율 값의 단위는 %이고 금액은 달러입니다.\n\n"
+        "오늘 판단할 봇의 상태입니다. 비율 값의 단위는 %이고 금액은 달러입니다. "
+        "session_date는 지표를 계산한 미국 거래일(그날 종가까지 반영), "
+        "as_of는 지금 시각(UTC)입니다. "
+        "검색할 때는 as_of 기준 최근 소식을 찾으세요.\n\n"
         + json.dumps(request.as_dict(), ensure_ascii=False, indent=1)
     )
 

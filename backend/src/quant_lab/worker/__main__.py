@@ -16,12 +16,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from quant_lab import __version__
+from quant_lab.adapters.claude.advisor import ClaudeAdvisor
 from quant_lab.adapters.heartbeat_ping import HeartbeatPinger
 from quant_lab.adapters.market_calendar import get_calendar
 from quant_lab.adapters.telegram import TelegramClient
 from quant_lab.adapters.toss.client import TossClient
 from quant_lab.adapters.toss.trader import TossTrader
 from quant_lab.application import notify_settings
+from quant_lab.application.ai_judge import AiConfig
 from quant_lab.application.live import LiveDesk
 from quant_lab.application.market import BrokerMarket, MarketData, StoredMarket
 from quant_lab.application.notify import EventNotifier
@@ -111,6 +113,10 @@ def run(stop: threading.Event) -> None:
         live=live,
         account=account,
         desk=desk,
+        ai=AiConfig(
+            ClaudeAdvisor(key.get_secret_value()) if (key := settings.anthropic_api_key) else None,
+            settings.ai_monthly_budget,
+        ),
     )
     notifier = build_notifier(settings, make_session)
     with make_session() as session:

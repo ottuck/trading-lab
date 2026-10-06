@@ -8,11 +8,18 @@ T일 종가로 판단(decide) → T+1일 시가로 체결(execute). 매수 수�
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 from enum import StrEnum
 
 from quant_lab.domain.bars import DailyBar
-from quant_lab.domain.portfolio import CostModel, Portfolio, RiskLimits, affordable_qty
+from quant_lab.domain.portfolio import (
+    MIN_ORDER,
+    QTY_STEP,
+    CostModel,
+    Portfolio,
+    RiskLimits,
+    affordable_qty,
+)
 from quant_lab.domain.strategy import Signal, Spend, Strategy
 
 MAX_SYMBOLS = 10  # 봇 하나가 다루는 종목 수 상한 (2026-10-02 결정)
@@ -33,7 +40,8 @@ class DecisionRecord:
     reason: str
     indicators: dict[str, Decimal]
     blocked: str | None = None
-    budget: Decimal | None = None  # 매수에 쓸 돈. None이면 가진 현금 전부 (보통 전략)
+    # 매수: 쓸 돈 (None이면 가진 현금 전부, 보통 전략). 매도: 팔 금액 (None이면 전부)
+    budget: Decimal | None = None
     symbol: str = ""
 
 
@@ -217,6 +225,8 @@ def execute(
     elif order.action is Action.SELL:
         price = costs.sell_price(bar.open)
         qty = pf.qty(symbol)
+        if order.budget is not None:  # 일부 팔기 (AI 봇 비중 맞추기)
+            qty = min(qty, (order.budget / price).quantize(QTY_STEP, rounding=ROUND_DOWN))
         if qty == 0:
             return None
         commission = costs.sell_fees(qty * price)  # 위탁수수료 + SEC Fee
@@ -225,3 +235,90 @@ def execute(
         return None
     side = order.action
     return Fill(side, order.session_date, bar.session_date, qty, price, commission, pnl, symbol)
+
+
+REBALANCE_BAND = Decimal(2)  # 목표와 지금 비중 차이가 자산의 이 %보다 작으면 사고팔지 않는다
+
+
+def rebalance(
+    targets: Mapping[str, int] | None,
+    histories: Mapping[str, Sequence[DailyBar]],
+    pf: Portfolio,
+    costs: CostModel,
+    limits: RiskLimits,
+    reasons: Mapping[str, str] | None = None,
+    missing: str = "AI 판단이 없어 오늘은 지금 그대로 둬요",
+) -> list[DecisionRecord]:
+    """AI 봇: 목표 비중(%, 현금 제외)과 지금 비중의 차이를 팔 금액·살 금액으로 바꾼다.
+
+    판단일 종가로 어림하고 다음 거래일 시가에 체결한다. 판 돈으로 사야 하므로 팔기를 먼저
+    돌려준다 (체결도 이 순서). 차이가 작으면(REBALANCE_BAND) 그대로 두어 매일 조금씩 사고팔지
+    않는다. 목표가 0이면 남김없이 판다. targets가 None(판단 실패)이면 모두 그대로 둔다.
+    histories는 봇의 모든 종목이며 보유 종목을 빠짐없이 담아야 한다.
+    """
+    closes = {s: h[-1].close for s, h in histories.items()}
+    equity = pf.equity(closes)
+    band = max(MIN_ORDER, equity * REBALANCE_BAND / 100)
+    reasons = reasons or {}
+    plans: dict[str, tuple[Action, Decimal | None]] = {}
+    for symbol, close in closes.items():
+        held = pf.qty(symbol) * close
+        if targets is None:
+            plans[symbol] = (Action.HOLD, None)
+            continue
+        goal = equity * targets.get(symbol, 0) / 100
+        if held > 0 and goal == 0:
+            plans[symbol] = (Action.SELL, None)
+        elif held - goal >= band:
+            plans[symbol] = (Action.SELL, held - goal)
+        elif goal - held >= band:
+            plans[symbol] = (Action.BUY, goal - held)
+        else:
+            plans[symbol] = (Action.HOLD, None)
+
+    # 살 돈 = 지금 현금 + 팔아서 들어올 돈(수수료·슬리피지만큼 줄여 어림). 모자라면 비율대로 줄인다
+    proceeds = sum(
+        (
+            (pf.qty(s) * closes[s] if amount is None else amount)
+            * (1 - costs.commission_rate - costs.slippage_bps / 10_000)
+            for s, (action, amount) in plans.items()
+            if action is Action.SELL
+        ),
+        Decimal(0),
+    )
+    wanted = sum((a for act, a in plans.values() if act is Action.BUY and a), Decimal(0))
+    scale = min(Decimal(1), (pf.cash + proceeds) / wanted) if wanted > 0 else Decimal(1)
+
+    records = []
+    for side in (Action.SELL, Action.BUY, Action.HOLD):
+        for symbol, (action, amount) in plans.items():
+            if action is not side:
+                continue
+            blocked = None
+            if action is Action.BUY:
+                assert amount is not None
+                amount *= scale
+                est = costs.buy_price(closes[symbol])
+                held = pf.qty(symbol) * est
+                if affordable_qty(amount, est, costs, limits, held) == 0:
+                    action, amount = Action.HOLD, None
+                    blocked = "살 돈이 최소 주문 금액보다 적거나 위험 한도에 걸림"
+            weight = pf.qty(symbol) * closes[symbol] / equity * 100 if equity else Decimal(0)
+            target = Decimal(targets.get(symbol, 0)) if targets is not None else weight
+            records.append(
+                DecisionRecord(
+                    session_date=histories[symbol][-1].session_date,
+                    action=action,
+                    target_long=target > 0,
+                    holding=pf.qty(symbol) > 0,
+                    reason=reasons.get(symbol, "") if targets is not None else missing,
+                    indicators={
+                        "target": target.quantize(Decimal("0.1")),
+                        "weight": weight.quantize(Decimal("0.1")),
+                    },
+                    blocked=blocked,
+                    budget=amount,
+                    symbol=symbol,
+                )
+            )
+    return records

@@ -220,6 +220,7 @@ def decision_status(row: DecisionRow, bot: BotRow | None = None) -> DecisionStat
             row.target_long,
             row.holding,
             action=row.action,
+            raw=row.reason,
         )
         plain_action = action_phrase(row.action, row.holding, row.symbol)
     return DecisionStatus(

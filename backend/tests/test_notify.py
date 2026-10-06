@@ -9,6 +9,7 @@ from quant_lab.application import notify_settings
 from quant_lab.application.messages import event_message
 from quant_lab.application.notify import EventNotifier
 from quant_lab.domain.events import (
+    AiJudgmentData,
     BalanceSummary,
     BotDeletedData,
     CommandData,
@@ -108,6 +109,7 @@ SAMPLES: dict[EventKind, Mapping[str, Any] | None] = {
     EventKind.LIVE_FUNDS: LiveFundsData(
         needed="6.75", available="2.86", trade_date="2026-10-26", deadline="10/26 22:35"
     ),
+    EventKind.AI_JUDGMENT: AiJudgmentData(status="FAILED", session_date="2026-10-05"),
     EventKind.LIVE_RECONCILE: LiveReconcileData(
         shortfall=[ShortfallItem(symbol="VOO", held="0.002", bought="0.0048")]
     ),

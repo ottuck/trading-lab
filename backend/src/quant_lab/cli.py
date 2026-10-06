@@ -29,7 +29,7 @@ from quant_lab.domain.bars import outlier_limit
 from quant_lab.domain.bot import BotState, CommandKind
 from quant_lab.domain.broker import ExchangeRate, Instrument
 from quant_lab.domain.portfolio import CostModel, RiskLimits
-from quant_lab.domain.strategy import STRATEGIES
+from quant_lab.domain.strategy import STRATEGIES, AiJudge
 from quant_lab.persistence.ai_judgments import save_judgment
 from quant_lab.persistence.bars import load_daily_bars, upsert_daily_bars
 from quant_lab.persistence.bots import (
@@ -151,6 +151,30 @@ def cmd_bot_create(args: argparse.Namespace) -> int:
         )
         session.commit()
         print(f"봇 {bot.id} 생성: {bot.name} {bot.symbol} {bot.strategy} {bot.params} (STOPPED)")
+    return 0
+
+
+def cmd_bot_create_ai(args: argparse.Namespace) -> int:
+    """AI 봇 만들기 (마일스톤 4 A2, 화면은 A3). 종목 비율은 쓰지 않아 똑같이 나눠 둔다."""
+    symbols = args.symbols or get_settings().watchlist_symbols.upper().split(",")
+    share, extra = divmod(100, len(symbols))
+    weights = {s: share + (1 if i < extra else 0) for i, s in enumerate(symbols)}
+    strategy = AiJudge(deposit=args.deposit, day=args.day)
+    with sessionmaker(get_engine())() as session:
+        bot = create_bot(
+            session,
+            name=args.name,
+            symbol=symbols[0],
+            strategy=strategy.name,
+            params=strategy.params,
+            initial_cash=args.cash,
+            costs=CostModel(),
+            limits=RiskLimits(),
+            now=datetime.now(UTC),
+            weights=weights,
+        )
+        session.commit()
+        print(f"AI 봇 {bot.id} 생성: {bot.name} {','.join(symbols)} {strategy.params} (STOPPED)")
     return 0
 
 
@@ -441,6 +465,13 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("symbol", type=str.upper)
     _add_cost_args(create)
     create.set_defaults(func=cmd_bot_create)
+    create_ai = bot_sub.add_parser("create-ai", help="AI 봇 생성 (STOPPED, 매일 AI 판단)")
+    create_ai.add_argument("name")
+    create_ai.add_argument("--symbols", type=lambda t: t.upper().split(","), help="기본: 관심 목록")
+    create_ai.add_argument("--deposit", type=int, default=675, help="매달 넣는 돈 (USD)")
+    create_ai.add_argument("--day", type=int, default=25, help="입금일 (1~28)")
+    create_ai.add_argument("--cash", type=Decimal, default=Decimal(675), help="시작 금액")
+    create_ai.set_defaults(func=cmd_bot_create_ai)
     bot_sub.add_parser("list", help="봇 목록").set_defaults(func=cmd_bot_list)
     command = bot_sub.add_parser("cmd", help="Worker에 명령 등록")
     command.add_argument("bot_id", type=int)

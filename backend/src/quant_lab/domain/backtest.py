@@ -16,8 +16,15 @@ from itertools import pairwise
 
 from quant_lab.domain.bars import DailyBar
 from quant_lab.domain.portfolio import CostModel, Portfolio, RiskLimits, affordable_qty
-from quant_lab.domain.strategy import Strategy, deposit_plan, min_bars, month_key
-from quant_lab.domain.trading import Action, DecisionRecord, Fill, decide_basket, execute
+from quant_lab.domain.strategy import Strategy, deposit_plan, is_ai, min_bars, month_key
+from quant_lab.domain.trading import (
+    Action,
+    DecisionRecord,
+    Fill,
+    decide_basket,
+    execute,
+    rebalance,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,12 +86,17 @@ def run_backtest(
     costs: CostModel,
     limits: RiskLimits | None = None,
     weights: Mapping[str, int] | None = None,
+    judgments: Mapping[date, Mapping[str, int] | None] | None = None,
 ) -> BacktestResult:
     """bars는 한 종목의 일봉, 또는 종목별 일봉(여러 종목은 모으기 전략만, weights 합 100).
 
     여러 종목은 모든 종목에 봉이 있는 거래일만 진행하고, 모든 종목이 warmup을 채운 날부터 판단한다.
     이력 전체가 warmup보다 짧은 종목(상장 1년 미만)은 전략의 min_bars를 채운 날부터 본다.
+    AI 봇은 기록된 판단(judgments: 판단일 → 목표 비중, 없거나 None이면 그대로 둠)으로만 다시
+    돌린다. 과거로 새 AI 판단을 만들지는 않는다 (project.md 14절).
     """
+    if is_ai(strategy) and judgments is None:
+        raise ValueError("AI 봇은 과거 백테스트를 하지 않아요 (기록된 판단으로만 다시 돌려요)")
     limits = limits or RiskLimits()
     series = dict(bars) if isinstance(bars, Mapping) else {bars[0].symbol: list(bars)}
     symbols = list(series)
@@ -148,7 +160,11 @@ def run_backtest(
             # 첫 판단일에는 시작 금액도 새로 들어온 돈으로 본다 ("월급 들어오면 바로").
             fresh = deposit + (initial_cash if k == start else Decimal(0))
             histories = {s: series[s][: index[s][day] + 1] for s in symbols}
-            for record in decide_basket(strategy, histories, weights, pf, costs, limits, fresh):
+            if judgments is not None:
+                records = rebalance(judgments.get(day), histories, pf, costs, limits)
+            else:
+                records = decide_basket(strategy, histories, weights, pf, costs, limits, fresh)
+            for record in records:
                 decisions.append(record)
                 if record.action is not Action.HOLD:
                     pending[record.symbol] = record
