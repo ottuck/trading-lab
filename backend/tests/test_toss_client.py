@@ -21,6 +21,7 @@ from quant_lab.domain.broker import (
     BrokerError,
     OrderRejected,
     RejectReason,
+    SellOrder,
 )
 
 TOKEN_URL = f"{BASE_URL}/oauth2/token"
@@ -237,6 +238,7 @@ def test_trader_sends_amount_order_with_key_and_maps_rejection(client: TossClien
             side_effect=[
                 httpx.Response(200, json={"result": {"orderId": "A1", "clientOrderId": order.key}}),
                 error_response(422, "amount-order-outside-regular-hours"),
+                httpx.Response(200, json={"result": {"orderId": "S1", "clientOrderId": "k-S"}}),
             ]
         )
         assert trader.place_amount_buy(order) == "A1"
@@ -251,4 +253,14 @@ def test_trader_sends_amount_order_with_key_and_maps_rejection(client: TossClien
         # 토스 오류 코드는 어댑터 안에서 증권사 무관 거절 이유로 바뀐다
         with pytest.raises(OrderRejected) as rejected:
             trader.place_amount_buy(order)
+        # 파는 주문은 수량(소수점 6자리까지, 끝자리 0 없이)으로 보낸다
+        sell = SellOrder(key="k-S", symbol="TQQQ", quantity=Decimal("0.00482199"))
+        assert trader.place_quantity_sell(sell) == "S1"
+        assert json.loads(sent.calls[2].request.content) == {
+            "clientOrderId": "k-S",
+            "symbol": "TQQQ",
+            "side": "SELL",
+            "orderType": "MARKET",
+            "quantity": "0.004821",
+        }
     assert rejected.value.reason is RejectReason.OUTSIDE_HOURS

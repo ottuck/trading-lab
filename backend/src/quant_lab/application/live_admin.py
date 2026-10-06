@@ -12,7 +12,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from quant_lab.application.bots import require_bot
-from quant_lab.application.dry_run import build_strategy
 from quant_lab.application.errors import Conflict, Invalid, NotFound
 from quant_lab.application.live import control, live_event
 from quant_lab.domain.events import (
@@ -22,7 +21,6 @@ from quant_lab.domain.events import (
     LiveControlData,
 )
 from quant_lab.domain.live import AUTO_AFTER, RATIOS, LiveLimits, LiveState, SkipReason
-from quant_lab.domain.strategy import deposit_plan
 from quant_lab.persistence.bots import add_event, drop_unsent_live_orders
 from quant_lab.persistence.models import BotRow, LiveControlRow, LiveOrderRow
 
@@ -35,6 +33,8 @@ class LiveOrderInfo:
     bot_id: int | None
     bot_name: str | None
     symbol: str
+    side: str
+    quantity: Decimal | None
     signal_date: date
     trade_date: date
     amount: Decimal
@@ -54,6 +54,7 @@ class LiveOverview:
     auto_after: int
     per_order: Decimal
     per_month: Decimal
+    per_trade: Decimal  # 사고팔기 봇 한 건 한도
     ratios: list[str]  # 고를 수 있는 비율 이름 (1/100, 1/10)
     shortfall: list[dict[str, str]]  # 실제 계좌 대조: 보유가 봇이 산 수량보다 적은 종목
     checked_at: datetime | None  # 마지막 대조 시각
@@ -74,6 +75,7 @@ def overview(session: Session) -> LiveOverview:
         auto_after=AUTO_AFTER,
         per_order=limits.per_order,
         per_month=limits.per_month,
+        per_trade=limits.per_trade,
         ratios=list(RATIOS),
         shortfall=list(row.shortfall or []) if row else [],
         checked_at=row.checked_at if row else None,
@@ -83,6 +85,8 @@ def overview(session: Session) -> LiveOverview:
                 o.bot_id,
                 names.get(o.bot_id) if o.bot_id else None,
                 o.symbol,
+                o.side,
+                o.quantity,
                 o.signal_date,
                 o.trade_date,
                 o.amount,
@@ -100,12 +104,16 @@ def overview(session: Session) -> LiveOverview:
 
 
 def set_bot_ratio(session: Session, bot_id: int, ratio: str | None, now: datetime) -> BotRow:
-    """따라 사기 비율을 켜고(1/100·1/10) 끈다(None). 켜면 처음 몇 번은 다시 승인을 받는다."""
+    """따라 하기 비율을 켜고(1/100) 끈다(None). 켜면 처음 몇 번은 다시 승인을 받는다.
+
+    모으기 봇은 매달 사기만, 사고팔기 봇은 사고팔기를 따라 한다 (실거래 R3, 2026-10-06).
+    """
     bot = require_bot(session, bot_id, for_update=True)
     if ratio is not None and ratio not in RATIOS:
-        raise Invalid(f"비율은 {', '.join(RATIOS)} 중에서 골라 주세요")
-    if ratio is not None and deposit_plan(build_strategy(bot)) is None:
-        raise Invalid("실제로 따라 사기는 매달 사 모으는 나 카피 봇만 할 수 있어요")
+        raise Invalid(
+            "1/10은 아직 지원하지 않아요. 실제 돈은 1/100로만 따라 해요 "
+            "(한 달 약 $7, 사고팔기 봇은 한 번에 $100 안팎)."
+        )
     value = RATIOS[ratio] if ratio else None
     if value == bot.live_ratio:
         return bot

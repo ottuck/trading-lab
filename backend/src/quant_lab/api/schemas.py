@@ -181,6 +181,8 @@ class LiveOrderView(BaseModel):
     bot_id: int | None
     bot_name: str | None
     symbol: str
+    side: str = "BUY"  # BUY | SELL
+    quantity: Decimal | None = None  # 파는 수량
     signal_date: date
     trade_date: date
     amount: Decimal
@@ -199,6 +201,7 @@ class LiveView(BaseModel):
     auto_after: int
     per_order: Decimal
     per_month: Decimal
+    per_trade: Decimal = Decimal("150")  # 사고팔기 봇 한 건 한도
     ratios: list[str]
     shortfall: list[dict[str, str]] = []  # 실제 계좌 대조 [{symbol, held, bought}]
     checked_at: datetime | None = None

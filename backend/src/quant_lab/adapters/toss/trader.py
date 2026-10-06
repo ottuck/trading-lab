@@ -5,7 +5,7 @@
 """
 
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 
 from quant_lab.adapters.toss.client import SOURCE, TossClient, TossError, _to_order
 from quant_lab.domain.broker import (
@@ -14,6 +14,7 @@ from quant_lab.domain.broker import (
     BrokerAccessError,
     OrderRejected,
     RejectReason,
+    SellOrder,
 )
 
 AMOUNT_ORDER_CUTOFF = timedelta(hours=1)  # 금액 주문은 정규장 마감 1시간 전까지만 받는다
@@ -21,6 +22,7 @@ AMOUNT_ORDER_CUTOFF = timedelta(hours=1)  # 금액 주문은 정규장 마감 1�
 # 토스 422 오류 코드 → 거절 이유. 여기 없는 4xx는 OTHER로 본다.
 _REJECT = {
     "amount-order-outside-regular-hours": RejectReason.OUTSIDE_HOURS,
+    "fractional-quantity-outside-regular-hours": RejectReason.OUTSIDE_HOURS,
     "order-hours-closed": RejectReason.OUTSIDE_HOURS,
     "insufficient-buying-power": RejectReason.INSUFFICIENT_FUNDS,
     "max-order-amount-exceeded": RejectReason.INSUFFICIENT_FUNDS,
@@ -58,13 +60,30 @@ class TossTrader:
         return self.client.buying_power("USD")
 
     def place_amount_buy(self, order: AmountOrder) -> str:
-        body = {
-            "clientOrderId": order.key,
-            "symbol": order.symbol,
-            "side": "BUY",
-            "orderType": "MARKET",
-            "orderAmount": f"{order.amount:.2f}",
-        }
+        return self._place(
+            {
+                "clientOrderId": order.key,
+                "symbol": order.symbol,
+                "side": "BUY",
+                "orderType": "MARKET",
+                "orderAmount": f"{order.amount:.2f}",
+            }
+        )
+
+    def place_quantity_sell(self, order: SellOrder) -> str:
+        """소수점 수량 시장가 매도 (US, 6자리까지, 정규장 시작 ~ 마감 1시간 전)."""
+        qty = order.quantity.quantize(Decimal("0.000001"), rounding=ROUND_DOWN)
+        return self._place(
+            {
+                "clientOrderId": order.key,
+                "symbol": order.symbol,
+                "side": "SELL",
+                "orderType": "MARKET",
+                "quantity": format(qty.normalize(), "f"),
+            }
+        )
+
+    def _place(self, body: dict[str, str]) -> str:
         try:
             result = self.client._post("/api/v1/orders", body)
         except BrokerAccessError:
