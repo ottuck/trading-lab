@@ -31,6 +31,7 @@ class EventKind(StrEnum):
     LIVE_CONTROL = "live_control"  # 비상 중지·재개
     NOTIFY_TEST = "notify_test"  # 화면의 "테스트 메시지 보내기"
     LIVE_RECONCILE = "live_reconcile"  # 실제 계좌 대조 결과가 바뀜 (부족 생김·풀림)
+    LIVE_FUNDS = "live_funds"  # 곧 낼 실제 주문에 달러가 모자람 (미리 알림)
 
 
 class SkipReason(StrEnum):
@@ -117,6 +118,13 @@ class LiveOrderData(TypedDict):
     ]  # 건너뜀(domain/live.py SkipReason)·거절(domain/broker.py RejectReason)
     filled_qty: NotRequired[str]
     auto: NotRequired[bool]  # 사람에게 묻지 않고 자동으로 내기로 함
+
+
+class LiveFundsData(TypedDict):
+    needed: str  # 그날 낼 실제 주문 합계 (USD)
+    available: str  # 마지막으로 읽은 달러 주문 가능 금액
+    trade_date: str  # 낼 미국 거래일
+    deadline: NotRequired[str]  # 이 시각(KST, "10/26 22:35") 전까지 채우면 된다
 
 
 class ShortfallItem(TypedDict):

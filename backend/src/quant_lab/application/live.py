@@ -28,9 +28,16 @@ from quant_lab.domain.broker import (
     BrokerError,
     OrderRejected,
     OrderStatus,
+    RejectReason,
     Trader,
 )
-from quant_lab.domain.events import EventKind, LiveOrderData, LiveReconcileData, ShortfallItem
+from quant_lab.domain.events import (
+    EventKind,
+    LiveFundsData,
+    LiveOrderData,
+    LiveReconcileData,
+    ShortfallItem,
+)
 from quant_lab.domain.live import (
     MIN_AMOUNT,
     SEND_DELAY_MINUTES,
@@ -44,12 +51,19 @@ from quant_lab.domain.live import (
 )
 from quant_lab.persistence.bots import add_event
 from quant_lab.persistence.market_info import leverage_of
-from quant_lab.persistence.models import BotRow, LiveControlRow, LiveOrderRow, SimOrderRow
+from quant_lab.persistence.models import (
+    BotRow,
+    BrokerAccountRow,
+    LiveControlRow,
+    LiveOrderRow,
+    SimOrderRow,
+)
 
 KST = ZoneInfo("Asia/Seoul")
 RETRY_MARGIN = timedelta(minutes=1)  # 멱등 유효 시간이 끝나기 이만큼 전까지만 같은 키로 다시 보낸다
 CHECK_INTERVAL = timedelta(minutes=1)  # 보낸 주문의 체결 확인 간격
 COMMITTED = (LiveState.APPROVED, LiveState.SENDING, LiveState.SENT, LiveState.FILLED)
+WAITING_TO_SEND = (LiveState.WAITING_APPROVAL, LiveState.APPROVED)
 
 LIMITS = LiveLimits()
 
@@ -184,8 +198,44 @@ class LiveDesk:
                     **({"auto": True} if auto else {}),
                 )
                 made.append(order)
+            self._warn_low_funds(session, made, now)
             session.commit()
         return made
+
+    def _warn_low_funds(self, session: Session, made: list[LiveOrderRow], now: datetime) -> None:
+        """새로 만든 실제 주문을 내기 전에 달러가 모자라 보이면 미리 알린다 (채울 시간을 준다).
+
+        마지막으로 읽은 계좌(한 시간마다)와 그날 낼 주문 합계를 비교한다.
+        보내기 직전에 다시 확인한다.
+        """
+        account = session.get(BrokerAccountRow, 1)
+        if account is None or account.cash_usd is None or account.fetched_at is None:
+            return
+        days = sorted({o.trade_date for o in made if o.state in WAITING_TO_SEND})
+        for day in days:
+            needed = Decimal(
+                session.scalar(
+                    select(func.coalesce(func.sum(LiveOrderRow.amount), 0)).where(
+                        LiveOrderRow.trade_date == day,
+                        LiveOrderRow.state.in_(WAITING_TO_SEND),
+                    )
+                )
+                or 0
+            )
+            if needed <= account.cash_usd:
+                continue
+            data = LiveFundsData(
+                needed=str(needed), available=str(account.cash_usd), trade_date=day.isoformat()
+            )
+            try:
+                window = self._window(day)
+            except BrokerError:
+                window = None
+            if window is not None:
+                send_at = window[0] + timedelta(minutes=SEND_DELAY_MINUTES)
+                data["deadline"] = send_at.astimezone(KST).strftime("%m/%d %H:%M")
+            message = f"실제 주문 달러 부족 예상: 필요 ${needed}, 있음 ${account.cash_usd}"
+            add_event(session, now, "WARN", EventKind.LIVE_FUNDS, message, data=data)
 
     @staticmethod
     def _carried(session: Session, bot_id: int, symbol: str) -> list[LiveOrderRow]:
@@ -266,11 +316,28 @@ class LiveDesk:
                 return
             if now < start + timedelta(minutes=SEND_DELAY_MINUTES):
                 return
+            if not self._has_cash(order):
+                # 달러가 모자라면 보내지 않고 이번 몫은 넘긴다 (다음 달에 더하지 않는다).
+                # 돈 부족은 고장이 아니라 자동 단계(연속 성공)는 그대로 둔다.
+                self._skip(session, order, SkipReason.NO_FUNDS, now)
+                return
             # 보내기 전에 먼저 적는다. 여기서 Worker가 죽어도 다음 tick이 같은 키로 이어 간다.
             order.state, order.sent_at, order.source = LiveState.SENDING, now, self.trader.source
             order.updated_at = now
             session.commit()
             self._place(session, order, now)
+
+    def _has_cash(self, order: LiveOrderRow) -> bool:
+        """보내기 직전 증권사에 지금 달러를 묻는다.
+
+        묻지 못하면 그대로 보낸다 (모자라면 증권사가 거절하고, 그때도 자동은 끄지 않는다).
+        """
+        assert self.trader is not None
+        try:
+            return self.trader.available_cash() >= order.amount
+        except BrokerError as exc:
+            log.warning("달러 주문 가능 금액 확인 실패, 그대로 보냄: %s", exc)
+            return True
 
     def _place(self, session: Session, order: LiveOrderRow, now: datetime) -> None:
         assert self.trader is not None
@@ -279,7 +346,8 @@ class LiveDesk:
             broker_id = self.trader.place_amount_buy(request)
         except OrderRejected as exc:
             order.state, order.reason, order.note = LiveState.REJECTED, exc.reason, str(exc)
-            self._reset_streak(session, order)
+            if exc.reason != RejectReason.INSUFFICIENT_FUNDS:  # 돈 부족은 고장이 아니다
+                self._reset_streak(session, order)
             order.updated_at = now
             live_event(session, now, order, "WARN")
             session.commit()
@@ -322,7 +390,8 @@ class LiveDesk:
 
     def _skip(self, session: Session, order: LiveOrderRow, reason: str, now: datetime) -> None:
         order.state, order.reason, order.updated_at = LiveState.SKIPPED, reason, now
-        level = "WARN" if reason in (SkipReason.MISSED, SkipReason.HALTED) else "INFO"
+        warn = (SkipReason.MISSED, SkipReason.HALTED, SkipReason.NO_FUNDS)
+        level = "WARN" if reason in warn else "INFO"
         live_event(session, now, order, level)
         session.commit()
 

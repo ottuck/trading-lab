@@ -21,6 +21,7 @@ from quant_lab.domain.events import (
     EventKind,
     FillData,
     LiveControlData,
+    LiveFundsData,
     LiveOrderData,
     LiveReconcileData,
     MissedSessionsData,
@@ -104,6 +105,9 @@ SAMPLES: dict[EventKind, Mapping[str, Any] | None] = {
     ),
     EventKind.LIVE_CONTROL: LiveControlData(halted=True),
     EventKind.NOTIFY_TEST: None,
+    EventKind.LIVE_FUNDS: LiveFundsData(
+        needed="6.75", available="2.86", trade_date="2026-10-26", deadline="10/26 22:35"
+    ),
     EventKind.LIVE_RECONCILE: LiveReconcileData(
         shortfall=[ShortfallItem(symbol="VOO", held="0.002", bought="0.0048")]
     ),

@@ -22,6 +22,7 @@ LIVE_KINDS = {
     EventKind.LIVE_ORDER,
     EventKind.LIVE_CONTROL,
     EventKind.LIVE_RECONCILE,
+    EventKind.LIVE_FUNDS,
     EventKind.RUN_ERROR,
     EventKind.NOTIFY_TEST,
 }

@@ -187,6 +187,10 @@ class Trader(Protocol):
         """미국 거래일 day에 금액 주문을 받는 시간 [시작, 끝). 장이 없으면 None."""
         ...
 
+    def available_cash(self) -> Decimal:
+        """지금 금액 주문에 쓸 수 있는 달러 (미수 없는 현금 기준)."""
+        ...
+
     def place_amount_buy(self, order: AmountOrder) -> str:
         """주문을 내고 증권사 주문 번호를 돌려준다.
 
