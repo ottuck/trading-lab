@@ -324,15 +324,18 @@ function LiveSection({ bot }: { bot: Bot }) {
     },
   })
   if (!live) return null
-  // 모으기 봇은 매달 사기만, 사고팔기 봇은 사고팔기를 따라 한다
+  // 모으기 봇은 매달 사기만, 사고팔기 봇은 사고팔기를 따라 한다. AI 봇은 사기(모으기 한도)와 일부 팔기
+  const ai = isAiBot(bot)
   const trading = !byName[bot.strategy]?.accumulates
   const current = bot.live_ratio == null ? null : (RATIO_OF[String(Number(bot.live_ratio))] ?? bot.live_ratio)
   const pick = (ratio: string | null) => {
     setUnsupported(false)
     if (ratio === current) return
-    const what = trading
-      ? `모의로 살 때 봇 현금의 ${ratio}만큼 사고, 모의로 팔 때 실제로 산 만큼 모두 팔아요.`
-      : `모의 매수의 ${ratio} 금액을 같은 날 같은 종목으로 사요.`
+    const what = ai
+      ? `AI 봇이 모의로 살 때 그 금액의 ${ratio}만큼 사고, 모의로 팔 때 실제로 산 수량에서 같은 비율만큼 팔아요.`
+      : trading
+        ? `모의로 살 때 봇 현금의 ${ratio}만큼 사고, 모의로 팔 때 실제로 산 만큼 모두 팔아요.`
+        : `모의 매수의 ${ratio} 금액을 같은 날 같은 종목으로 사요.`
     const ok =
       !ratio ||
       window.confirm(
@@ -348,9 +351,11 @@ function LiveSection({ bot }: { bot: Bot }) {
     : `한도: 주문 1건 ${dollars(live.per_order)}, 한 달 ${dollars(live.per_month)}.`
   return (
     <Section
-      title={trading ? '실제로 따라 하기' : '실제로 따라 사기'}
+      title={trading || ai ? '실제로 따라 하기' : '실제로 따라 사기'}
       desc={
-        trading
+        ai
+          ? `AI 봇의 모의 사고팔기를 1/100 금액으로 실제 계좌에서 따라 해요. 살 때는 모의 매수 금액의 1/100($1보다 작으면 모아 두었다가 함께), 팔 때는 이 봇이 실제로 산 수량에서 모의로 판 비율만큼 팔아요(판 금액이 $1보다 작으면 넘겨요). 레버리지는 QLD·TQQQ만 해요. ${limits}`
+          : trading
           ? `모의로 살 때 봇 현금의 1/100만큼 실제 계좌에서 사고, 모의로 팔 때 이 봇이 실제로 산 만큼 모두 팔아요. 레버리지는 QLD·TQQQ만 해요. ${limits}`
           : `모의 매수를 1/100 금액으로 실제 계좌에서 같은 날 같은 종목을 사요. 파는 주문은 내지 않아요. ${limits}`
       }
@@ -578,13 +583,7 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
         </div>
       </Section>
       {!ai && <SymbolsField key={bot.symbols.map((s) => `${s.symbol}${s.weight}`).join()} bot={bot} />}
-      {ai ? (
-        <Section title="실제로 따라 하기" desc="AI 봇은 아직 실제 돈으로 따라 하지 않아요.">
-          <p className="muted small">모의로 먼저 지켜보며 나 카피 봇과 비교한 뒤 정해요.</p>
-        </Section>
-      ) : (
-        <LiveSection bot={bot} />
-      )}
+      <LiveSection bot={bot} />
       <NameField key={bot.name} bot={bot} />
       <History botId={bot.id} />
       <DangerZone bot={bot} others={others} />
