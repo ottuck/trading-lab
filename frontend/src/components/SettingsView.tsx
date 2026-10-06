@@ -267,7 +267,7 @@ function BrokerAccountSection() {
           <div>
             <div className="faint small">주문에 쓸 수 있는 돈</div>
             <div>
-              {dollars(data.cash_usd)} <span className="muted">(원화로 약 {won(data.cash_krw)})</span>
+              달러 {dollars(data.cash_usd)} <span className="muted">· 원화 {won(data.cash_krw)}</span>
             </div>
           </div>
           <div>
