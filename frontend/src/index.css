@@ -881,7 +881,14 @@ button.seg.active .lev {
 }
 .ranges {
   display: flex;
+  flex-wrap: wrap; /* 버튼이 많아도 화면 밖으로 밀어내지 않게 */
   gap: 2px;
+}
+/* 가격 차트 종목 고르기 (종목이 많은 봇) */
+select.symbol-select {
+  padding: 4px 8px;
+  font-size: 13px;
+  font-weight: 600;
 }
 .ranges button {
   border: 0;
