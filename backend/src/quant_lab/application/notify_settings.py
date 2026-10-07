@@ -26,6 +26,8 @@ LIVE_KINDS = {
     EventKind.RUN_ERROR,
     EventKind.NOTIFY_TEST,
 }
+# 실제로 따라 하는 봇이면 "실제 주문만"에서도 보낸다: 그날 판단이 없으면 실제 주문도 나가지 않는다
+FOLLOW_KINDS = {EventKind.AI_JUDGMENT}
 
 
 @dataclass(frozen=True)
@@ -79,10 +81,10 @@ def send_test(session: Session, now: datetime) -> None:
     session.commit()
 
 
-def wants(settings: NotifySettings, kind: str) -> bool:
-    """이 종류의 소식을 텔레그램으로 보낼지."""
+def wants(settings: NotifySettings, kind: str, *, follows: bool = False) -> bool:
+    """이 종류의 소식을 텔레그램으로 보낼지. follows: 실제로 따라 하는 봇의 소식."""
     if kind == EventKind.NOTIFY_TEST:
         return settings.available
     if not (settings.available and settings.enabled):
         return False
-    return settings.scope == "all" or kind in LIVE_KINDS
+    return settings.scope == "all" or kind in LIVE_KINDS or (follows and kind in FOLLOW_KINDS)

@@ -256,9 +256,14 @@ def delete_bot(session: Session, bot_id: int) -> None:
 
 
 def reset_bot_history(session: Session, bot: BotRow, now: datetime) -> None:
-    """판단·주문·실행·명령·기록을 지우고 잔고를 시작 금액으로. 다음 tick에 바로 다시 판단한다."""
+    """판단·주문·실행·명령·기록을 지우고 잔고를 시작 금액으로. 다음 tick에 바로 다시 판단한다.
+
+    설정을 바꾼 기록(설정 화면의 "바꾼 기록")은 판단·거래 기록이 아니므로 남긴다.
+    """
+    session.execute(
+        delete(EventRow).where(EventRow.bot_id == bot.id, EventRow.kind != EventKind.CONFIG_CHANGE)
+    )
     for model in (
-        EventRow,
         SimOrderRow,
         DecisionRow,
         RunRow,

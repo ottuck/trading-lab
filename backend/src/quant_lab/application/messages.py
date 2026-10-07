@@ -191,6 +191,50 @@ def nickname(strategy: str) -> str:
     return info.nickname if info else strategy
 
 
+SLIPPAGE_TEXT = {0: "이상적으로", 5: "보통", 10: "보수적으로"}  # 화면의 체결 가격 가정
+
+
+def _preset_label(info: StrategyInfo, params: dict[str, Any]) -> str:
+    keep = {c.key for c in info.choices}  # 따로 고르는 규칙은 빼고 본다
+    for p in info.presets:
+        if all(params.get(k) == v for k, v in p.params.items() if k not in keep):
+            return p.label.replace(" (기본)", "")
+    return "직접 설정"
+
+
+def _limit_text(value: Any) -> str:
+    return "가진 현금 전부" if value is None else f"${Decimal(str(value)):,.0f}"
+
+
+def settings_changes(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
+    """설정을 바꾼 기록을 쉬운 말로: ["전략 급락 줍줍 → 느긋한 추세 타기", "최대 투자 금액 ..."]."""
+    lines = []
+    old, new = before.get("strategy", ""), after.get("strategy", "")
+    bp, ap = before.get("params") or {}, after.get("params") or {}
+    info = CATALOG.get(new)
+    if old != new:
+        lines.append(f"전략 {nickname(old)} → {nickname(new)}")
+    elif bp != ap and info:
+        pb, pa = _preset_label(info, bp), _preset_label(info, ap)
+        if pb != pa:
+            lines.append(f"{info.preset_label} {pb} → {pa}")
+        for c in info.choices:
+            vb, va = bp.get(c.key), ap.get(c.key)
+            if vb != va:
+                text: dict[Any, str] = dict(c.options)
+                lines.append(f"{c.label} {text.get(vb, vb)} → {text.get(va, va)}")
+        if not lines:
+            lines.append("규칙 값을 바꿨어요")
+    sb = int(Decimal(str(before.get("slippage_bps", 5))))
+    sa = int(Decimal(str(after.get("slippage_bps", 5))))
+    if sb != sa:
+        lines.append(f"체결 가격 가정 {SLIPPAGE_TEXT.get(sb, sb)} → {SLIPPAGE_TEXT.get(sa, sa)}")
+    mb, ma = before.get("max_position_value"), after.get("max_position_value")
+    if _limit_text(mb) != _limit_text(ma):
+        lines.append(f"최대 투자 금액 {_limit_text(mb)} → {_limit_text(ma)}")
+    return lines
+
+
 def _usd(value: Any) -> str:
     return f"${Decimal(str(value)):,.2f}"
 
@@ -434,12 +478,13 @@ def event_message(
         name = d.get("name") or who
         return Message("🗑️", f"{obj(name)} 지웠어요", "봇과 그 기록을 모두 지웠어요.", "INFO", True)
     if kind == EventKind.RESTART_RESUME:
+        # 배포로 다시 켜질 때마다 알리면 시끄럽다: 판단할 때가 지난 봇만 텔레그램으로 (앱 기록에는 늘)
         return Message(
             "🔄",
             f"{obj(who)} 이어서 실행해요",
             "프로그램이 다시 켜졌어요. 멈춘 동안 밀린 판단이 있으면 바로 처리해요.",
             "INFO",
-            True,
+            bool(d.get("overdue", True)),
         )
     if kind == EventKind.RESTART_PAUSE:  # 2026-10-02 이전 기록
         return Message(
@@ -538,9 +583,14 @@ def event_message(
         if kind_of == ConfigChange.RENAME:
             body = f"{change.get('before', {}).get('name')} → {change['after'].get('name')}"
             return Message("⚙️", "이름을 바꿨어요", body, "INFO", False)
-        title = "봇을 만들었어요" if kind_of == ConfigChange.CREATE else "설정을 바꿨어요"
         after = change.get("after") or {}
-        return Message("⚙️", title, nickname(after.get("strategy", "")), "INFO", False)
+        if kind_of == ConfigChange.CREATE:
+            return Message(
+                "⚙️", "봇을 만들었어요", nickname(after.get("strategy", "")), "INFO", False
+            )
+        lines = settings_changes(change.get("before") or {}, after)
+        body = " · ".join(lines) or nickname(after.get("strategy", ""))
+        return Message("⚙️", "설정을 바꿨어요", body, "INFO", False)
     if kind == EventKind.COMMAND:
         labels = {
             "RUNNING": ("▶️", "매매를 시작했어요"),
