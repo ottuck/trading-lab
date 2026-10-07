@@ -156,7 +156,7 @@ def test_bot_management(client: TestClient, session: Session, bot_id: int) -> No
     assert Decimal(reset["account"]["qty"]) == 0 and reset["account"]["cash"] == "10000"
     assert reset["last_decision"] is None and reset["state"] == "RUNNING"
     assert reset["strategy"] == "trend_filter"
-    kinds = {"bot_id": bot_id, "kind": "config_change"}
+    kinds: dict[str, str | int] = {"bot_id": bot_id, "kind": "config_change"}
     assert len(client.get("/api/activity", params=kinds).json()) == 2  # 설정 기록은 남긴다
 
     voo = created.json()["id"]
