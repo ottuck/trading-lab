@@ -9,7 +9,7 @@ import { useDemo, usePriceWord } from '../demo'
 import { cssVar, useTheme } from '../theme'
 import { FxNote } from './Currency'
 import { Term } from './Help'
-import { goTo, openBot, startNewBot } from '../selectedBot'
+import { goTo, openBot, startMeEdit, startNewBot } from '../selectedBot'
 import { ParallelWorlds } from './Parallel'
 import { PresetFields } from './PresetFields'
 import { StrategyGlyph } from './StrategyGlyph'
@@ -123,6 +123,8 @@ function RunForm({
   const { data: bots } = useQuery({ queryKey: ['bots'], queryFn: api.bots })
   const meBot = bots?.find(isMeBot)
   const aiBot = bots?.find(isAiBot)
+  // 나 카피 봇이 있으면 질문은 그 봇의 규칙 바꾸기다 (데모의 예시 봇은 바꿀 수 없어 새로 해 본다)
+  const editMe = useDemo() ? undefined : meBot
   const priceWord = usePriceWord()
   // 전략마다 고른 프리셋 값을 기억한다. 고르지 않았으면 기본값.
   const [picked, setPicked] = useState<Record<string, Record<string, number>>>({})
@@ -163,12 +165,16 @@ function RunForm({
         {info?.accumulates && (
           <div className="bt-mine">
             <div className="bt-mine-text">
-              <b>내 규칙을 모르겠다면, 나 카피하기</b>
-              <span className="muted small">질문 몇 개에 답하면 내 투자 습관이 규칙이 되고 지난 10년을 바로 보여줘요. 1분이면 끝나요.</span>
+              <b>{editMe ? '질문으로 내 규칙 다시 정하기' : '내 규칙을 모르겠다면, 나 카피하기'}</b>
+              <span className="muted small">
+                {editMe
+                  ? `질문 몇 개에 다시 답하면 ${editMe.name}의 규칙이 바뀌어요. 바꾸기 전에 지난 10년을 먼저 보여줘요.`
+                  : '질문 몇 개에 답하면 내 투자 습관이 규칙이 되고 지난 10년을 바로 보여줘요. 1분이면 끝나요.'}
+              </span>
             </div>
             <div className="bt-mine-actions">
-              <button className="accent" onClick={() => goTo('me')}>
-                질문으로 내 규칙 정하기 →
+              <button className="accent" onClick={() => (editMe ? startMeEdit(editMe.id) : goTo('me'))}>
+                {editMe ? '질문 다시 하기 →' : '질문으로 내 규칙 정하기 →'}
               </button>
               {meBot && (
                 <button

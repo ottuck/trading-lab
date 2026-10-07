@@ -20,7 +20,7 @@ import { useDemo } from '../demo'
 import { FxNote } from './Currency'
 import { AccountCard, LiveApprovals } from './Live'
 import { Term } from './Help'
-import { goTo, openBot, selectBot, startNewBot, useSelectedBot } from '../selectedBot'
+import { goTo, openBot, selectBot, startMeEdit, startMeQuestions, startNewBot, useSelectedBot } from '../selectedBot'
 import { PriceChart } from './PriceChart'
 import { useDismiss } from '../useDismiss'
 import { activeOf, basketLabel, evenSplit } from '../basket'
@@ -36,6 +36,16 @@ const STATE: Record<BotState, { label: string; dot: string }> = {
   STOPPED: { label: '멈춤', dot: 'warn' },
   ERROR: { label: '문제 발생', dot: 'bad' },
 }
+
+/** 화면에 보일 상태. 시작·멈추기를 누른 뒤 Worker가 반영하기 전(15초 안)에는 "시작하는 중"처럼 보인다. */
+function stateOf(bot: Bot) {
+  if (bot.pending_command === 'START') return { label: '시작하는 중', dot: 'ok pulse' }
+  if (bot.pending_command === 'PAUSE' || bot.pending_command === 'STOP') return { label: '멈추는 중', dot: 'warn' }
+  return STATE[bot.state]
+}
+
+/** 실행 중이거나 시작하는 중이면 곧 첫 판단을 한다. */
+const startingOrRunning = (bot: Bot) => bot.state === 'RUNNING' || bot.pending_command === 'START'
 
 const RANGES = [
   { key: '1W', label: '1주', days: 5 },
@@ -290,7 +300,7 @@ function Overview({ bot }: { bot: Bot }) {
   const hold = gainOf(start.b, end.b, start, end, whole)
   const rising = gainOf(start.eq, latest.eq, start, latest, whole).gain >= 0
   const when = hover != null && points[hover] ? md(points[hover].date) : whole ? '시작 이후' : `지난 ${range.label}`
-  const state = STATE[bot.state]
+  const state = stateOf(bot)
   const near = 0.005 * (mine.base || 1)
   const demo = useDemo()
   const me = isMeBot(bot)
@@ -491,7 +501,11 @@ function Decision({ bot }: { bot: Bot }) {
         )}
       </div>
       {!d ? (
-        <p className="decision-why">아직 판단이 없어요. [매매 시작]을 누르면 가장 최근 가격으로 바로 판단해요.</p>
+        <p className="decision-why">
+          {startingOrRunning(bot)
+            ? '곧 첫 판단을 해요. 가장 최근 장 마감 가격으로 판단해요.'
+            : '아직 판단이 없어요. [매매 시작]을 누르면 가장 최근 가격으로 바로 판단해요.'}
+        </p>
       ) : list.length === 1 ? (
         <>
           <div className="decision-head">
@@ -726,7 +740,7 @@ function BotItem({ bot, active, onPick }: { bot: Bot; active: boolean; onPick: (
   // 입금으로 늘어난 몫은 빼고 손익의 흐름만 그린다.
   const values = (useEquity(bot.id).data ?? []).slice(-63).map((p) => Number(p.equity) - Number(p.contributed))
   const ret = botReturn(bot)
-  const state = STATE[bot.state]
+  const state = stateOf(bot)
   return (
     <button className={`bot-item ${active ? 'active' : ''}`} aria-current={active} onClick={onPick}>
       <div>
@@ -742,7 +756,8 @@ function BotItem({ bot, active, onPick }: { bot: Bot; active: boolean; onPick: (
   )
 }
 
-const parallelKey = (bot: Bot) => ['parallel', bot.id, JSON.stringify(bot.params), JSON.stringify(bot.symbols)]
+// 첫 판단 전에는 비교할 것이 없으므로 판단하면 다시 계산한다
+const parallelKey = (bot: Bot) => ['parallel', bot.id, JSON.stringify(bot.params), JSON.stringify(bot.symbols), bot.last_decision?.session_date]
 
 /** 나처럼 투자 봇: 시작한 뒤로 규칙을 하나씩 바꿨다면 (고르면 다음 판단부터 그 규칙으로). */
 function BotParallel({ bot }: { bot: Bot }) {
@@ -837,8 +852,8 @@ function BotSide({ bots, current, onPick }: { bots: Bot[]; current?: Bot; onPick
       <div className="bot-list">
         <div className="bot-list-head">
           나 카피 봇
-          <button className="link" onClick={() => goTo('me')}>
-            나 카피하기
+          <button className="link" onClick={() => (mine.length && !demo ? startMeEdit(mine[0].id) : goTo('me'))}>
+            {mine.length && !demo ? '질문 다시 하기' : '나 카피하기'}
           </button>
         </div>
         {mine.length ? mine.map(row) : <div className="bot-list-empty">아직 없어요</div>}
@@ -912,7 +927,7 @@ function MeHero({ bot }: { bot: Bot }) {
   const points = equity.data ?? []
   const bench = points.length ? Number(points.at(-1)!.benchmark) : paid
   const vsPaid = (v: number) => (paid ? String(v / paid - 1) : null)
-  const state = STATE[bot.state]
+  const state = stateOf(bot)
   return (
     <section className="me-hero">
       <div className="bot-line">
@@ -1002,10 +1017,15 @@ function MeStart() {
         </li>
       </ol>
       <div className="me-start-go">
-        <button className="primary" onClick={() => goTo('me')}>
+        <button className="primary" onClick={startMeQuestions}>
           나 카피하기
         </button>
         <span className="muted small">1분이면 끝나요. 다 만들면 이 아래가 내 화면으로 채워져요 · 실제 계좌는 연결하지 않아요</span>
+      </div>
+      <div className="me-limit">
+        <b>아직 복사하기 어려운 투자도 있어요.</b> 그때그때 기분이나 뉴스를 보고 사고팔거나, 며칠·몇 주 단위로 자주 사고파는 투자는
+        규칙으로 옮길 수 없어요. &quot;매달 얼마, 많이 오르면 쉬고, 떨어지면 몰아 사기&quot;처럼 말로 정할 수 있는 습관만 따라 해요.
+        파는 습관도 아직 복사하지 않아요 (산 주식은 계속 들고 있어요).
       </div>
       <MePreview />
     </section>

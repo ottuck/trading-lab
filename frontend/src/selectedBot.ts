@@ -84,6 +84,18 @@ export function goTo(page: string) {
   location.hash = page
 }
 
+/** 나 카피하기를 첫 질문부터 연다 (홈 시작 화면이 이미 소개했다). 나 카피하기 화면이 한 번 읽는다. */
+export let meSkipIntro = false
+
+export function startMeQuestions() {
+  meSkipIntro = true
+  location.hash = 'me'
+}
+
+export function clearMeSkipIntro() {
+  meSkipIntro = false
+}
+
 /** 나 카피하기(#me)를 기존 나 카피 봇의 규칙 바꾸기로 연다. #me를 떠나면 풀린다. */
 let meEdit: number | null = null
 const meEditListeners = new Set<() => void>()

@@ -68,6 +68,7 @@ from quant_lab.persistence.bots import (
     bot_costs,
     bot_limits,
     bot_weights,
+    deposited_month,
     get_bot,
     load_account,
     pending_orders,
@@ -385,9 +386,7 @@ def _evaluate(
     deposit = Decimal(0)
     plan = deposit_plan(strategy)
     if plan is not None:
-        last_month = session.scalar(
-            select(func.max(BotDepositRow.month)).where(BotDepositRow.bot_id == bot.id)
-        )
+        last_month = deposited_month(session, bot.id, target)
         if plan.due(target, last_month):
             deposit = plan.amount
             pf.deposit(deposit)

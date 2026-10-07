@@ -2,9 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { api, backtestApi, botApi, type Bot } from '../api'
 import { money, percent } from '../format'
-import { DAYS, DEPOSITS, DIP, HOT, START, STYLES, answersOf, describe, stepsOf, toParams, type Answers, type Option } from '../me'
+import { DAYS, DEPOSITS, DIP, HOT, START, STYLES, answersOf, describe, stepsOf, toParams, withCurrent, type Answers, type Option } from '../me'
 import { suggestName } from '../basket'
-import { endMeEdit, goTo, selectBot, useMeEdit } from '../selectedBot'
+import { clearMeSkipIntro, endMeEdit, goTo, meSkipIntro, selectBot, useMeEdit } from '../selectedBot'
 import { isMeBot } from '../strategies'
 import { useDemo, usePriceWord } from '../demo'
 import { toConfig, toDraft } from '../botConfig'
@@ -25,6 +25,12 @@ function tenYearsAgo() {
 }
 
 const ym = (date: string) => `${date.slice(0, 4)}년 ${Number(date.slice(5, 7))}월`
+
+/** 답하던 중(결과의 "자세히 보기"로 시험해 보기에 다녀오는 동안)을 기억한다. 만들기·바꾸기·나가기에서 지운다. */
+type Draft = { key: string; at: number; answers: Answers; customDeposit: string }
+let draft: Draft | null = null
+const saveDraft = (d: Draft) => (draft = d)
+const clearDraft = () => (draft = null)
 
 function Choices({ options, value, onPick }: { options: Option[]; value: number; onPick: (v: number) => void }) {
   return (
@@ -115,6 +121,7 @@ function Result({
       return bot
     },
     onSuccess: (bot) => {
+      clearDraft()
       void qc.invalidateQueries({ queryKey: ['bots'] })
       selectBot(bot.id)
       goTo('dashboard')
@@ -129,6 +136,7 @@ function Result({
       return bot
     },
     onSuccess: (bot) => {
+      clearDraft()
       void qc.invalidateQueries({ queryKey: ['bots'] })
       endMeEdit()
       selectBot(bot.id)
@@ -219,24 +227,35 @@ function Result({
           ? '데모에서는 봇을 만들 수 없어요. 홈에서 이렇게 만든 예시 나 카피 봇이 2년째 돌고 있는 모습을 볼 수 있어요.'
           : editing
           ? '바꾸면 다음 판단부터 이 규칙으로 해요. 지금까지의 기록은 그대로예요.'
-          : '모의 투자는 실제 계좌와 상관없어요. 시작하면 이번 달 넣는 돈으로 바로 시작해요.'}
+          : '모의 투자는 실제 계좌와 상관없어요. 시작하면 이번 달 넣을 돈으로 바로 사고, 이번 달 넣는 날에는 더 넣지 않아요 (다음 달부터 매달).'}
       </p>
     </>
   )
 }
 
-export function MeView() {
-  const qc = useQueryClient()
+export function MeView({ bots }: { bots: Bot[] }) {
   const priceWord = usePriceWord()
   // 규칙 바꾸기 대상은 처음 열 때 한 번만 읽는다 (아래 정리로 전역 값이 풀려도 유지).
+  // 나 카피 봇이 이미 있으면 어디서 왔든 그 봇의 규칙 바꾸기다 (나 카피 봇은 하나).
+  // 데모는 예시 봇을 바꿀 수 없으니 늘 처음부터 내 답으로 해 본다.
+  const demo = useDemo()
   const [editId] = useState(useMeEdit())
-  const editing = qc.getQueryData<Bot[]>(['bots'])?.find((b) => b.id === editId && isMeBot(b))
+  const editing = demo ? undefined : (bots.find((b) => b.id === editId && isMeBot(b)) ?? bots.find(isMeBot))
+  const key = String(editing?.id ?? 'new')
+  const [saved] = useState(() => (draft?.key === key ? draft : null))
+  const [skipIntro] = useState(meSkipIntro)
   // #me를 떠나면 규칙 바꾸기 모드를 푼다.
-  useEffect(() => endMeEdit, [])
-  // 0: 소개, 1~n: 질문(답에 따라 4~6개), n+1: 결과. 규칙 바꾸기는 소개 없이 첫 질문부터.
-  const [at, setAt] = useState(editing ? 1 : 0)
-  const [a, setA] = useState<Answers>(() => (editing ? answersOf(editing) : START))
-  const [customDeposit, setCustomDeposit] = useState('')
+  useEffect(() => {
+    clearMeSkipIntro()
+    return endMeEdit
+  }, [])
+  // 0: 소개, 1~n: 질문(답에 따라 4~6개), n+1: 결과. 규칙 바꾸기·홈 시작 화면에서 오면 소개 없이 첫 질문부터.
+  const [at, setAt] = useState(saved?.at ?? (editing || skipIntro ? 1 : 0))
+  const [a, setA] = useState<Answers>(() => saved?.answers ?? (editing ? answersOf(editing) : START))
+  const [customDeposit, setCustomDeposit] = useState(saved?.customDeposit ?? '')
+  useEffect(() => {
+    saveDraft({ key, at, answers: a, customDeposit })
+  }, [key, at, a, customDeposit])
   const steps = stepsOf(a)
   const step = at >= 1 && at <= steps.length ? steps[at - 1] : null
   const set = (patch: Partial<Answers>) => setA({ ...a, ...patch })
@@ -264,7 +283,13 @@ export function MeView() {
   return (
     <div className="me">
       <div className="me-top">
-        <button className="link" onClick={() => (location.hash = 'dashboard')}>
+        <button
+          className="link"
+          onClick={() => {
+            clearDraft()
+            location.hash = 'dashboard'
+          }}
+        >
           나가기
         </button>
       </div>
@@ -365,14 +390,14 @@ export function MeView() {
         q(
           '많이 오른 것 같을 때는 어떻게 하나요?',
           '쉬는 달에 넣은 돈은 쓰지 않고 모아 둬요.',
-          <Choices options={HOT} value={a.hot} onPick={(hot) => pick({ hot })} />,
+          <Choices options={withCurrent(HOT, a.hot)} value={a.hot} onPick={(hot) => pick({ hot })} />,
         )}
 
       {step === 'dip' &&
         q(
           a.regular ? '많이 떨어지면 언제 몰아서 사나요?' : '얼마나 떨어지면 사나요?',
           a.regular ? '그때는 입금일이 아니어도 모아 둔 돈까지 다 사요.' : '그때 모아 둔 돈을 한꺼번에 사요.',
-          <Choices options={DIP} value={a.dip} onPick={(dip) => pick({ dip })} />,
+          <Choices options={withCurrent(DIP, a.dip)} value={a.dip} onPick={(dip) => pick({ dip })} />,
         )}
 
       {at > steps.length && (

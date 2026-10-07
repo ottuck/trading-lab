@@ -106,7 +106,7 @@ def run_backtest(
     index = {s: {b.session_date: i for i, b in enumerate(v)} for s, v in series.items()}
     days = sorted(set.intersection(*(set(i) for i in index.values())))
     need = {
-        s: strategy.warmup if len(series[s]) > strategy.warmup else min_bars(strategy)
+        s: strategy.warmup if len(series[s]) >= strategy.warmup else min_bars(strategy)
         for s in symbols
     }
     start = next(
@@ -125,7 +125,8 @@ def run_backtest(
     fills: list[Fill] = []
     equity: list[EquityPoint] = []
     pending: dict[str, DecisionRecord] = {}
-    last_month: str | None = None
+    # 시작 금액이 시작한 달의 입금이다: 그달 입금일에는 또 넣지 않는다 (모의 운영과 같음)
+    last_month: str | None = month_key(days[start]) if start < len(days) else None
     bench_buy = False
 
     for k, day in enumerate(days):
