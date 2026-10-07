@@ -140,6 +140,7 @@ CASH = "CASH"
 class Source:
     url: str
     title: str
+    used: bool = False  # AI가 판단의 근거로 썼다고 밝힌 기사 (나머지는 검색 결과로 받아 보기만 함)
 
 
 @dataclass(frozen=True, slots=True)

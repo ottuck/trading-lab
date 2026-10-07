@@ -268,7 +268,7 @@ export type AiDay = {
   weights: Record<string, number> | null // 목표 비중 %
   weights_before: Record<string, Money> // 판단할 때의 비중 %
   reasons: Record<string, string> | null
-  sources: { url: string; title: string }[]
+  sources: { url: string; title: string; used?: boolean }[] // used: AI가 판단의 근거로 쓴 기사 (앞에 온다)
   queries: string[]
   model: string | null
   cost: Money | null

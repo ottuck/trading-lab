@@ -430,6 +430,12 @@ class ParallelView(BaseModel):
     note: str | None = None  # 계산하지 못한 이유 (예: 시작한 지 얼마 안 됨)
 
 
+class AiSourceView(BaseModel):
+    url: str
+    title: str
+    used: bool = False  # AI가 판단의 근거로 썼다고 밝힌 기사 (2026-10-07 지침 .4부터)
+
+
 class AiDayView(BaseModel):
     """AI 판단 하루 (마일스톤 4). 실패한 날은 weights 등이 없고 error에 이유가 있다."""
 
@@ -439,7 +445,7 @@ class AiDayView(BaseModel):
     weights: dict[str, int] | None  # 목표 비중 %, 현금은 CASH
     weights_before: dict[str, Decimal]  # 판단할 때의 비중 %, 현금은 CASH
     reasons: dict[str, str] | None
-    sources: list[dict[str, str]]  # [{url, title}]
+    sources: list[AiSourceView]  # 근거로 쓴 기사(used)가 앞
     queries: list[str]
     model: str | None
     cost: Decimal | None
