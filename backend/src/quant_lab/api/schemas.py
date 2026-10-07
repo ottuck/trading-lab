@@ -161,6 +161,7 @@ class BotView(BaseModel):
     slippage_bps: Decimal
     risk: dict[str, Any]
     next_evaluation_at: datetime | None
+    pending_command: str | None = None
     account: AccountView
     last_decision: DecisionView | None  # 대표 종목의 마지막 판단
     last_decisions: list[DecisionView] = []  # 마지막 판단일의 종목별 판단

@@ -20,6 +20,7 @@ from quant_lab.persistence.models import (
     BotDepositRow,
     BotPositionRow,
     BotRow,
+    CommandRow,
     DailyBarRow,
     DecisionRow,
     LiveBarRow,
@@ -108,6 +109,7 @@ class BotStatus:
     data_source: str | None
     live_ratio: Decimal | None = None  # 실제로 따라 사기 비율 (꺼짐이면 None)
     live_streak: int = 0  # 연속으로 문제없이 체결된 실제 주문
+    pending_command: str | None = None  # Worker가 아직 처리하지 않은 명령 (START 등)
 
 
 @dataclass(frozen=True)
@@ -278,6 +280,12 @@ def bot_status(session: Session, bot: BotRow) -> BotStatus:
         )
     ).one()
     last_bar = _last_bar(session, bot.symbol)
+    command = session.scalars(
+        select(CommandRow.kind)
+        .where(CommandRow.bot_id == bot.id, CommandRow.processed_at.is_(None))
+        .order_by(CommandRow.created_at.desc())
+        .limit(1)
+    ).first()
     return BotStatus(
         id=bot.id,
         name=bot.name,
@@ -302,6 +310,7 @@ def bot_status(session: Session, bot: BotRow) -> BotStatus:
         data_source=last_bar.source if last_bar else None,
         live_ratio=bot.live_ratio,
         live_streak=bot.live_streak,
+        pending_command=command,
     )
 
 

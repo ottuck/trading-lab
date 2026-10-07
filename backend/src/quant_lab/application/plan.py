@@ -10,15 +10,21 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from quant_lab.domain.bars import TradingCalendar
 from quant_lab.domain.strategy import DipSaver, Spend, month_key
 from quant_lab.domain.trading import Action, decide_basket
 from quant_lab.persistence.bars import load_daily_bars
-from quant_lab.persistence.bots import active_weights, bot_costs, bot_limits, load_account
-from quant_lab.persistence.models import BotDepositRow, BotRow, DecisionRow
+from quant_lab.persistence.bots import (
+    active_weights,
+    bot_costs,
+    bot_limits,
+    deposited_month,
+    load_account,
+)
+from quant_lab.persistence.models import BotDepositRow, BotRow, DecisionRow, SimOrderRow
 
 
 @dataclass(frozen=True)
@@ -101,13 +107,21 @@ def follow_plan(session: Session, bot: BotRow, calendar: TradingCalendar) -> Pla
         return None
     pf = load_account(session, bot.id)
     as_of = min(h[-1].session_date for h in histories.values())
-    last_month = session.scalar(
-        select(func.max(BotDepositRow.month)).where(BotDepositRow.bot_id == bot.id)
-    )
+    last_month = deposited_month(session, bot.id, as_of)
     deposit_date = next_deposit_date(calendar, as_of, plan.day, last_month)
 
-    # 지금 가격이 입금일까지 이어진다고 보고 같은 규칙 함수로 계산한다 (실제 계좌는 바꾸지 않는다)
+    # 지금 가격이 입금일까지 이어진다고 보고 같은 규칙 함수로 계산한다 (실제 계좌는 바꾸지 않는다).
+    # 다음 장에 살 예정인 돈은 이미 쓴 것으로 본다 (빼지 않으면 입금일에 살 금액이 부풀려진다).
     after = copy.deepcopy(pf)
+    for order in session.scalars(
+        select(SimOrderRow).where(
+            SimOrderRow.bot_id == bot.id,
+            SimOrderRow.status == "PENDING",
+            SimOrderRow.side == Action.BUY,
+        )
+    ):
+        after.cash = max(Decimal(0), after.cash - (order.budget or after.cash))
+    after.reserve = min(after.reserve, after.cash)
     after.deposit(plan.amount)
     records = {
         r.symbol: r

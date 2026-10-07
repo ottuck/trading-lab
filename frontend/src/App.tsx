@@ -125,7 +125,7 @@ export default function App() {
         {tab === 'dashboard' && bots.data && <MeHome bots={bots.data} />}
         {tab === 'bot' && !!bots.data?.length && <Home bots={bots.data} />}
         {tab === 'backtest' && <BacktestView />}
-        {tab === 'me' && <MeView />}
+        {tab === 'me' && bots.data && <MeView bots={bots.data} />}
         {tab === 'settings' && bots.data && <SettingsView bots={bots.data} />}
       </main>
     </>

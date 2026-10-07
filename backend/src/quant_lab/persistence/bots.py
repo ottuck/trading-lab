@@ -2,17 +2,18 @@
 
 import uuid
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from quant_lab.domain.bot import BotState, CommandKind
 from quant_lab.domain.events import EventKind
 from quant_lab.domain.live import LiveState, SkipReason
 from quant_lab.domain.portfolio import CostModel, Portfolio, Position, RiskLimits
+from quant_lab.domain.strategy import month_key
 from quant_lab.persistence.backtests import to_jsonable
 from quant_lab.persistence.models import (
     BotAccountRow,
@@ -116,6 +117,23 @@ def set_bot_state(
     bot.state = state
     bot.state_reason = reason
     bot.updated_at = now
+
+
+def deposited_month(session: Session, bot_id: int, today: date) -> str:
+    """정기 입금을 마지막으로 넣은 달 (YYYY-MM).
+
+    시작 금액이 시작한 달의 입금이라 입금 기록이 없으면 시작한 달(첫 판단일의 달, 첫 판단 전이면
+    오늘의 달)을 넣은 달로 본다. 그달 입금일에 또 넣지 않는다 (백테스트와 같음).
+    """
+    last = session.scalar(
+        select(func.max(BotDepositRow.month)).where(BotDepositRow.bot_id == bot_id)
+    )
+    if last is not None:
+        return last
+    first = session.scalar(
+        select(func.min(DecisionRow.session_date)).where(DecisionRow.bot_id == bot_id)
+    )
+    return month_key(first or today)
 
 
 def load_account(session: Session, bot_id: int) -> Portfolio:

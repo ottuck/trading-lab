@@ -155,7 +155,9 @@ export function AiToday({ bot }: { bot: Bot }) {
         <div className="line-empty">불러오는 중…</div>
       ) : !day ? (
         <p className="decision-why">
-          아직 판단이 없어요. [매매 시작]을 누르면 가장 최근 장 마감 가격과 뉴스로 바로 판단해요.
+          {bot.state === 'RUNNING' || bot.pending_command === 'START'
+            ? '곧 첫 판단을 해요. 가장 최근 장 마감 가격과 뉴스로 판단해요.'
+            : '아직 판단이 없어요. [매매 시작]을 누르면 가장 최근 장 마감 가격과 뉴스로 바로 판단해요.'}
         </p>
       ) : day.status !== 'OK' ? (
         <p className="decision-why">{MISSED[day.status]}</p>

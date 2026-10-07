@@ -35,6 +35,8 @@ function Switcher({ bots, current, creating }: { bots: Bot[]; current?: Bot; cre
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   useDismiss(open, () => setOpen(false), ref)
+  // 나 카피 봇이 있으면 질문은 그 봇의 규칙 바꾸기 (데모의 예시 봇은 바꿀 수 없어 새로 해 본다)
+  const me = useDemo() ? undefined : bots.find(isMeBot)
   return (
     <div className="switcher" ref={ref}>
       <button className="switcher-btn" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen(!open)} disabled={!bots.length}>
@@ -75,10 +77,11 @@ function Switcher({ bots, current, creating }: { bots: Bot[]; current?: Bot; cre
             role="menuitem"
             onClick={() => {
               setOpen(false)
-              location.hash = 'me'
+              if (me) startMeEdit(me.id)
+              else location.hash = 'me'
             }}
           >
-            나 카피하기
+            {me ? '나 카피 봇 질문 다시 하기' : '나 카피하기'}
           </button>
         </div>
       )}

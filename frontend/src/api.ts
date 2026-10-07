@@ -130,6 +130,7 @@ export type Bot = {
   slippage_bps: Money
   risk: Record<string, string | null>
   next_evaluation_at: string | null
+  pending_command: CommandKind | null // Worker가 아직 처리하지 않은 명령 (15초 안에 반영)
   account: Account
   last_decision: Decision | null
   last_decisions: Decision[] // 마지막 판단일의 종목별 판단
