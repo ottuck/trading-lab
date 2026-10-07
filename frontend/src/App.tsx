@@ -58,10 +58,26 @@ function SystemStatus() {
   if (!data) return null
   const w = data.worker
   const ok = data.db === 'ok' && w?.alive
+  // 잘 돌 때는 보이지 않는다. 뒤에서 도는 Worker가 멈췄을 때만 알린다 (판단·주문이 조용히 멈추므로)
+  if (ok) return null
   return (
     <span className={`dot ${ok ? 'ok' : 'bad'}`} title={`DB ${data.db} · Worker ${w?.alive ? '정상' : '정지'} · v${data.version}`}>
       <span className="status-text">{ok ? '정상 작동' : `프로그램 멈춤${w?.last_seen_at ? ` (${ago(w.last_seen_at)})` : ''}`}</span>
     </span>
+  )
+}
+
+/** Worker가 멈췄거나 서버에 닿지 않을 때 화면 위에 한 줄로 (폰에서는 위 점의 글자가 숨으므로). */
+function WorkerAlert() {
+  const { data, error } = useQuery({ queryKey: ['health'], queryFn: api.health })
+  if (data?.demo) return null
+  if (error) return <div className="alert-bar">서버에 연결되지 않아요. 잠시 뒤 다시 확인해요.</div>
+  if (!data || (data.db === 'ok' && data.worker?.alive)) return null
+  const since = data.worker?.last_seen_at ? ` (${ago(data.worker.last_seen_at)})` : ''
+  return (
+    <div className="alert-bar">
+      <b>프로그램이 멈췄어요{since}.</b> 다시 켜질 때까지 판단과 주문이 멈춰 있어요. 켜지면 밀린 판단부터 바로 해요.
+    </div>
   )
 }
 
@@ -120,6 +136,7 @@ export default function App() {
           마음껏 해 보세요.
         </div>
       )}
+      <WorkerAlert />
       <main>
         {bots.error && <div className="alert">봇 정보를 불러오지 못했습니다: {bots.error.message}</div>}
         {tab === 'dashboard' && bots.data && <MeHome bots={bots.data} />}

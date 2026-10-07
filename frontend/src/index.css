@@ -2339,6 +2339,14 @@ body {
 }
 
 /* 포트폴리오 데모 (D2) */
+/* 프로그램이 멈췄을 때만 보이는 한 줄 (잘 돌 때는 아무것도 보이지 않는다) */
+.alert-bar {
+  padding: 10px 24px;
+  background: var(--bad-soft);
+  color: var(--bad);
+  font-size: 13px;
+  text-align: center;
+}
 .demo-bar {
   padding: 10px 16px;
   border-bottom: 1px solid var(--border);
