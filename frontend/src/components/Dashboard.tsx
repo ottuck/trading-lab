@@ -20,7 +20,7 @@ import { useDemo } from '../demo'
 import { FxNote } from './Currency'
 import { AccountCard, LiveApprovals } from './Live'
 import { Term } from './Help'
-import { goTo, selectBot, startNewBot, useSelectedBot } from '../selectedBot'
+import { goTo, openBot, selectBot, startNewBot, useSelectedBot } from '../selectedBot'
 import { PriceChart } from './PriceChart'
 import { useDismiss } from '../useDismiss'
 import { activeOf, basketLabel, evenSplit } from '../basket'
@@ -277,8 +277,8 @@ function Overview({ bot }: { bot: Bot }) {
   const [sent, setSent] = useState<string | null>(null)
 
   const all = equity.data ?? []
-  // 기본 기간: 3개월이 안 된 봇은 "전체" (며칠 된 봇에 "지난 3개월"이라고 쓰지 않게)
-  const range = RANGES.find((r) => r.key === rangeKey) ?? (all.length <= RANGES[2].days + 1 ? RANGES[4] : RANGES[2])
+  // 기본 기간은 "전체"(시작 이후, 넣은 돈 대비): 봇 목록의 수익률과 같은 숫자로 시작한다
+  const range = RANGES.find((r) => r.key === rangeKey) ?? RANGES[4]
   const whole = range.days === Infinity
   const points = whole ? all : all.slice(-(range.days + 1))
   const a = bot.account
@@ -295,23 +295,27 @@ function Overview({ bot }: { bot: Bot }) {
   const demo = useDemo()
   const me = isMeBot(bot)
   const ai = isAiBot(bot)
+  // 전략 목록을 불러오기 전에는 내부 이름(ai_judge) 대신 비워 둔다
+  const nickname = byName[bot.strategy]?.nickname
+  const scope = ai
+    ? `관심 종목 ${bot.symbols.length}개 안에서`
+    : activeOf(bot.symbols).length > 1
+      ? basketLabel(bot.symbols, bot.symbol)
+      : null
 
   return (
     <>
       <div className="hero-head">
         <div>
-          <div className="bot-line">
-            <span className="name">
+          <div className="bot-line lead">
+            <h1 className="name">
               {bot.name}
               {lev > 1 && <span className="lev">{lev}×</span>}
-            </span>
+            </h1>
             <span className={`dot ${state.dot}`}>{state.label}</span>
-            <span>
-              · {byName[bot.strategy]?.nickname ?? bot.strategy}
-              {ai
-                ? ` · 관심 종목 ${bot.symbols.length}개 안에서`
-                : activeOf(bot.symbols).length > 1 && ` · ${basketLabel(bot.symbols, bot.symbol)}`}
-            </span>
+            {[nickname, scope].filter(Boolean).map((t) => (
+              <span key={t}>· {t}</span>
+            ))}
           </div>
           <div className="hero-value">{money(String(end.eq))}</div>
           <div className="hero-delta">
@@ -363,7 +367,7 @@ function Overview({ bot }: { bot: Bot }) {
           </span>
           <span className="legend">
             <i className="bench" />
-            {me ? '매달 그냥 사기' : ai ? '똑같이 나눠 매달 사기' : <Term k="그냥 들고 있었다면">그냥 보유</Term>}{' '}
+            {me ? '매달 그냥 사기' : ai ? `관심 종목 ${bot.symbols.length}개 똑같이 나눠 매달 사기` : <Term k="그냥 들고 있었다면">그냥 보유</Term>}{' '}
             {money(String(end.b))} ({percent(ratio(hold))})
           </span>
           <span className="legend">
@@ -390,7 +394,9 @@ function Overview({ bot }: { bot: Bot }) {
 
 function Facts({ bot }: { bot: Bot }) {
   const a = bot.account
-  const accumulates = useStrategies().byName[bot.strategy]?.accumulates
+  const info = useStrategies().byName[bot.strategy]
+  // 전략 목록을 불러오기 전에도 같은 칸을 보여준다 (입금 규칙이 있으면 모으기 봇)
+  const accumulates = info ? info.accumulates : bot.params.deposit != null
   const holding = a.positions.some((p) => Number(p.qty) > 0)
   const run = bot.last_run
   const unrealized = a.live_unrealized_pnl ?? a.unrealized_pnl
@@ -526,7 +532,9 @@ function Decision({ bot }: { bot: Bot }) {
 function Holding({ bot }: { bot: Bot }) {
   const a = bot.account
   const multi = bot.symbols.length > 1
-  const held = a.positions.filter((p) => Number(p.qty) > 0)
+  // 많이 든 종목부터 (가격 차트도 가장 많이 든 종목부터 보여준다)
+  const worth = (p: (typeof a.positions)[number]) => Number(p.qty) * Number(p.live_price ?? p.last_close)
+  const held = a.positions.filter((p) => Number(p.qty) > 0).sort((x, y) => worth(y) - worth(x))
   return (
     <section className="block">
       <div className="block-head">
@@ -586,7 +594,9 @@ function Trades({ bot, onOpenLog }: { bot: Bot; onOpenLog: () => void }) {
           전체 기록 보기 →
         </button>
       </div>
-      {rows.length ? (
+      {!data ? (
+        <div className="line-empty">불러오는 중…</div>
+      ) : rows.length ? (
         <div className="table-wrap">
           <table className="ledger">
             <thead>
@@ -635,7 +645,7 @@ function Strategy({ bot }: { bot: Bot }) {
     <section className="block">
       <div className="block-head">
         <h2>전략</h2>
-        <span className="sub">{info?.nickname ?? bot.strategy}</span>
+        <span className="sub">{info?.nickname}</span>
       </div>
       {info && <p className="decision-why" style={{ marginTop: 0 }}>{info.summary}</p>}
       <div className="strategy-meta">
@@ -788,11 +798,30 @@ AI 판단 비용은 하루 약 $0.1이고, 한 달 상한을 넘으면 그달은
     onSuccess: async (bot) => {
       if (!bot) return
       await qc.invalidateQueries({ queryKey: ['bots'] })
-      selectBot(bot.id)
-      goTo('bot')
+      openBot(bot.id)
     },
     onError: (e) => window.alert(`AI 봇을 만들지 못했어요: ${e.message}`),
   })
+}
+
+/** 폰에서 봇 바꾸기: 화면 맨 위의 가로 칩 (넓은 화면은 오른쪽 봇 목록을 쓴다). 순서는 봇 목록과 같다. */
+function BotTabs({ bots, current, onPick }: { bots: Bot[]; current?: Bot; onPick: (b: Bot) => void }) {
+  if (bots.length < 2) return null
+  const ordered = [...bots.filter(isMeBot), ...bots.filter(isAiBot), ...bots.filter((b) => !isMeBot(b) && !isAiBot(b))]
+  return (
+    <nav className="bot-tabs" aria-label="봇 바꾸기">
+      {ordered.map((b) => {
+        const ret = botReturn(b)
+        const on = b.id === current?.id
+        return (
+          <button key={b.id} className={on ? 'active' : ''} aria-current={on ? 'page' : undefined} onClick={() => onPick(b)}>
+            {b.name}
+            <span className={`tnum ${on ? '' : tone(ret)}`}>{percent(ret)}</span>
+          </button>
+        )
+      })}
+    </nav>
+  )
 }
 
 /** 오른쪽 봇 목록: 나 카피 봇이 위, AI 봇, 다른 봇은 아래 묶음. */
@@ -840,18 +869,18 @@ function BotSide({ bots, current, onPick }: { bots: Bot[]; current?: Bot; onPick
   )
 }
 
-/** 봇 하나 자세히 보기 (#bot, 나 카피 봇이 없으면 홈). 고른 봇은 이 브라우저에 기억한다. */
+/** 봇 하나 자세히 보기 (#bot/3, 나 카피 봇이 없으면 홈). 고른 봇은 이 브라우저에 기억한다. */
 export function Home({ bots }: { bots: Bot[] }) {
   const [logOpen, setLogOpen] = useState(false)
   const bot = useSelectedBot(bots)
+  const pick = (b: Bot) => openBot(b.id)
   return (
     <div className="home">
       <div className="home-main" key={bot.id}>
-        {isMeBot(bot) && (
-          <button className="link back" onClick={() => goTo('dashboard')}>
-            ← 나 카피 봇 홈
-          </button>
-        )}
+        <button className="link back" onClick={() => goTo('dashboard')}>
+          ← 홈
+        </button>
+        <BotTabs bots={bots} current={bot} onPick={pick} />
         <Overview bot={bot} />
         {isAiBot(bot) ? (
           <>
@@ -867,7 +896,7 @@ export function Home({ bots }: { bots: Bot[] }) {
         {isAiBot(bot) && <AiHistory bot={bot} />}
         <Strategy bot={bot} />
       </div>
-      <BotSide bots={bots} current={bot} onPick={(b) => selectBot(b.id)} />
+      <BotSide bots={bots} current={bot} onPick={pick} />
       {logOpen && <LogDrawer bot={bot} onClose={() => setLogOpen(false)} />}
     </div>
   )
@@ -1044,9 +1073,12 @@ export function MeHome({ bots }: { bots: Bot[] }) {
   const demo = useDemo()
   const selected = useSelectedBot(bots) as Bot | undefined
   const bot = selected && isMeBot(selected) ? selected : bots.find(isMeBot)
+  // 나 카피 봇은 이 화면에 그대로, 다른 봇은 그 봇 화면으로
+  const pick = (b: Bot) => (isMeBot(b) ? selectBot(b.id) : openBot(b.id))
   return (
     <div className="home me-home">
       <div className="home-main" key={bot?.id ?? 'start'}>
+        <BotTabs bots={bots} current={bot} onPick={pick} />
         {bot ? (
           <>
             <LiveApprovals />
@@ -1056,14 +1088,7 @@ export function MeHome({ bots }: { bots: Bot[] }) {
             <BotParallel bot={bot} />
             <Decision bot={bot} />
             <div className="me-more">
-              <button
-                onClick={() => {
-                  selectBot(bot.id)
-                  goTo('bot')
-                }}
-              >
-                자세히 보기
-              </button>
+              <button onClick={() => openBot(bot.id)}>자세히 보기</button>
               <span className="faint small">들고 있는 주식, 거래, 가격 그래프{demo ? '' : ', 매매 시작·멈춤'}</span>
             </div>
           </>
@@ -1072,14 +1097,7 @@ export function MeHome({ bots }: { bots: Bot[] }) {
         )}
       </div>
       {bots.length > 0 && (
-        <BotSide
-          bots={bots}
-          current={bot}
-          onPick={(b) => {
-            selectBot(b.id)
-            if (!isMeBot(b)) goTo('bot')
-          }}
-        />
+        <BotSide bots={bots} current={bot} onPick={pick} />
       )}
     </div>
   )

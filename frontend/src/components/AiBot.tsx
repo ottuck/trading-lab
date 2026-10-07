@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { botApi, type AiDay, type Bot, type Order, type World } from '../api'
+import { api, botApi, type AiDay, type Bot, type Order, type World } from '../api'
+import { activeOf } from '../basket'
 import { useDemo } from '../demo'
 import { money, percent } from '../format'
+import { isMeBot } from '../strategies'
 import { Chart } from './Parallel'
 
 /* AI 봇 (마일스톤 4 A3): 오늘의 AI 판단·참고한 것, 세 봇 비교, 판단 기록.
@@ -197,6 +199,7 @@ export function AiCompare({ bot }: { bot: Bot }) {
     retry: false,
   })
   const [picked, setPicked] = useState('copy')
+  const { data: bots } = useQuery({ queryKey: ['bots'], queryFn: api.bots })
   const worlds = data?.worlds ?? []
   const ai = worlds.find((w) => w.key === 'me')
   const other = worlds.find((w) => w.key === picked) ?? worlds.find((w) => w.key !== 'me')
@@ -204,10 +207,15 @@ export function AiCompare({ bot }: { bot: Bot }) {
   const long = !!data?.start && !!data.end && Date.parse(data.end) - Date.parse(data.start) >= 365 * 86_400_000
   const rate = (w: World) =>
     long ? `해마다 평균 ${percent(w.cagr)}` : `넣은 돈보다 ${percent(String(Number(w.final_equity) / Number(w.contributed) - 1))}`
+  // 매달 그냥 사기는 무엇을 샀는지 밝힌다 (위 그래프의 "관심 종목 똑같이 나눠 사기"와 다른 기준이다).
+  // 나 카피 봇이 있으면 그 종목·비율, 없으면 AI 봇 종목을 똑같이 나눠 샀다.
+  const meSymbols = activeOf(bots?.find(isMeBot)?.symbols ?? []).map((s) => s.symbol)
   const sub: Record<string, string> = {
     me: 'AI가 매일 비중을 정해요',
     copy: '지금 나 카피 봇 규칙으로 같은 돈을 넣었다면',
-    dca: '넣자마자 그냥 샀다면',
+    dca: worlds.some((w) => w.key === 'copy') && meSymbols.length
+      ? `나 카피 봇 종목(${meSymbols.join(' · ')})을 넣자마자 그냥 샀다면`
+      : `관심 종목 ${bot.symbols.length}개를 똑같이 나눠 넣자마자 샀다면`,
   }
   return (
     <section className="block pw">
@@ -261,12 +269,17 @@ export function AiCompare({ bot }: { bot: Bot }) {
   )
 }
 
-/** 판단 기록: 날마다 목표 비중(큰 것 4개)과 비용. 누르면 그날 시장 요약. */
+const RECENT = 7
+
+/** 판단 기록: 날마다 목표 비중(큰 것 4개)과 비용. 누르면 그날 시장 요약. 처음엔 최근 일주일만. */
 export function AiHistory({ bot }: { bot: Bot }) {
   const { data } = useAi(bot)
+  const demo = useDemo()
   const [open, setOpen] = useState<string | null>(null)
+  const [all, setAll] = useState(false)
   const days = data?.history ?? []
   if (days.length < 2) return null // 하루뿐이면 오늘의 판단과 같다
+  const shown = all ? days : days.slice(0, RECENT)
   const top = (w: Record<string, number>) =>
     Object.entries(w)
       .filter(([, v]) => v > 0)
@@ -281,7 +294,7 @@ export function AiHistory({ bot }: { bot: Bot }) {
         <span className="sub">최근 {days.length}일</span>
       </div>
       <div className="lines">
-        {days.map((d) => (
+        {shown.map((d) => (
           <button key={d.session_date} className="line ai-day" aria-expanded={open === d.session_date} onClick={() => setOpen(open === d.session_date ? null : d.session_date)}>
             <div>
               <div className="title">
@@ -291,10 +304,16 @@ export function AiHistory({ bot }: { bot: Bot }) {
               <div className="muted small">{d.weights ? top(d.weights) : MISSED[d.status as Exclude<AiDay['status'], 'OK'>]}</div>
               {open === d.session_date && d.summary && <div className="small ai-day-summary">{d.summary}</div>}
             </div>
-            <div className="r faint small tnum">{d.cost != null ? money(d.cost) : ''}</div>
+            {/* 데모는 예시 판단이라 비용이 없다 */}
+            <div className="r faint small tnum">{!demo && d.cost != null ? money(d.cost) : ''}</div>
           </button>
         ))}
       </div>
+      {days.length > RECENT && (
+        <button className="link" aria-expanded={all} onClick={() => setAll(!all)}>
+          {all ? '접기' : `${days.length - RECENT}일 더 보기`}
+        </button>
+      )}
     </section>
   )
 }
