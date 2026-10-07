@@ -102,6 +102,17 @@ function Result({
   const start = useMutation({
     mutationFn: async () => {
       const taken = (bots.data ?? []).map((b) => b.name)
+      const name = suggestName(
+        answers.symbols.map((s) => s.symbol),
+        'dip_saver',
+        taken,
+      )
+      const ok = window.confirm(
+        `나 카피 봇(${name})을 만들고 바로 모의 투자를 시작할까요?\n` +
+          `${answers.symbols.map((s) => s.symbol).join(' · ')} · 매달 ${answers.day}일 $${answers.deposit.toLocaleString('en-US')}를 넣어요.\n` +
+          '실제 계좌와는 상관없어요. 지우려면 봇 화면의 [⋯] → 봇 삭제를 누르면 돼요.',
+      )
+      if (!ok) return null
       const bot = await botApi.create({
         strategy: 'dip_saver',
         params,
@@ -109,11 +120,7 @@ function Result({
         slippage_bps: '5',
         max_position_value: null,
         max_order_value: null,
-        name: suggestName(
-          answers.symbols.map((s) => s.symbol),
-          'dip_saver',
-          taken,
-        ),
+        name,
         symbol: body.symbol,
         symbols: body.symbols,
         initial_cash: String(answers.deposit),
@@ -122,6 +129,7 @@ function Result({
       return bot
     },
     onSuccess: (bot) => {
+      if (!bot) return
       clearDraft()
       void qc.invalidateQueries({ queryKey: ['bots'] })
       selectBot(bot.id)
