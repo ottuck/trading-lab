@@ -31,7 +31,8 @@ jobs:
       REQUIRE_DB: "1"
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      # v7부터 Node 24. v8부터 큰 버전 태그(v10)를 만들지 않아 정확한 버전을 쓴다.
+      - uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
       - run: uv sync --locked
