@@ -18,6 +18,19 @@ export function roundMoney(value: number): string {
 }
 
 /** 실제 증권사 계좌의 달러처럼 바꿔 보면 안 되는 금액. 늘 달러로 보여준다. */
+/** 원화 어림값: 134만 원, 9,500원 */
+export function manwon(krw: number): string {
+  return krw >= 10_000 ? `${Math.round(krw / 10_000).toLocaleString('ko-KR')}만 원` : `${Math.round(krw).toLocaleString('ko-KR')}원`
+}
+
+/** 사용자가 정한 금액(매달 넣는 돈·처음 넣는 돈): 늘 달러로, 원화로 볼 때는 어림값을 덧붙인다.
+    환율 따라 바뀌는 ₩1,812,281 같은 숫자를 설정 값처럼 보이지 않게. */
+export function setAmount(value: number): string {
+  const rate = krwRate()
+  const usd = `$${Math.round(value).toLocaleString('en-US')}`
+  return rate ? `${usd} (약 ${manwon(value * rate)})` : usd
+}
+
 export function dollars(value: string | null | undefined): string {
   return value == null ? '—' : usd.format(Number(value))
 }

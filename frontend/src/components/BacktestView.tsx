@@ -3,7 +3,7 @@ import { ColorType, createChart, LineSeries, type Time } from 'lightweight-chart
 import { useEffect, useRef, useState } from 'react'
 import { api, backtestApi, type BacktestDetail, type StrategyInfo, type SymbolWeight } from '../api'
 import { useCurrency } from '../currency'
-import { money, percent, roundMoney, shares, signedMoney, tone } from '../format'
+import { money, percent, roundMoney, setAmount, shares, signedMoney, tone } from '../format'
 import { isAiBot, isMeBot, useStrategies } from '../strategies'
 import { useDemo, usePriceWord } from '../demo'
 import { cssVar, useTheme } from '../theme'
@@ -15,6 +15,7 @@ import { PresetFields } from './PresetFields'
 import { StrategyGlyph } from './StrategyGlyph'
 import { activeOf, basketLabel } from '../basket'
 import { BasketPicker, SymbolPicker } from './SymbolPicker'
+import { AmountInput } from './AmountInput'
 
 const PERIODS = [
   { label: '최근 3년', years: 3 },
@@ -135,6 +136,8 @@ function RunForm({
   const setBasket = (v: SymbolWeight[]) => onChoice({ ...choice, symbol: v[0].symbol, symbols: v })
   const setStrategy = (s: string) => onChoice({ ...choice, strategy: s })
   const [years, setYears] = useState(10)
+  // 유명 전략은 처음 한 번 넣는 돈으로 시험한다 (직접 정한다)
+  const [cash, setCash] = useState('10000')
   const info = byName[strategy]
   const params = picked[strategy] ?? info?.default_params ?? {}
   const multi = !!info?.accumulates && basket.length > 1
@@ -148,6 +151,7 @@ function RunForm({
         strategy,
         params,
         start: startDate(years),
+        initial_cash: info?.accumulates ? undefined : cash,
       }),
     onSuccess: (d) => {
       void qc.invalidateQueries({ queryKey: ['backtests'] })
@@ -203,13 +207,23 @@ function RunForm({
             </button>
           ))}
         </div>
+        {info && !info.accumulates && (
+          <div className="controls">
+            <span className="label">처음 넣는 돈</span>
+            <AmountInput value={cash} onChange={setCash} placeholder="예: 10000" label="처음 넣는 돈" />
+          </div>
+        )}
         <div className="controls">
-          <button className="primary" disabled={run.isPending || !list.length || (multi && total !== 100)} onClick={() => run.mutate()}>
+          <button
+            className="primary"
+            disabled={run.isPending || !list.length || (multi && total !== 100) || (!info?.accumulates && !Number(cash))}
+            onClick={() => run.mutate()}
+          >
             {run.isPending
               ? '계산 중…'
               : info?.accumulates
-                ? `매달 ${roundMoney(Number(params.deposit ?? 0))}씩 시험해 보기`
-                : '처음에 $10,000 넣고 시험해 보기'}
+                ? `매달 ${setAmount(Number(params.deposit ?? 0))}씩 시험해 보기`
+                : `처음에 ${setAmount(Number(cash) || 0)} 넣고 시험해 보기`}
           </button>
           {run.error && <span className="bad small">{run.error.message}</span>}
         </div>
@@ -290,7 +304,7 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
             <span>
               · {basketLabel(data.symbols, data.symbol)} ·{' '}
               {monthly
-                ? `${ym(m.start)}부터 매달 ${roundMoney(Number(data.params.deposit ?? 0))}씩 넣었다면 (모두 ${money(paid)})`
+                ? `${ym(m.start)}부터 매달 ${setAmount(Number(data.params.deposit ?? 0))}씩 넣었다면 (모두 ${money(paid)})`
                 : `${ym(m.start)}에 처음 ${money(m.initial_cash)}만 넣고 시작했다면`}
             </span>
           </div>
@@ -305,7 +319,18 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
         </div>
         {!demo && (
           <div className="hero-actions">
-            <button className="primary" onClick={() => startNewBot({ symbol: data.symbol, symbols: data.symbols ?? undefined, strategy: data.strategy, params: data.params })}>
+            <button
+              className="primary"
+              onClick={() =>
+                startNewBot({
+                  symbol: data.symbol,
+                  symbols: data.symbols ?? undefined,
+                  strategy: data.strategy,
+                  params: data.params,
+                  cash: monthly ? undefined : String(Math.round(Number(m.initial_cash))),
+                })
+              }
+            >
               이 전략으로 모의 투자 시작
             </button>
           </div>

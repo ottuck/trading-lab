@@ -271,7 +271,7 @@ class DipSaver:
     상장 1년 미만 종목은 한 달(min_bars) 이력부터 있는 만큼으로 최고가·평균을 본다.
     """
 
-    deposit: int = 1350  # 매달 넣는 돈 (달러, 월 20만 엔 안팎)
+    deposit: int = 1000  # 매달 넣는 돈 (달러, 화면에서 직접 정할 수 있다)
     day: int = 25  # 입금일 (1~28)
     dip: int = 10  # % (10·15·20 중 고른다)
     hot: int = 10  # % (10·15·20, 0이면 고점에도 쉬지 않음)
@@ -349,7 +349,7 @@ class AiJudge:
     과거 백테스트는 하지 않는다 (모델이 과거 시장의 결과를 알아서, project.md 14절).
     """
 
-    deposit: int = 675  # 매달 넣는 돈 (나 카피 봇과 같게)
+    deposit: int = 1000  # 매달 넣는 돈 (나 카피 봇과 같게)
     day: int = 25  # 입금일 (1~28)
     name: ClassVar[str] = "ai_judge"
 

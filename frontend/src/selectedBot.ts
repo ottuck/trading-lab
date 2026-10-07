@@ -54,7 +54,7 @@ export function useSelectedBot<T extends { id: number; strategy: string }>(bots:
 }
 
 /** "새 봇 만들기" 요청. 시험해 보기 결과에서 오면 종목·전략이 미리 채워진다. */
-export type NewBotSeed = { symbol?: string; symbols?: SymbolWeight[]; strategy?: string; params?: Record<string, number> }
+export type NewBotSeed = { symbol?: string; symbols?: SymbolWeight[]; strategy?: string; params?: Record<string, number>; cash?: string }
 let seed: NewBotSeed | null = null
 const seedListeners = new Set<() => void>()
 

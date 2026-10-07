@@ -108,6 +108,25 @@ function actionFor(state: BotState): { main: Action; primary: boolean } {
 
 function Controls({ bot, onSent }: { bot: Bot; onSent: (msg: string) => void }) {
   const qc = useQueryClient()
+  const [menu, setMenu] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useDismiss(menu, () => setMenu(false), ref)
+  const reset = useMutation({
+    mutationFn: () => botApi.reset(bot.id),
+    onSuccess: () => {
+      onSent('처음부터 다시 시작했어요. 곧 가장 최근 가격으로 첫 판단을 해요.')
+      void qc.invalidateQueries()
+    },
+    onError: (e) => onSent(`다시 시작하지 못했어요: ${e.message}`),
+  })
+  const remove = useMutation({
+    mutationFn: () => botApi.remove(bot.id),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['bots'] })
+      goTo('dashboard')
+    },
+    onError: (e) => onSent(`지우지 못했어요: ${e.message}`),
+  })
   const mutation = useMutation({
     mutationFn: (kind: CommandKind) => api.command(bot.id, kind),
     onSuccess: () => {
@@ -133,13 +152,46 @@ function Controls({ bot, onSent }: { bot: Bot; onSent: (msg: string) => void }) 
   }
   const { main, primary } = actionFor(bot.state)
   return (
-    <div className="hero-actions">
+    <div className="hero-actions" ref={ref}>
       <button className={primary ? 'primary' : ''} disabled={mutation.isPending} onClick={() => send(main)}>
         {main.label}
       </button>
       <button className="ghost" onClick={() => (location.hash = 'settings')}>
         설정
       </button>
+      <button className="ghost more" aria-label="더 보기" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>
+        ⋯
+      </button>
+      {menu && (
+        <div className="menu" role="menu">
+          <button
+            role="menuitem"
+            disabled={reset.isPending}
+            onClick={() => {
+              setMenu(false)
+              const ok = window.confirm(
+                `${bot.name}의 모의 잔고를 ${money(bot.account.initial_cash)}로 되돌리고 판단·거래 기록을 모두 지울까요?\n` +
+                  '설정과 실행 상태는 그대로예요. 되돌릴 수 없어요.',
+              )
+              if (ok) reset.mutate()
+            }}
+          >
+            처음부터 다시 시작
+          </button>
+          <hr />
+          <button
+            role="menuitem"
+            className="danger"
+            disabled={remove.isPending}
+            onClick={() => {
+              setMenu(false)
+              if (window.confirm(`${bot.name}을(를) 지울까요? 이 봇의 모든 기록도 함께 지워져요. 되돌릴 수 없어요.`)) remove.mutate()
+            }}
+          >
+            봇 삭제
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -785,7 +837,7 @@ function useCreateAiBot(bots: Bot[]) {
   return useMutation({
     mutationFn: async () => {
       const me = bots.find(isMeBot)
-      const deposit = me?.params.deposit ?? 675
+      const deposit = me?.params.deposit ?? 1000
       const day = me?.params.day ?? 25
       const symbols = watchlist?.length ? watchlist : FALLBACK
       const ok = window.confirm(
