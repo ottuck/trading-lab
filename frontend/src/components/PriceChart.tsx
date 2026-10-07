@@ -54,9 +54,27 @@ const RANGES = [
   { label: '3년', days: 750 },
 ]
 
-function biggestHolding(bot: Bot): string | undefined {
+/** 종목 버튼은 이만큼까지. 넘으면 고르기 상자. */
+const MAX_TABS = 4
+
+/** 들고 있는 종목을 많이 든 순서로. */
+function heldSymbols(bot: Bot): string[] {
   const value = (p: Bot['account']['positions'][number]) => Number(p.qty) * Number(p.live_price ?? p.last_close)
-  return bot.account.positions.filter((p) => Number(p.qty) > 0).sort((a, b) => value(b) - value(a))[0]?.symbol
+  return bot.account.positions
+    .filter((p) => Number(p.qty) > 0)
+    .sort((a, b) => value(b) - value(a))
+    .map((p) => p.symbol)
+}
+
+function biggestHolding(bot: Bot): string | undefined {
+  return heldSymbols(bot)[0]
+}
+
+/** 고르기 상자 순서: 들고 있는 종목(많이 든 순) 다음 나머지. */
+function symbolOptions(bot: Bot) {
+  const held = heldSymbols(bot)
+  const rest = bot.symbols.map((s) => s.symbol).filter((s) => !held.includes(s))
+  return [...held.map((symbol) => ({ symbol, held: true })), ...rest.map((symbol) => ({ symbol, held: false }))]
 }
 
 export function PriceChart({ bot }: { bot: Bot }) {
@@ -181,7 +199,16 @@ export function PriceChart({ bot }: { bot: Bot }) {
     <section className="block">
       <div className="block-head">
         <h2>가격 차트</h2>
-        {bot.symbols.length > 1 ? (
+        {bot.symbols.length > MAX_TABS ? (
+          // 종목이 많으면(AI 봇 10개) 버튼이 폰 화면을 넘으므로 고르기 상자로. 들고 있는 종목이 위.
+          <select className="symbol-select" aria-label="종목" value={symbol} onChange={(e) => setPicked(e.target.value)}>
+            {symbolOptions(bot).map((o) => (
+              <option key={o.symbol} value={o.symbol}>
+                {o.held ? `${o.symbol} · 들고 있음` : o.symbol}
+              </option>
+            ))}
+          </select>
+        ) : bot.symbols.length > 1 ? (
           <div className="ranges" role="group" aria-label="종목">
             {bot.symbols.map((s) => (
               <button key={s.symbol} className={s.symbol === symbol ? 'active' : ''} aria-pressed={s.symbol === symbol} onClick={() => setPicked(s.symbol)}>
