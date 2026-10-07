@@ -1,3 +1,4 @@
+import threading
 from collections.abc import Callable
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
@@ -19,6 +20,7 @@ from quant_lab.domain.broker import (
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.persistence.bars import upsert_daily_bars
 from quant_lab.persistence.bots import create_bot, enqueue_command, get_bot
+from quant_lab.persistence.heartbeat import latest_heartbeat
 from quant_lab.persistence.models import (
     BrokerAccountRow,
     CommandRow,
@@ -29,6 +31,7 @@ from quant_lab.persistence.models import (
     LiveBarRow,
     QuoteRow,
 )
+from quant_lab.worker.heartbeat import HeartbeatThread
 from quant_lab.worker.loop import Worker, release_worker_lock, try_acquire_worker_lock
 from tests.fakes import WeekdayCalendar, make_bars
 
@@ -178,3 +181,22 @@ def test_account_read_hourly_and_keeps_last_value_on_failure(
     row = session.scalars(select(BrokerAccountRow)).one()
     assert row.cash_usd == Decimal("12.5") and row.fetched_at == NOW
     assert row.error == "access" and row.error_at == clock[0]
+
+
+def test_heartbeat_beats_apart_from_long_ticks_but_not_when_stuck(
+    engine: Engine, session: Session
+) -> None:
+    # 평가가 오래 걸려도(AI 판단) 따로 생존 신호를 남기고, 메인 루프가 멈추면 남기지 않는다
+    now = [0.0]
+    started = datetime(2026, 10, 7, tzinfo=UTC)
+    heart = HeartbeatThread(
+        sessionmaker(engine), "w1", "0", started, 15, threading.Event(), 600, lambda: now[0]
+    )
+    now[0] = 300  # 한 바퀴가 5분째 (예: 느린 AI 판단)
+    assert heart.beat()
+    beat = latest_heartbeat(session)
+    assert beat is not None and beat.worker_id == "w1"
+    now[0] = 601  # 10분 넘게 다음 바퀴를 시작하지 못함
+    assert not heart.beat()
+    heart.loop_started()
+    assert heart.beat()
