@@ -11,6 +11,7 @@ import { toConfig, toDraft } from '../botConfig'
 import { EquityChart } from './BacktestView'
 import { FxNote } from './Currency'
 import { ParallelWorlds } from './Parallel'
+import { AmountInput } from './AmountInput'
 import { BasketPicker } from './SymbolPicker'
 
 /* 나 카피하기: 한 화면에 질문 하나씩 (토스식). 답하면 바로 다음 질문으로 넘어가고,
@@ -359,21 +360,16 @@ export function MeView({ bots }: { bots: Bot[] }) {
               }}
             />
             <div className="me-custom">
-              <span className="dollar">
-                $
-                <input
-                  inputMode="numeric"
-                  placeholder="직접 입력"
-                  aria-label="한 달 평균 직접 입력"
-                  value={customDeposit}
-                  onChange={(e) => {
-                    const v = e.target.value.replace(/[^0-9]/g, '')
-                    setCustomDeposit(v)
-                    if (Number(v) > 0) set({ deposit: Number(v) })
-                  }}
-                  size={8}
-                />
-              </span>
+              <AmountInput
+                value={customDeposit}
+                placeholder="직접 입력 (예: 800)"
+                label="한 달 평균 직접 입력"
+                size={14}
+                onChange={(v) => {
+                  setCustomDeposit(v)
+                  if (Number(v) > 0) set({ deposit: Number(v) })
+                }}
+              />
             </div>
           </>,
           a.deposit > 0,

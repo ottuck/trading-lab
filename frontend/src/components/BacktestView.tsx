@@ -354,7 +354,7 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
               `${data.fills.length}번 샀어요 · 팔지 않아요`
             ) : (
               <>
-                거래 {m.round_trips}번 · <Term k="이긴 거래 비율">이긴 비율</Term> {m.win_rate == null ? '—' : abs(m.win_rate)}
+                사고판 횟수 {m.round_trips}번 · <Term k="이긴 거래 비율">이긴 비율</Term> {m.win_rate == null ? '—' : abs(m.win_rate)}
               </>
             )
           }
@@ -400,7 +400,11 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
       <section className="block">
         <div className="block-head">
           <h2>거래 내역</h2>
-          <span className="sub">{data.fills.length}건</span>
+          <span className="sub">
+            {data.fills.length}건
+            {!monthly && data.fills.length > 0 &&
+              ` (산 것 ${data.fills.filter((f) => f.side === 'BUY').length} · 판 것 ${data.fills.filter((f) => f.side === 'SELL').length})`}
+          </span>
           {data.fills.length > 0 && (
             <button className="link" aria-expanded={showTrades} onClick={() => setShowTrades(!showTrades)}>
               {showTrades ? '숨기기' : '펼쳐 보기'}

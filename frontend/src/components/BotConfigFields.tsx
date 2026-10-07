@@ -1,6 +1,7 @@
-import type { Draft } from '../botConfig'
+import { badLimit, type Draft } from '../botConfig'
 import { SLIPPAGE_CHOICES, useStrategies } from '../strategies'
 import { Term } from './Help'
+import { AmountInput } from './AmountInput'
 import { PresetFields } from './PresetFields'
 import { StrategyPicker } from './StrategyPicker'
 
@@ -25,9 +26,11 @@ export function StrategyFields({ draft, onChange }: Props) {
   )
 }
 
-/** 체결 가격 가정과 최대 투자 금액. */
-export function TradeFields({ draft, onChange }: Props) {
+/** 체결 가격 가정과 최대 투자 금액. 모으기 봇은 최대 금액에 닿으면 매달 사기가 멈추므로 칸을 숨긴다
+    (예전에 정해 둔 값이 있으면 지울 수 있게 보여준다). */
+export function TradeFields({ draft, onChange, accumulates }: Props & { accumulates?: boolean }) {
   const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch })
+  const showLimit = !accumulates || draft.maxPosition !== ''
   return (
     <div className="stack">
       <div className="controls">
@@ -40,24 +43,19 @@ export function TradeFields({ draft, onChange }: Props) {
           </button>
         ))}
       </div>
-      <div className="controls">
-        <span className="label">
-          <Term k="최대 투자 금액" />
-        </span>
-        <button className={`seg ${!draft.maxPosition ? 'active' : ''}`} onClick={() => set({ maxPosition: '' })}>
-          가진 현금 전부
-        </button>
-        <span className="dollar">
-          $
-          <input
-            inputMode="numeric"
-            placeholder="직접 입력"
-            value={draft.maxPosition}
-            onChange={(e) => set({ maxPosition: e.target.value.replace(/[^0-9]/g, '') })}
-            size={8}
-          />
-        </span>
-      </div>
+      {showLimit && (
+        <div className="controls">
+          <span className="label">
+            <Term k="최대 투자 금액" />
+          </span>
+          <button className={`seg ${!draft.maxPosition ? 'active' : ''}`} onClick={() => set({ maxPosition: '' })}>
+            가진 현금 전부
+          </button>
+          <AmountInput value={draft.maxPosition} onChange={(maxPosition) => set({ maxPosition })} label="최대 투자 금액 직접 입력" />
+          {badLimit(draft) && <span className="bad small">$1 이상으로 정해 주세요. 없애려면 [가진 현금 전부]</span>}
+          {accumulates && <span className="faint small">이 금액에 닿으면 매달 사기를 멈춰요</span>}
+        </div>
+      )}
       <div className="faint small">
         <Term k="수수료">수수료</Term>는 토스증권 요율(0.1%)이 자동으로 적용돼요.
       </div>

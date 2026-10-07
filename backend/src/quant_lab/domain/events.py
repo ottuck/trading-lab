@@ -76,6 +76,10 @@ class MissedSessionsData(TypedDict):
     last: str
 
 
+class RestartData(TypedDict):
+    overdue: bool  # 멈춘 동안 판단할 때가 지났음 (그때만 텔레그램으로 알린다)
+
+
 class CommandData(TypedDict):
     command: str  # START·PAUSE·STOP·RUN_ONCE
     state: str  # 처리 뒤 봇 상태

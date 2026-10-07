@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, botApi, liveApi, notifyApi, type Bot, type NotifyScope, type SymbolWeight, type BrokerAccount } from '../api'
 import { useLive } from '../live'
 import { useDemo } from '../demo'
@@ -8,8 +8,9 @@ import { ago, dollars, money, shares, won } from '../format'
 import { closeNewBot, openBot, selectBot, startMeEdit, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
 import { isAiBot, isMeBot, sameParams, useStrategies } from '../strategies'
 import { answersOf, describe } from '../me'
-import { toConfig, toDraft, type Draft } from '../botConfig'
+import { badLimit, NAME_MAX, toConfig, toDraft, type Draft } from '../botConfig'
 import { useDismiss } from '../useDismiss'
+import { AmountInput } from './AmountInput'
 import { StrategyFields, TradeFields } from './BotConfigFields'
 import { activeOf, basketLabel, suggestName } from '../basket'
 import { sourceLabel } from '../source'
@@ -173,7 +174,7 @@ function NameField({ bot }: { bot: Bot }) {
   return (
     <Section title="이름" desc="봇 목록과 기록에 보이는 이름이에요.">
       <div className="controls">
-        <input id="bot-name" value={name} onChange={(e) => setName(e.target.value)} size={18} aria-label="봇 이름" />
+        <input id="bot-name" value={name} onChange={(e) => setName(e.target.value)} size={18} maxLength={NAME_MAX} aria-label="봇 이름" />
         <button disabled={!changed || !name.trim() || rename.isPending} onClick={() => rename.mutate()}>
           이름 바꾸기
         </button>
@@ -214,6 +215,7 @@ function DangerZone({ bot, others }: { bot: Bot; others: Bot[] }) {
           <button disabled={reset.isPending} onClick={() => confirmReset() && reset.mutate()}>
             다시 시작
           </button>
+          {reset.isSuccess && <span className="ok small">다시 시작했어요. 곧 가장 최근 가격으로 첫 판단을 해요.</span>}
         </div>
       </Section>
       <Section title="봇 삭제" desc="이 봇과 모든 기록을 지워요.">
@@ -536,6 +538,7 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
   const saved = toDraft(bot)
   const dirty = changing || draft.slippage !== saved.slippage || draft.maxPosition !== saved.maxPosition
   const ai = isAiBot(bot)
+  const accumulates = !!useStrategies().byName[bot.strategy]?.accumulates
   return (
     <>
       {ai ? (
@@ -573,21 +576,24 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
         )}
       </Section>
       )}
-      <Section title="체결과 투자 금액" desc="모의 체결을 얼마나 보수적으로 볼지, 한 번에 얼마까지 넣을지 정해요.">
-        <TradeFields draft={draft} onChange={setDraft} />
+      <Section
+        title="체결과 투자 금액"
+        desc={accumulates ? '모의 체결을 얼마나 보수적으로 볼지 정해요.' : '모의 체결을 얼마나 보수적으로 볼지, 한 번에 얼마까지 넣을지 정해요.'}
+      >
+        <TradeFields draft={draft} onChange={setDraft} accumulates={accumulates} />
         {/* 저장은 이 섹션(과 위의 전략·규칙)에 속한다: 섹션 밖에 혼자 두지 않는다 */}
         <div className="set-actions">
-          <button className="primary" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
+          <button className="primary" disabled={!dirty || badLimit(draft) || save.isPending} onClick={() => save.mutate()}>
             저장
           </button>
-          {dirty && !ai && <span className="faint small">위의 {isMeBot(bot) ? '내 규칙' : '전략'}도 함께 저장돼요.</span>}
+          {changing && !ai && <span className="faint small">위의 {isMeBot(bot) ? '내 규칙' : '전략'}도 함께 저장돼요.</span>}
           {!dirty && save.isSuccess && <span className="ok small">저장했어요. 다음 판단부터 적용돼요.</span>}
           {save.error && <span className="bad small">{save.error.message}</span>}
         </div>
       </Section>
       {!ai && <SymbolsField key={bot.symbols.map((s) => `${s.symbol}${s.weight}`).join()} bot={bot} />}
       <LiveSection bot={bot} />
-      <NameField key={bot.name} bot={bot} />
+      <NameField bot={bot} />
       <History botId={bot.id} />
       <DangerZone bot={bot} others={others} />
     </>
@@ -649,23 +655,19 @@ function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
         </Section>
       )}
       <Section title="체결과 투자 금액" desc="모의 체결을 얼마나 보수적으로 볼지, 한 번에 얼마까지 넣을지 정해요.">
-        <TradeFields draft={draft} onChange={setDraft} />
+        <TradeFields draft={draft} onChange={setDraft} accumulates={accumulates} />
       </Section>
       <Section title="이름과 시작 금액" desc="모의 투자는 실제 계좌와 무관해요. 시작 금액은 나중에 바꿀 수 없어요.">
         <div className="form" style={{ margin: 0 }}>
           <label>
             이름
-            <input id="new-bot-name" value={name} onChange={(e) => setCustomName(e.target.value)} size={16} />
+            <input id="new-bot-name" value={name} onChange={(e) => setCustomName(e.target.value)} size={16} maxLength={NAME_MAX} />
           </label>
           <label>
-            시작 금액 ($)
-            <input
-              id="new-bot-cash"
-              value={cash}
-              inputMode="numeric"
-              onChange={(e) => setCustomCash(e.target.value.replace(/[^0-9]/g, ''))}
-              size={8}
-            />
+            시작 금액
+            <span>
+              <AmountInput id="new-bot-cash" value={cash} onChange={setCustomCash} placeholder="예: 10000" />
+            </span>
           </label>
         </div>
       </Section>
@@ -676,7 +678,7 @@ function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
         </label>
         <button
           className="primary"
-          disabled={create.isPending || !name.trim() || !cash || (chosen.length > 1 && total !== 100)}
+          disabled={create.isPending || !name.trim() || !Number(cash) || badLimit(draft) || (chosen.length > 1 && total !== 100)}
           onClick={() => create.mutate()}
         >
           {startNow ? '만들고 시작하기' : '만들기'}
@@ -699,11 +701,15 @@ export function SettingsView({ bots }: { bots: Bot[] }) {
   const { byName } = useStrategies()
   const creating = seed !== null || !bots.length
   const demo = useDemo()
+  const botsHead = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (seed) botsHead.current?.scrollIntoView({ block: 'start' })
+  }, [seed])
   return (
     <div className="settings">
       {/* 데모: 실제 계좌·알림이 없고, 봇 설정은 무엇을 고를 수 있는지 보기만 한다 (바꾸기 요청은 서버가 막는다) */}
       {!demo && <AccountAndNotify />}
-      <div className="settings-head bots-head">
+      <div className="settings-head bots-head" ref={botsHead}>
         <Switcher bots={bots} current={selected} creating={creating} />
         <p className="muted small">
           {creating
