@@ -44,3 +44,6 @@ crash.log
 
 # DB 덤프 (토스 시세 포함 가능, 커밋 금지)
 *.sql
+
+# 배포할 때 꺼낸 main (deploy.sh)
+.deploy/

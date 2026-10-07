@@ -1,0 +1,55 @@
+name: deploy
+
+# main의 CI가 통과하면 운영을 배포한다. 운영 서버(이 PC)에 설치한 러너(라벨 quant-lab)가 밖으로만 연결해 받아 간다
+# (공개 포트 0개 그대로). 데모는 자동으로 배포하지 않는다: bash deploy/deploy.sh demo
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  prod:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: [self-hosted, quant-lab]
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      # 장 마감 판단(뉴욕 18:00, AI 판단 포함) 중에 Worker를 다시 띄우지 않는다. 그 시간이면 끝날 때까지 기다린다.
+      - name: 판단 시간 피하기
+        shell: pwsh
+        run: |
+          while ($true) {
+            $ny = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::UtcNow, 'America/New_York')
+            $hm = $ny.Hour * 100 + $ny.Minute
+            if ($hm -lt 1745 -or $hm -ge 1930) { break }
+            Write-Host "뉴욕 $($ny.ToString('HH:mm')): 판단 시간이라 19:30까지 기다려요"
+            Start-Sleep -Seconds 60
+          }
+
+      # 러너는 PATH의 첫 bash를 쓰는데 Windows에서는 WSL bash가 잡힌다. Git Bash를 직접 부른다.
+      - name: 운영 배포
+        shell: pwsh
+        env:
+          SRC: ${{ github.workspace }}
+          SECRETS_DIR: ${{ vars.DEPLOY_SECRETS_DIR }}
+        run: |
+          if (-not $env:SECRETS_DIR) { throw '저장소 변수 DEPLOY_SECRETS_DIR(운영 .secrets 폴더)가 없습니다' }
+          & (Join-Path $env:ProgramFiles 'Git/bin/bash.exe') deploy/deploy.sh
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: 확인
+        shell: pwsh
+        run: |
+          foreach ($i in 1..20) {
+            try { Invoke-RestMethod http://127.0.0.1:8000/api/health | ConvertTo-Json -Compress; exit 0 } catch { Start-Sleep -Seconds 5 }
+          }
+          throw '배포 뒤 api가 응답하지 않습니다'
