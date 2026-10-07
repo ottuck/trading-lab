@@ -422,7 +422,7 @@ class AiJudgmentRow(Base):
     weights: Mapped[dict[str, int] | None] = mapped_column(JSONB(none_as_null=True))
     reasons: Mapped[dict[str, str] | None] = mapped_column(JSONB(none_as_null=True))
     summary: Mapped[str | None] = mapped_column(Text)
-    sources: Mapped[list[dict[str, str]] | None] = mapped_column(
+    sources: Mapped[list[dict[str, Any]] | None] = mapped_column(
         JSONB(none_as_null=True)
     )  # [{url, title}]
     queries: Mapped[list[str] | None] = mapped_column(JSONB(none_as_null=True))

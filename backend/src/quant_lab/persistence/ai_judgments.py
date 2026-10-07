@@ -25,7 +25,9 @@ def save_judgment(
         weights=dict(advice.weights) if advice else None,
         reasons=dict(advice.reasons) if advice else None,
         summary=advice.summary if advice else None,
-        sources=[{"url": s.url, "title": s.title} for s in advice.sources] if advice else None,
+        sources=[{"url": s.url, "title": s.title, "used": s.used} for s in advice.sources]
+        if advice
+        else None,
         queries=list(advice.queries) if advice else None,
         input_tokens=usage.input_tokens if usage else None,
         output_tokens=usage.output_tokens if usage else None,

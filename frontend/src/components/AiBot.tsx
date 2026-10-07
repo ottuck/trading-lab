@@ -77,39 +77,57 @@ function Weight({ row }: { row: Row }) {
   )
 }
 
+function SourceList({ items }: { items: AiDay['sources'] }) {
+  return (
+    <ul className="ai-links">
+      {items.map((s) => (
+        <li key={s.url}>
+          <a href={s.url} target="_blank" rel="noopener noreferrer">
+            {s.title || s.url}
+          </a>
+          <span className="faint small"> · {new URL(s.url).hostname.replace(/^www\./, '')}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** AI가 참고한 것: 판단에 쓴 기사를 먼저, 검색해서 받아 보기만 한 결과는 접어 둔다. */
 function Sources({ day }: { day: AiDay }) {
   const [open, setOpen] = useState(false)
   if (!day.queries.length && !day.sources.length) return null
-  const shown = open ? day.sources : day.sources.slice(0, 5)
+  const used = day.sources.filter((s) => s.used)
+  // 지침 .4(2026-10-07) 전 판단에는 근거 표시가 없다: 받아 본 결과 중 앞의 5개를 보여준다
+  const lead = used.length ? used : day.sources.slice(0, 5)
+  const rest = day.sources.filter((s) => !lead.includes(s))
+  const queries = [...new Set(day.queries)]
   return (
     <details className="ai-sources">
       <summary>
-        AI가 참고한 것 · 검색 {day.queries.length}번, 기사 {day.sources.length}개
+        AI가 참고한 것 · {used.length ? `근거 기사 ${used.length}개 · ` : ''}검색 {queries.length}번, 결과 {day.sources.length}개
       </summary>
-      {day.queries.length > 0 && (
+      {queries.length > 0 && (
         <div className="ai-queries small">
-          {[...new Set(day.queries)].map((q) => (
+          {queries.map((q) => (
             <span key={q} className="chip">
               {q}
             </span>
           ))}
         </div>
       )}
-      <ul className="ai-links">
-        {shown.map((s) => (
-          <li key={s.url}>
-            <a href={s.url} target="_blank" rel="noopener noreferrer">
-              {s.title || s.url}
-            </a>
-            <span className="faint small"> · {new URL(s.url).hostname.replace(/^www\./, '')}</span>
-          </li>
+      {used.length > 0 && <div className="faint small">판단에 쓴 기사</div>}
+      <SourceList items={lead} />
+      {rest.length > 0 &&
+        (open ? (
+          <>
+            <div className="faint small">검색해서 받아 본 나머지 결과 (판단에 쓰지 않았을 수 있어요)</div>
+            <SourceList items={rest} />
+          </>
+        ) : (
+          <button className="link" onClick={() => setOpen(true)}>
+            {used.length ? `검색 결과 ${rest.length}개 더 보기` : `${rest.length}개 더 보기`}
+          </button>
         ))}
-      </ul>
-      {day.sources.length > shown.length && (
-        <button className="link" onClick={() => setOpen(true)}>
-          {day.sources.length - shown.length}개 더 보기
-        </button>
-      )}
     </details>
   )
 }
