@@ -31,7 +31,7 @@ from quant_lab.config import Settings, get_settings
 from quant_lab.domain.events import EventKind
 from quant_lab.persistence.bots import add_event
 from quant_lab.persistence.db import get_engine
-from quant_lab.persistence.heartbeat import record_heartbeat
+from quant_lab.worker.heartbeat import HeartbeatThread
 from quant_lab.worker.loop import Worker, release_worker_lock, try_acquire_worker_lock
 
 log = logging.getLogger("quant_lab.worker")
@@ -132,10 +132,14 @@ def run(stop: threading.Event) -> None:
     pinger = HeartbeatPinger(settings.heartbeat_ping_url) if settings.heartbeat_ping_url else None
     log.info("외부 heartbeat %s", "켜짐" if pinger else "꺼짐 (HEARTBEAT_PING_URL 없음)")
 
+    # 생존 신호는 평가와 따로 남긴다 (AI 판단처럼 긴 바퀴에도 "프로그램 멈춤"이 잘못 뜨지 않게)
+    heart = HeartbeatThread(make_session, worker_id, __version__, started_at, interval, stop)
+    heart.beat()
+    heart.start()
+
     while not stop.is_set():
+        heart.loop_started()
         try:
-            with make_session() as session:
-                record_heartbeat(session, worker_id, __version__, started_at, datetime.now(UTC))
             worker.tick()
             if notifier is not None:
                 notifier.poll()
