@@ -5,7 +5,7 @@ import { useLive } from '../live'
 import { useDemo } from '../demo'
 import { LiveOrderList } from './Live'
 import { ago, dollars, money, shares, won } from '../format'
-import { closeNewBot, selectBot, startMeEdit, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
+import { closeNewBot, openBot, selectBot, startMeEdit, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
 import { isAiBot, isMeBot, sameParams, useStrategies } from '../strategies'
 import { answersOf, describe } from '../me'
 import { toConfig, toDraft, type Draft } from '../botConfig'
@@ -623,10 +623,12 @@ function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
     },
     onSuccess: (bot) => {
       void qc.invalidateQueries({ queryKey: ['bots'] })
-      // 만든 봇을 홈에서 바로 보여준다.
-      selectBot(bot.id)
+      // 만든 봇을 바로 보여준다 (나 카피 봇은 홈 첫 화면이 그 봇이다).
       closeNewBot()
-      location.hash = 'dashboard'
+      if (isMeBot(bot)) {
+        selectBot(bot.id)
+        location.hash = 'dashboard'
+      } else openBot(bot.id)
     },
   })
   return (

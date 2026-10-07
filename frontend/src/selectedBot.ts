@@ -13,7 +13,13 @@ function read(): number | null {
   }
 }
 
-let selected = read()
+/** 봇 화면 주소 #bot/3 → 3. 주소가 봇을 가리키면 그 봇을 고른다 (뒤로 가기·링크). */
+function fromHash(): number | null {
+  const m = /^#bot\/(\d+)$/.exec(location.hash)
+  return m ? Number(m[1]) : null
+}
+
+let selected = fromHash() ?? read()
 
 export function selectBot(id: number) {
   selected = id
@@ -23,6 +29,17 @@ export function selectBot(id: number) {
     // 저장이 막힌 브라우저에서는 이번 방문 동안만 기억한다.
   }
   listeners.forEach((l) => l())
+}
+
+window.addEventListener('hashchange', () => {
+  const id = fromHash()
+  if (id && id !== selected) selectBot(id)
+})
+
+/** 봇 하나 자세히 보기로 이동 (#bot/3). */
+export function openBot(id: number) {
+  selectBot(id)
+  location.hash = `bot/${id}`
 }
 
 function subscribe(l: () => void) {
@@ -62,7 +79,7 @@ export function useNewBotSeed(): NewBotSeed | null {
   )
 }
 
-/** 화면 이동 (#dashboard, #backtest, #settings, #me) */
+/** 화면 이동 (#dashboard, #backtest, #settings, #me). 봇 화면은 openBot. */
 export function goTo(page: string) {
   location.hash = page
 }

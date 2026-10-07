@@ -54,11 +54,16 @@ const RANGES = [
   { label: '3년', days: 750 },
 ]
 
+function biggestHolding(bot: Bot): string | undefined {
+  const value = (p: Bot['account']['positions'][number]) => Number(p.qty) * Number(p.live_price ?? p.last_close)
+  return bot.account.positions.filter((p) => Number(p.qty) > 0).sort((a, b) => value(b) - value(a))[0]?.symbol
+}
+
 export function PriceChart({ bot }: { bot: Bot }) {
   const el = useRef<HTMLDivElement>(null)
   const [days, setDays] = useState(252)
-  // 여러 종목 봇은 위에서 종목을 골라 본다.
-  const [picked, setPicked] = useState(bot.symbol)
+  // 여러 종목 봇은 위에서 종목을 골라 본다. 처음엔 가장 많이 들고 있는 종목 (없으면 대표 종목).
+  const [picked, setPicked] = useState(() => biggestHolding(bot) ?? bot.symbol)
   const symbol = bot.symbols.some((s) => s.symbol === picked) ? picked : bot.symbol
   const { theme } = useTheme()
   const bars = useQuery({ queryKey: ['bars', symbol], queryFn: () => api.bars(symbol) })
