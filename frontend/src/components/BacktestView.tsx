@@ -209,10 +209,16 @@ function RunForm({
               ? '계산 중…'
               : info?.accumulates
                 ? `매달 ${roundMoney(Number(params.deposit ?? 0))}씩 시험해 보기`
-                : '$10,000로 시험해 보기'}
+                : '처음에 $10,000 넣고 시험해 보기'}
           </button>
           {run.error && <span className="bad small">{run.error.message}</span>}
         </div>
+        {/* 유명 전략은 매달 넣지 않는다: 처음 돈 한 번으로 사고판다 */}
+        {info && !info.accumulates && (
+          <p className="faint small" style={{ margin: 0 }}>
+            더 넣지 않아요. 살 때는 가진 현금 전부로 사고, 팔 때는 전부 팔아요. 비교 기준은 같은 돈으로 첫날 사서 그냥 들고 있기예요.
+          </p>
+        )}
       </div>
     </section>
   )
@@ -285,7 +291,7 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
               · {basketLabel(data.symbols, data.symbol)} ·{' '}
               {monthly
                 ? `${ym(m.start)}부터 매달 ${roundMoney(Number(data.params.deposit ?? 0))}씩 넣었다면 (모두 ${money(paid)})`
-                : `${ym(m.start)}부터 ${money(m.initial_cash)}로 시작했다면`}
+                : `${ym(m.start)}에 처음 ${money(m.initial_cash)}만 넣고 시작했다면`}
             </span>
           </div>
           <div className="hero-value">{money(m.final_equity)}</div>
