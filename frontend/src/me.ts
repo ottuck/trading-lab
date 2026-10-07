@@ -56,6 +56,13 @@ export const DIP: Option[] = [
   { value: 20, label: '크게 떨어졌을 때만 사요', sub: '1년 최고가보다 20% 넘게 떨어지면' },
 ]
 
+/** 평행세계에서 고른 값처럼 선택지에 없는 지금 값도 고른 채로 보여준다 (예: -5%에 바로 사는 나). */
+export function withCurrent(options: Option[], value: number): Option[] {
+  if (options.some((o) => o.value === value)) return options
+  const sub = options === DIP ? `1년 최고가보다 ${value}% 넘게 떨어지면` : `200일 평균보다 ${value}% 넘게 오르면 그달은 쉬어요`
+  return [...options, { value, label: '지금 규칙 그대로', sub }]
+}
+
 export const START: Answers = { symbols: [], regular: 1, deposit: 1350, day: 25, hot: 15, dip: 10 }
 
 /** 이미 있는 나 카피 봇의 규칙 → 답 (질문 다시 하기) */

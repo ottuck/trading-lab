@@ -17,7 +17,7 @@ from quant_lab.persistence.bars import upsert_daily_bars
 from quant_lab.persistence.bots import create_bot
 from quant_lab.persistence.db import get_session
 from quant_lab.persistence.heartbeat import record_heartbeat
-from quant_lab.persistence.models import BotPositionRow, CommandRow
+from quant_lab.persistence.models import BotPositionRow, BotRow, CommandRow
 from tests.fakes import WeekdayCalendar, make_bars
 
 CAL = WeekdayCalendar()
@@ -85,6 +85,8 @@ def test_command_is_queued_for_worker(client: TestClient, session: Session, bot_
     resp = client.post(f"/api/bots/{bot_id}/commands", json={"kind": "PAUSE"})
     assert resp.status_code == 202
     assert session.scalars(select(CommandRow.kind)).all() == ["PAUSE"]
+    # 처리 전에는 화면이 "멈추는 중"으로 보인다
+    assert client.get(f"/api/bots/{bot_id}").json()["pending_command"] == "PAUSE"
 
     assert client.post(f"/api/bots/{bot_id}/commands", json={"kind": "NOPE"}).status_code == 422
     assert client.post("/api/bots/999/commands", json={"kind": "START"}).status_code == 404
@@ -252,6 +254,25 @@ def test_follow_plan(client: TestClient, session: Session, bot_id: int) -> None:
     assert Decimal(qqq["dip_price"]) < Decimal(qqq["close"])
     assert Decimal(qqq["buy"]) + Decimal(qqq["save"]) > 0
     assert client.get(f"/api/bots/{bot_id}/plan").status_code == 400  # 나 카피 봇만
+
+    # 첫 판단: 시작 금액으로 다음 장에 살 예정. 그 돈은 이미 쓴 것이라 입금일에는 그달 입금만 산다.
+    # 시작 금액이 시작한 달의 입금이라 다음 입금일은 다음 달이다.
+    bot = client.get(f"/api/bots/{me['id']}").json()
+    session.get_one(BotRow, me["id"]).state = BotState.RUNNING
+    session.commit()
+    evaluate_bot(
+        session,
+        me["id"],
+        market=StoredMarket(),
+        calendar=CAL,
+        now=datetime.combine(BARS[-1].session_date, time(22, 30), tzinfo=UTC),
+        trigger=Trigger.SCHEDULED,
+    )
+    assert client.get(f"/api/bots/{me['id']}").json()["pending_orders"]
+    plan = client.get(f"/api/bots/{me['id']}/plan").json()
+    (qqq,) = plan["symbols"]
+    assert Decimal(qqq["buy"]) == Decimal(500) and bot["account"]["contributed"] == "500"
+    assert plan["deposit_date"][:7] > plan["as_of"][:7]
 
 
 def test_demo_mode_is_read_only(

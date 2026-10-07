@@ -70,7 +70,16 @@ function Reserve({ plan }: { plan: Plan }) {
 
 export function NextPlan({ bot }: { bot: Bot }) {
   const { data: plan } = useQuery({
-    queryKey: ['plan', bot.id, JSON.stringify(bot.params), JSON.stringify(bot.symbols), bot.account.last_close_date],
+    // 판단하거나 예정 주문이 바뀌면 다시 계산한다 (내일 살 돈은 이미 쓴 것으로 본다)
+    queryKey: [
+      'plan',
+      bot.id,
+      JSON.stringify(bot.params),
+      JSON.stringify(bot.symbols),
+      bot.account.last_close_date,
+      bot.last_decision?.session_date,
+      bot.pending_orders.length,
+    ],
     queryFn: () => botApi.plan(bot.id),
     staleTime: 5 * 60_000,
     retry: false,
@@ -91,7 +100,7 @@ export function NextPlan({ bot }: { bot: Bot }) {
       )}
       <div className="plan-when">
         <span className="date">{when(plan.deposit_date)}</span>
-        <span className="muted">월급날 · {usd(plan.deposit)} 넣기</span>
+        <span className="muted">넣는 날 · {usd(plan.deposit)}</span>
       </div>
       <div className="plan-rows">
         {plan.symbols.map((s) => {
