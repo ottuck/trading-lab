@@ -243,6 +243,8 @@ sudo bash deploy/bootstrap.sh           # 새 서버에서 한 번
 bash deploy/deploy.sh                   # 배포할 때마다 (main 기준, 마이그레이션 성공해야 api·worker가 뜸)
 ```
 
+Windows에서는 **Git Bash**로 실행합니다. PowerShell의 `bash`는 WSL bash라 Windows에 저장된 GitHub 로그인을 못 써서 사용자 이름을 묻습니다. PowerShell에서는 `& "C:\Program Files\Git\bin\bash.exe" deploy/deploy.sh`.
+
 ## 프로젝트 구조
 
 ```text
