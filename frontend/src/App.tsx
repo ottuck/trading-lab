@@ -19,17 +19,22 @@ const TABS = {
 } as const
 type Tab = keyof typeof TABS
 
-// 탭 밖의 화면: 나 카피하기 (#me), 봇 하나 자세히 보기 (#bot, 홈 탭)
+// 탭 밖의 화면: 나 카피하기 (#me), 봇 하나 자세히 보기 (#bot/3, 홈 탭)
 type Page = Tab | 'me' | 'bot'
 
 function useHashTab(): [Page, (t: Tab) => void] {
   const read = (): Page => {
     const h = location.hash.slice(1)
-    return h === 'me' || h === 'bot' || h in TABS ? (h as Page) : 'dashboard'
+    if (h === 'bot' || h.startsWith('bot/')) return 'bot'
+    return h === 'me' || h in TABS ? (h as Page) : 'dashboard'
   }
   const [tab, setTab] = useState<Page>(read)
   useEffect(() => {
-    const onHash = () => setTab(read())
+    const onHash = () => {
+      setTab(read())
+      // 다른 화면(다른 봇 포함)으로 넘어가면 맨 위부터 보여준다
+      window.scrollTo(0, 0)
+    }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])

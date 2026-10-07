@@ -761,6 +761,14 @@ button.seg.active .lev {
 }
 .home-main {
   min-width: 0;
+  animation: page-in 0.2s ease-out;
+}
+/* 화면·봇을 바꾸면 새 화면이 살짝 떠오른다 (다른 화면으로 넘어간 느낌) */
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }
 .hero-head {
   display: flex;
@@ -780,6 +788,15 @@ button.seg.active .lev {
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.015em;
+}
+/* 봇 화면: 어느 봇인지 이름이 제목이다 */
+.bot-line.lead .name {
+  font-size: 22px;
+  letter-spacing: -0.03em;
+}
+/* 폰에서 봇 바꾸기 칩 (넓은 화면은 오른쪽 봇 목록) */
+.bot-tabs {
+  display: none;
 }
 .hero-value {
   margin-top: 10px;
@@ -1235,15 +1252,45 @@ button.bot-item.active {
   }
   .home-side {
     position: static;
-    order: -1;
   }
   .side-note {
     display: none;
   }
+  .bot-tabs {
+    display: flex;
+    gap: 6px;
+    margin: 0 -16px 18px;
+    padding: 0 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .bot-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .bot-tabs button {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    flex: none;
+    padding: 7px 14px;
+    border-radius: 999px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .bot-tabs button span {
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .bot-tabs button.active {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--on-ink);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dot.pulse::before {
+  .dot.pulse::before,
+  .home-main {
     animation: none;
   }
 }
@@ -1400,11 +1447,6 @@ button.bt-item.active {
 .bt-item .ret {
   font-weight: 600;
   font-size: 13px;
-}
-@media (max-width: 960px) {
-  .bt .home-side {
-    order: 0;
-  }
 }
 @media (max-width: 640px) {
   .bt-chart {
@@ -1865,12 +1907,6 @@ button.link.back {
     border-top: 1px solid var(--border);
   }
 }
-@media (max-width: 960px) {
-  /* 나 카피 봇 홈은 나 vs 매달 그냥 사기가 먼저, 봇 목록은 아래 */
-  .me-home .home-side {
-    order: 0;
-  }
-}
 
 /* 나 카피 봇이 없을 때 홈 첫 화면 */
 .me-start {
@@ -2025,11 +2061,42 @@ button.link.back {
   margin: 0;
   color: var(--faint);
 }
+/* 나 카피하기로 이끄는 칸: 처음 온 사람에게 가장 쉬운 시작점 */
 .bt-mine {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 14px;
+  gap: 12px 16px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+}
+.bt-mine-text {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 260px;
+}
+.bt-mine-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+button.accent {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+button.accent:hover:not(:disabled) {
+  background: var(--accent);
+  opacity: 0.88;
+}
+.bt-ai-note {
+  margin: 4px 0 0;
+  color: var(--faint);
+  font-size: 13px;
+}
+.bt-ai-note .link {
+  font-size: 13px;
 }
 
 /* 한국어는 낱말 중간에서 줄을 바꾸지 않는다 ("봇 / 이" 방지). 긴 영문·숫자는 넘치면 끊는다. */

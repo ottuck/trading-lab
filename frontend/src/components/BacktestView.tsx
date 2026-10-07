@@ -4,12 +4,12 @@ import { useEffect, useRef, useState } from 'react'
 import { api, backtestApi, type BacktestDetail, type StrategyInfo, type SymbolWeight } from '../api'
 import { useCurrency } from '../currency'
 import { money, percent, roundMoney, shares, signedMoney, tone } from '../format'
-import { isMeBot, useStrategies } from '../strategies'
+import { isAiBot, isMeBot, useStrategies } from '../strategies'
 import { useDemo, usePriceWord } from '../demo'
 import { cssVar, useTheme } from '../theme'
 import { FxNote } from './Currency'
 import { Term } from './Help'
-import { goTo, startNewBot } from '../selectedBot'
+import { goTo, openBot, startNewBot } from '../selectedBot'
 import { ParallelWorlds } from './Parallel'
 import { PresetFields } from './PresetFields'
 import { StrategyGlyph } from './StrategyGlyph'
@@ -40,7 +40,17 @@ const created = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month
 type Choice = { symbol: string; strategy: string; symbols?: SymbolWeight[] | null }
 
 /** 나처럼 투자가 주력, 유명 전략들은 아래 참고용 작은 목록. */
-function StrategyModes({ list, value, onChange }: { list: StrategyInfo[]; value: string; onChange: (name: string) => void }) {
+function StrategyModes({
+  list,
+  value,
+  onChange,
+  aiBotId,
+}: {
+  list: StrategyInfo[]
+  value: string
+  onChange: (name: string) => void
+  aiBotId?: number
+}) {
   const me = list.find((s) => s.accumulates)
   const refs = list.filter((s) => !s.accumulates)
   const ref = refs.find((s) => s.name === value)
@@ -81,6 +91,19 @@ function StrategyModes({ list, value, onChange }: { list: StrategyInfo[]; value:
             </button>
           ))}
         </div>
+        {/* AI는 지난 일의 결과를 이미 알고 있어 과거 시험이 부풀려진다 (project.md 14절) */}
+        <p className="bt-ai-note">
+          AI 봇은 과거로 시험하지 않아요. AI가 지난 일의 결과를 이미 알고 있어서 실제보다 좋게 나오거든요. 대신 오늘부터 모의 투자하며 나 카피
+          봇과 같은 돈으로 나란히 비교해요.
+          {aiBotId != null && (
+            <>
+              {' '}
+              <button className="link" onClick={() => openBot(aiBotId)}>
+                AI 봇 비교 보기 →
+              </button>
+            </>
+          )}
+        </p>
       </div>
     </div>
   )
@@ -99,6 +122,7 @@ function RunForm({
   const { list, byName } = useStrategies()
   const { data: bots } = useQuery({ queryKey: ['bots'], queryFn: api.bots })
   const meBot = bots?.find(isMeBot)
+  const aiBot = bots?.find(isAiBot)
   const priceWord = usePriceWord()
   // 전략마다 고른 프리셋 값을 기억한다. 고르지 않았으면 기본값.
   const [picked, setPicked] = useState<Record<string, Record<string, number>>>({})
@@ -135,22 +159,28 @@ function RunForm({
         <span className="sub">예전부터 그렇게 했다면 어땠을지 {priceWord}으로 계산해요</span>
       </div>
       <div className="stack">
-        <StrategyModes list={list} value={strategy} onChange={setStrategy} />
+        <StrategyModes list={list} value={strategy} onChange={setStrategy} aiBotId={aiBot?.id} />
         {info?.accumulates && (
           <div className="bt-mine">
-            {meBot && (
-              <button
-                onClick={() => {
-                  setPicked({ ...picked, [strategy]: meBot.params })
-                  setBasket(activeOf(meBot.symbols))
-                }}
-              >
-                {meBot.name} 규칙 불러오기
+            <div className="bt-mine-text">
+              <b>내 규칙을 모르겠다면, 나 카피하기</b>
+              <span className="muted small">질문 몇 개에 답하면 내 투자 습관이 규칙이 되고 지난 10년을 바로 보여줘요. 1분이면 끝나요.</span>
+            </div>
+            <div className="bt-mine-actions">
+              <button className="accent" onClick={() => goTo('me')}>
+                질문으로 내 규칙 정하기 →
               </button>
-            )}
-            <button className="link" onClick={() => goTo('me')}>
-              질문으로 내 규칙 정하기 (나 카피하기)
-            </button>
+              {meBot && (
+                <button
+                  onClick={() => {
+                    setPicked({ ...picked, [strategy]: meBot.params })
+                    setBasket(activeOf(meBot.symbols))
+                  }}
+                >
+                  {meBot.name} 설정 불러오기
+                </button>
+              )}
+            </div>
           </div>
         )}
         {info && <PresetFields info={info} params={params} onChange={(p) => setPicked({ ...picked, [strategy]: p })} />}
