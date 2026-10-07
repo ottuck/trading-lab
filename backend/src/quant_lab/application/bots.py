@@ -55,6 +55,24 @@ class BotSettings:
 
 # --- 검증 ---
 
+NAME_MAX = 20  # 봇 목록·칩·제목에 한 줄로 보이는 길이
+
+
+def check_name(name: str) -> str:
+    name = name.strip()
+    if not name:
+        raise Invalid("이름을 입력해 주세요")
+    if len(name) > NAME_MAX:
+        raise Invalid(f"이름은 {NAME_MAX}자까지 쓸 수 있어요")
+    return name
+
+
+def check_limits(settings: BotSettings) -> None:
+    """최대 투자 금액이 0 이하면 봇이 아예 사지 못한다. 없애려면 비워 둔다 (가진 현금 전부)."""
+    for value in (settings.max_position_value, settings.max_order_value):
+        if value is not None and value < 1:
+            raise Invalid("최대 투자 금액은 $1 이상으로 정해 주세요 (없애려면 '가진 현금 전부')")
+
 
 def require_bot(session: Session, bot_id: int, *, for_update: bool = False) -> BotRow:
     bot = get_bot(session, bot_id, for_update=for_update)
@@ -137,6 +155,8 @@ def create(
 ) -> BotRow:
     """request는 만든 기록에 남길 원래 요청 (설정 변경 이력의 '처음 값')."""
     strategy = check_strategy(settings.strategy, settings.params)
+    check_limits(settings)
+    name = check_name(name)
     if _name_taken(session, name):
         raise Conflict(f"같은 이름의 봇이 있습니다: {name}")
     weights = check_weights(symbol, symbols, strategy)
@@ -169,6 +189,7 @@ def update_settings(session: Session, bot_id: int, settings: BotSettings, now: d
     """실행 중에도 바꿀 수 있다. 다음 판단부터 적용된다."""
     bot = require_bot(session, bot_id, for_update=True)
     strategy = check_strategy(settings.strategy, settings.params)
+    check_limits(settings)
     if len(bot.symbols) > 1 and deposit_plan(strategy) is None:
         raise Invalid("여러 종목 봇은 매달 넣고 사 모으는 전략만 쓸 수 있어요")
     limits = to_jsonable(settings.limits())
@@ -260,9 +281,7 @@ def update_symbols(
 
 def rename(session: Session, bot_id: int, name: str, now: datetime) -> BotRow:
     bot = require_bot(session, bot_id, for_update=True)
-    name = name.strip()
-    if not name:
-        raise Invalid("이름을 입력해 주세요")
+    name = check_name(name)
     if name == bot.name:
         return bot
     if _name_taken(session, name):

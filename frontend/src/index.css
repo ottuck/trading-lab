@@ -790,6 +790,10 @@ button.seg.active .lev {
   letter-spacing: -0.015em;
 }
 /* 봇 화면: 어느 봇인지 이름이 제목이다 */
+.bot-line .name {
+  min-width: 0;
+  overflow-wrap: anywhere; /* 띄어쓰기 없는 긴 이름도 화면 밖으로 밀지 않게 */
+}
 .bot-line.lead .name {
   font-size: 22px;
   letter-spacing: -0.03em;
@@ -883,6 +887,10 @@ button.seg.active .lev {
   display: flex;
   flex-wrap: wrap; /* 버튼이 많아도 화면 밖으로 밀어내지 않게 */
   gap: 2px;
+}
+/* 숫자만 받는 금액 칸에 문자를 쳤을 때 */
+.input-warn {
+  color: var(--bad);
 }
 /* 가격 차트 종목 고르기 (종목이 많은 봇) */
 select.symbol-select {
@@ -1493,6 +1501,12 @@ button.switcher-btn {
   font-size: 22px;
   font-weight: 600;
   letter-spacing: -0.03em;
+  max-width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere; /* 띄어쓰기 없는 긴 이름도 화면 밖으로 밀지 않게 */
+}
+button.switcher-btn svg {
+  flex: none;
 }
 button.switcher-btn:hover:not(:disabled) {
   background: none;
@@ -2543,4 +2557,9 @@ button.line.ai-day {
   padding: 0;
   border: 0;
   min-width: 0;
+}
+
+/* 새 봇 만들기로 오면 이 제목까지 스크롤한다: 위의 고정 메뉴에 가리지 않게 */
+.bots-head {
+  scroll-margin-top: 72px;
 }

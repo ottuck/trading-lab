@@ -56,16 +56,17 @@ class EventNotifier:
                 )
             )
             settings = current(session)
-            bots = {
-                bot_id: (name, symbol)
-                for bot_id, name, symbol in session.execute(
-                    select(BotRow.id, BotRow.name, BotRow.symbol)
-                )
-            }
+            rows = session.execute(
+                select(BotRow.id, BotRow.name, BotRow.symbol, BotRow.live_ratio)
+            ).all()
+            bots = {bot_id: (name, symbol) for bot_id, name, symbol, _ in rows}
+            following = {bot_id for bot_id, _, _, ratio in rows if ratio is not None}
         # (마지막 이벤트 id, 묶은 문장, 소식 수) 단위로 보낸다.
         chunks: list[tuple[int, str, int]] = []
         for event in events:
-            if not wants(settings, event.kind):  # 화면 설정: 꺼짐이거나 받지 않기로 한 종류
+            follows = event.bot_id in following
+            # 화면 설정: 꺼짐이거나 받지 않기로 한 종류
+            if not wants(settings, event.kind, follows=follows):
                 continue
             text = render(event, bots.get(event.bot_id) if event.bot_id else None)
             if text is None:

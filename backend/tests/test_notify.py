@@ -128,6 +128,17 @@ def test_every_event_kind_has_a_message() -> None:
         assert msg is None or ("로그 원문" not in msg.title + msg.body), kind
 
 
+def test_quiet_restart_and_followed_ai_failure() -> None:
+    # 배포로 다시 켜져도 판단할 때가 지나지 않았으면 텔레그램은 보내지 않는다 (앱 기록에는 남는다)
+    quiet = event_message(EventKind.RESTART_RESUME, "INFO", "", {"overdue": False}, "qqq", "QQQ")
+    late = event_message(EventKind.RESTART_RESUME, "INFO", "", {"overdue": True}, "qqq", "QQQ")
+    assert quiet is not None and not quiet.notify and late is not None and late.notify
+    # 실제로 따라 하는 봇의 AI 판단 실패는 "실제 주문만"에서도 보낸다
+    live = notify_settings.NotifySettings(available=True, enabled=True, scope="live")
+    assert not notify_settings.wants(live, EventKind.AI_JUDGMENT)
+    assert notify_settings.wants(live, EventKind.AI_JUDGMENT, follows=True)
+
+
 def test_events_become_plain_messages_sent_once(engine: Engine, session: Session) -> None:
     make_session: Callable[[], Session] = sessionmaker(engine)
     notify_settings.announce(session, True, False, NOW)  # Worker에 토큰이 있음

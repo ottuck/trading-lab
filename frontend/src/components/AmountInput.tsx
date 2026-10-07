@@ -1,0 +1,41 @@
+import { useState } from 'react'
+
+type Props = {
+  value: string
+  onChange: (digits: string) => void
+  placeholder?: string
+  id?: string
+  label?: string
+  size?: number
+}
+
+/** 달러 금액 입력칸. 숫자만 받고, 한글·문자를 치면 왜 안 써지는지 바로 알려준다. */
+export function AmountInput({ value, onChange, placeholder = '예: 5000', id, label, size = 8 }: Props) {
+  const [warn, setWarn] = useState(false)
+  return (
+    <>
+      <span className="dollar">
+        $
+        <input
+          id={id}
+          inputMode="numeric"
+          placeholder={placeholder}
+          aria-label={label}
+          value={value}
+          onChange={(e) => {
+            const digits = e.target.value.replace(/[^0-9]/g, '')
+            setWarn(digits !== e.target.value)
+            onChange(digits)
+          }}
+          onBlur={() => setWarn(false)}
+          size={size}
+        />
+      </span>
+      {warn && (
+        <span className="input-warn small" role="status">
+          숫자만 입력할 수 있어요
+        </span>
+      )}
+    </>
+  )
+}

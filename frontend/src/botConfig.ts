@@ -17,6 +17,12 @@ export function toDraft(bot?: Pick<Bot, 'strategy' | 'params'> & Partial<Bot>): 
   }
 }
 
+/** 최대 투자 금액이 0이면 봇이 아예 사지 못한다 ($1 이상, 비우면 가진 현금 전부). */
+export const badLimit = (d: Draft) => d.maxPosition !== '' && Number(d.maxPosition) < 1
+
+/** 봇 이름은 목록·칩·제목에 한 줄로 보이도록 짧게 (서버도 같은 길이로 막는다). */
+export const NAME_MAX = 20
+
 export function toConfig(d: Draft, bot?: Bot): BotConfig {
   return {
     strategy: d.strategy,

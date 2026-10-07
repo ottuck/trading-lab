@@ -25,7 +25,7 @@ from quant_lab.domain.bot import (
     apply_command,
 )
 from quant_lab.domain.broker import AccountSnapshot, BrokerAccessError
-from quant_lab.domain.events import CommandData, EventKind
+from quant_lab.domain.events import CommandData, EventKind, RestartData
 from quant_lab.persistence.bars import latest_session_date
 from quant_lab.persistence.bots import add_event, bot_weights, get_bot, set_bot_state
 from quant_lab.persistence.broker_account import save_error, save_snapshot
@@ -114,7 +114,8 @@ class Worker:
         """실행 중이던 봇은 그대로 이어서 돈다. 밀린 평가는 다음 tick에서 바로 처리된다.
 
         평가는 같은 봉을 두 번 판단하지 않고(유일 제약) 체결가는 봉 데이터로 정해지므로,
-        재시작 시점과 상관없이 결과가 같다. 재개했다는 사실만 알린다.
+        재시작 시점과 상관없이 결과가 같다. 재개했다는 사실만 기록한다. 배포로 다시 켜질 때마다
+        알리면 시끄러우므로 텔레그램은 멈춘 동안 판단할 때가 지난 봇만 알린다.
         """
         now = self.now()
         with self.make_session() as session:
@@ -126,6 +127,9 @@ class Worker:
                     EventKind.RESTART_RESUME,
                     "Worker 재시작 후 이어서 실행합니다.",
                     bot_id=bot.id,
+                    data=RestartData(
+                        overdue=bot.next_evaluation_at is None or bot.next_evaluation_at <= now
+                    ),
                 )
             session.commit()
 

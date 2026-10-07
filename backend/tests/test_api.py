@@ -128,6 +128,15 @@ def test_bot_management(client: TestClient, session: Session, bot_id: int) -> No
     assert updated["risk"]["max_order_value"] == "5000"
     history = client.get("/api/events", params={"bot_id": bot_id, "kind": "config_change"}).json()
     assert history[0]["data"]["before"]["strategy"] == "sma_cross"
+    # 바꾼 기록은 무엇을 바꿨는지 쉬운 말로
+    (change,) = client.get(
+        "/api/activity", params={"bot_id": bot_id, "kind": "config_change"}
+    ).json()
+    assert change["body"] == "전략 느긋한 추세 타기 → 200일선 지킴이"
+    # 최대 투자 금액 0(아예 못 삼)과 너무 긴 이름은 막는다
+    zero = {**config, "max_position_value": "0"}
+    assert client.put(f"/api/bots/{bot_id}/config", json=zero).status_code == 400
+    assert client.patch(f"/api/bots/{bot_id}", json={"name": "가" * 21}).status_code == 400
 
     created = client.post(
         "/api/bots", json={"name": "voo", "symbol": "voo", "strategy": "sma_cross"}
@@ -147,6 +156,8 @@ def test_bot_management(client: TestClient, session: Session, bot_id: int) -> No
     assert Decimal(reset["account"]["qty"]) == 0 and reset["account"]["cash"] == "10000"
     assert reset["last_decision"] is None and reset["state"] == "RUNNING"
     assert reset["strategy"] == "trend_filter"
+    kinds = {"bot_id": bot_id, "kind": "config_change"}
+    assert len(client.get("/api/activity", params=kinds).json()) == 2  # 설정 기록은 남긴다
 
     voo = created.json()["id"]
     assert client.delete(f"/api/bots/{voo}").status_code == 204
