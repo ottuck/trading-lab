@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { botApi, type Bot, type Plan, type SymbolPlan } from '../api'
-import { money, roundMoney } from '../format'
+import { money, roundMoney, setAmount } from '../format'
 
 /* 따라 하기 (F1~F3): 나 카피 봇이 다음에 할 일, 조건까지 거리, 모아 둔 돈의 내력.
    규칙은 바꾸지 않고 보여주기만 한다. 같은 날 같은 금액으로 실제 계좌에서 따라 하면 실제 투자가 된다. */
@@ -100,7 +100,7 @@ export function NextPlan({ bot }: { bot: Bot }) {
       )}
       <div className="plan-when">
         <span className="date">{when(plan.deposit_date)}</span>
-        <span className="muted">넣는 날 · {usd(plan.deposit)}</span>
+        <span className="muted">넣는 날 · {setAmount(Number(plan.deposit))}</span>
       </div>
       <div className="plan-rows">
         {plan.symbols.map((s) => {

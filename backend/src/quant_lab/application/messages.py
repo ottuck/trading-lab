@@ -113,18 +113,18 @@ CATALOG: dict[str, StrategyInfo] = {
         presets=[
             Preset(
                 "small",
-                "월 $675",
-                {"deposit": 675, "day": 25, "dip": 10, "hot": 10, "high": 252, "sma": 200},
+                "월 $500",
+                {"deposit": 500, "day": 25, "dip": 10, "hot": 10, "high": 252, "sma": 200},
             ),
             Preset(
                 "base",
-                "월 $1,350 (기본)",
-                {"deposit": 1350, "day": 25, "dip": 10, "hot": 10, "high": 252, "sma": 200},
+                "월 $1,000 (기본)",
+                {"deposit": 1000, "day": 25, "dip": 10, "hot": 10, "high": 252, "sma": 200},
             ),
             Preset(
                 "large",
-                "월 $2,700",
-                {"deposit": 2700, "day": 25, "dip": 10, "hot": 10, "high": 252, "sma": 200},
+                "월 $2,000",
+                {"deposit": 2000, "day": 25, "dip": 10, "hot": 10, "high": 252, "sma": 200},
             ),
         ],
         preset_label="매달 넣는 돈",
@@ -159,7 +159,7 @@ CATALOG: dict[str, StrategyInfo] = {
         ),
         risk="보통",
         trades="AI가 정해요 (매일 판단)",
-        presets=[Preset("small", "월 $675", {"deposit": 675, "day": 25})],
+        presets=[Preset("base", "월 $1,000", {"deposit": 1000, "day": 25})],
         preset_label="매달 넣는 돈",
     ),
 }

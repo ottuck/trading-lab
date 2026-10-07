@@ -25,11 +25,12 @@ export const STYLES: Option[] = [
 
 export type Option = { value: number; label: string; sub?: string }
 
+// 달러로 딱 떨어지는 금액. 그 밖의 금액은 직접 입력한다 (원화는 환율 따라 바뀌어 기준으로 쓰지 않는다)
 export const DEPOSITS: Option[] = [
+  { value: 300, label: '$300' },
   { value: 500, label: '$500' },
-  { value: 675, label: '$675', sub: '월 10만 엔 안팎' },
   { value: 1000, label: '$1,000' },
-  { value: 1350, label: '$1,350', sub: '월 20만 엔 안팎' },
+  { value: 1500, label: '$1,500' },
   { value: 2000, label: '$2,000' },
   { value: 3000, label: '$3,000' },
 ]
@@ -63,7 +64,7 @@ export function withCurrent(options: Option[], value: number): Option[] {
   return [...options, { value, label: '지금 규칙 그대로', sub }]
 }
 
-export const START: Answers = { symbols: [], regular: 1, deposit: 1350, day: 25, hot: 15, dip: 10 }
+export const START: Answers = { symbols: [], regular: 1, deposit: 1000, day: 25, hot: 15, dip: 10 }
 
 /** 이미 있는 나 카피 봇의 규칙 → 답 (질문 다시 하기) */
 export function answersOf(bot: Bot): Answers {

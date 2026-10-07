@@ -615,11 +615,17 @@ function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
   const [customName, setCustomName] = useState<string | null>(null)
   const name = customName ?? suggestName(chosen.map((b) => b.symbol), draft.strategy, taken)
   // 시작 금액은 직접 고치기 전까지 전략에 맞춘다 (모으기 전략은 한 달 입금액).
-  const [customCash, setCustomCash] = useState<string | null>(null)
-  const cash = customCash ?? (accumulates ? String(draft.params.deposit ?? 675) : '10000')
+  const [customCash, setCustomCash] = useState<string | null>(seed.cash ?? null)
+  const cash = customCash ?? (accumulates ? String(draft.params.deposit ?? 1000) : '10000')
   const [startNow, setStartNow] = useState(true)
   const create = useMutation({
     mutationFn: async () => {
+      const what = `${byName[draft.strategy]?.nickname ?? draft.strategy} · ${chosen.map((b) => b.symbol).join(' · ')} · 시작 금액 $${Number(cash).toLocaleString('en-US')}`
+      const ok = window.confirm(
+        `${name}을(를) 만들${startNow ? '고 바로 모의 투자를 시작할' : ''}까요?\n${what}\n` +
+          '실제 계좌와는 상관없어요. 지우려면 봇 화면의 [⋯] → 봇 삭제를 누르면 돼요.',
+      )
+      if (!ok) return null
       const bot = await botApi.create({
         ...toConfig(draft),
         name,
@@ -631,6 +637,7 @@ function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
       return bot
     },
     onSuccess: (bot) => {
+      if (!bot) return
       void qc.invalidateQueries({ queryKey: ['bots'] })
       // 만든 봇을 바로 보여준다 (나 카피 봇은 홈 첫 화면이 그 봇이다).
       closeNewBot()
