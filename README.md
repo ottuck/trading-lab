@@ -246,6 +246,8 @@ bash deploy/deploy.sh demo              # 데모 (수동)
 
 **운영은 자동 배포**입니다. `main`의 CI가 통과하면 [deploy 워크플로](.github/workflows/deploy.yml)가 운영 서버에 설치한 GitHub Actions 러너(라벨 `quant-lab`)에서 `deploy.sh`를 실행합니다. 러너가 밖으로만 연결하므로 공개 포트는 0개 그대로이고, 장 마감 판단 시간(뉴욕 17:45~19:30)이면 끝날 때까지 기다렸다 배포합니다. 데모는 자동으로 배포하지 않습니다. `deploy.sh`는 `origin/main`을 `.deploy/src`에 꺼내 빌드하므로 작업 폴더의 브랜치를 바꾸지 않습니다.
 
+러너는 `C:\actions-runner`에 있고, 로그인하면 시작 프로그램의 바로가기가 **창 없이**(`conhost.exe --headless run.cmd`) 켭니다. 창으로 띄우면 창을 클릭했을 때(선택 모드) 출력이 막혀 배포가 멈추고, Windows 서비스로 두면 다른 계정이라 Docker를 못 씁니다. 켜져 있는지는 GitHub 설정 → Actions → Runners에서 `home-pc`가 Idle인지로, 로그는 Actions 탭과 `C:\actions-runner\_diag`에서 봅니다.
+
 Windows에서는 **Git Bash**로 실행합니다. PowerShell의 `bash`는 WSL bash라 Windows에 저장된 GitHub 로그인을 못 써서 사용자 이름을 묻습니다. PowerShell에서는 `& "C:\Program Files\Git\bin\bash.exe" deploy/deploy.sh`.
 
 ## 프로젝트 구조
