@@ -86,6 +86,8 @@ class FakeClient:
 
 ANSWER = {
     "summary": "금리 걱정이 줄었어요.",
+    # 근거로 쓴 기사: 검색 결과에 없는 주소는 버린다
+    "evidence": ["https://b.example/2", "https://made-up.example/x"],
     "allocations": [
         {"symbol": "QQQ", "weight": 60, "reason": "실적이 좋아요."},
         {"symbol": "GLD", "weight": 10, "reason": "조금만 들고 가요."},
@@ -109,11 +111,12 @@ def test_claude_advisor_reads_weights_sources_and_cost_across_pause() -> None:
             "content": [
                 {
                     "type": "web_search_result",
-                    "url": "https://a.example/1",
-                    "title": "A",
+                    "url": f"https://{x}.example/{n}",
+                    "title": x.upper(),
                     "encrypted_content": "x",
                     "page_age": None,
-                },
+                }
+                for n, x in ((1, "a"), (2, "b"))
             ],
         },
     ]
@@ -125,7 +128,11 @@ def test_claude_advisor_reads_weights_sources_and_cost_across_pause() -> None:
 
     assert result.advice.weights == {"QQQ": 60, "GLD": 10, "CASH": 30}
     assert result.advice.queries == ("Fed rate",)
-    assert [s.url for s in result.advice.sources] == ["https://a.example/1"]
+    # 근거로 쓴 기사(검색 결과에 있는 것만)가 앞, 나머지 검색 결과는 뒤
+    assert [(s.url, s.used) for s in result.advice.sources] == [
+        ("https://b.example/2", True),
+        ("https://a.example/1", False),
+    ]
     # 멈춘 답은 그대로 붙여 이어 받는다
     assert client.calls[1]["messages"][1]["role"] == "assistant"
     # 두 번 부른 합: 입력 20만 × $2 + 출력 2만 × $10 (100만 토큰당) + 검색 1번 $0.01

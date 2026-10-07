@@ -6,14 +6,14 @@
 import json
 from collections.abc import Sequence
 from decimal import Decimal
-from typing import Any, cast
+from typing import Any, Final, cast
 
 import anthropic
 from anthropic.types.beta import (
     BetaMessage,
     BetaMessageParam,
     BetaOutputConfigParam,
-    BetaWebSearchTool20260209Param,
+    BetaWebSearchTool20250305Param,
 )
 
 from quant_lab.domain.advisor import (
@@ -28,8 +28,23 @@ from quant_lab.domain.advisor import (
 
 SOURCE = "claude"
 MODEL = "claude-sonnet-5-5"  # 2026-10-06 사용자 결정
-PROMPT_VERSION = "2026-10-06.3"  # 지침(SYSTEM·입력 형식)을 바꾸면 올린다
+PROMPT_VERSION = "2026-10-07.4"  # 지침(SYSTEM·입력 형식)을 바꾸면 올린다
 MAX_SEARCHES = 5
+# 기본 웹 검색 도구. 결과를 서버에서 코드로 걸러 주는 web_search_20260209는 AI가 기사 주소를 거의
+# 보지 못해 근거 기사를 1개(늘 첫 결과)만 댔고 같은 검색을 반복했다. 기본 도구는 같은 날 비교에서
+# 근거 5개·검색 3번·$0.147 (최신 도구 1개·5번·$0.188) (2026-10-07 실측)
+SEARCH_TOOL: Final = "web_search_20250305"
+MAX_EVIDENCE = 6  # 근거로 쓴 기사로 받는 최대 수
+# 검색에서 뺄 사이트: 백과사전, 지역 뉴스, 예측시장·베팅, 질 낮은 전망 글
+# (2026-10-07 운영 첫 판단의 출처를 보고 골랐다)
+BLOCKED_DOMAINS = [
+    "wikipedia.org",
+    "dtnext.in",
+    "defirate.com",
+    "polymarket.com",
+    "kalshi.com",
+    "top1markets.com",
+]
 MAX_CONTINUATIONS = 3  # 웹 검색이 길어져 멈춘 답(pause_turn)을 이어 받는 횟수
 FALLBACK_BETA = "server-side-fallback-2026-07-01"  # 거절되면 서버가 다른 모델로 이어 답함
 
@@ -51,13 +66,18 @@ SYSTEM = """\
 - 먼저 웹 검색으로 지금 시장 상황(금리·물가·실적·정책·큰 뉴스)과 각 종목에 관한 최근 소식을 \
 확인하세요. 검색은 꼭 필요한 만큼만 합니다.
 - 미국 시장 소식은 영어로 검색하고, 로이터·블룸버그·CNBC·WSJ·야후 파이낸스처럼 믿을 만한 \
-경제 뉴스를 우선하세요. 백과사전이나 날짜가 오래된 글은 근거로 쓰지 마세요.
+경제 뉴스를 우선하세요. 백과사전, 날짜가 오래된 글, 다른 나라 지역 뉴스, 예측시장·베팅 사이트, \
+개인 블로그와 광고성 전망 글은 근거로 쓰지 마세요.
+- 같은 주제는 한 번만 검색하세요. 날짜만 바꾼 같은 검색은 하지 마세요. 보통 3~4번이면 충분합니다.
 - 입력의 종목 지표(200일 평균 대비, 1년 최고가 대비, 수익률, 변동성)와 지금 비중을 함께 보세요.
 - 이 투자자는 매달 돈을 넣는 장기 투자자입니다. 지난 판단을 유지하는 것이 기본이고, \
 분명한 이유가 있을 때만 비중을 바꾸세요. 근거 없이 매일 뒤집지 마세요.
 - 레버리지 ETF(leverage 값이 있는 종목)는 하락장에서 손실이 배로 커집니다.
 - 목표 비중은 정해 준 종목과 CASH(현금)에만, 0~100 정수로, 합이 정확히 100이 되게 정하세요. \
 비중을 0으로 두는 종목도 allocations에 넣으세요.
+- evidence에는 판단의 근거가 된 기사 주소를 검색 결과에 나온 그대로 3~6개 넣으세요: 시장 \
+전반 1개 이상, 금리·물가 1개 이상, 그리고 많이 담거나 비중을 바꾼 종목에 관한 기사. summary와 \
+reason에 쓴 내용은 이 기사들에서 나와야 합니다. 읽기만 하고 쓰지 않은 기사는 넣지 마세요.
 
 쓰는 말
 - reason은 종목마다 한두 문장, summary는 두세 문장의 한국어로 씁니다.
@@ -70,6 +90,7 @@ def _schema(symbols: Sequence[str]) -> dict[str, Any]:
         "type": "object",
         "properties": {
             "summary": {"type": "string"},
+            "evidence": {"type": "array", "items": {"type": "string"}},
             "allocations": {
                 "type": "array",
                 "items": {
@@ -84,7 +105,7 @@ def _schema(symbols: Sequence[str]) -> dict[str, Any]:
                 },
             },
         },
-        "required": ["summary", "allocations"],
+        "required": ["summary", "allocations", "evidence"],
         "additionalProperties": False,
     }
 
@@ -124,12 +145,12 @@ class ClaudeAdvisor:
     def advise(self, request: AdviceRequest) -> AdviceResult:
         symbols = [s.symbol for s in request.symbols]
         messages: list[BetaMessageParam] = [{"role": "user", "content": _prompt(request)}]
-        search: BetaWebSearchTool20260209Param = {
-            "type": "web_search_20260209",
+        search: BetaWebSearchTool20250305Param = {
+            "type": SEARCH_TOOL,
             "name": "web_search",
             "max_uses": MAX_SEARCHES,
             "user_location": {"type": "approximate", "country": "US"},
-            "blocked_domains": ["wikipedia.org"],
+            "blocked_domains": BLOCKED_DOMAINS,
         }
         output: BetaOutputConfigParam = {
             "effort": "high",
@@ -166,9 +187,10 @@ class ClaudeAdvisor:
             weights = {a["symbol"]: int(a["weight"]) for a in data["allocations"]}
             reasons = {a["symbol"]: str(a["reason"]) for a in data["allocations"]}
             summary = str(data["summary"])
+            evidence = [str(u) for u in data.get("evidence", [])]
         except (ValueError, KeyError, TypeError) as e:
             raise AdvisorError(f"AI 답 형식 오류: {e}", usage) from e
-        sources, queries = _research(responses)
+        sources, queries = _research(responses, evidence)
         advice = Advice(weights, reasons, summary, sources, queries)
         assert usage is not None
         return AdviceResult(advice, usage, PROMPT_VERSION)
@@ -201,8 +223,14 @@ def _final_text(message: BetaMessage) -> str:
     return "".join(texts)
 
 
-def _research(responses: Sequence[BetaMessage]) -> tuple[tuple[Source, ...], tuple[str, ...]]:
-    """검색한 말과 검색 결과의 주소·제목 (기사 본문은 남기지 않는다)."""
+def _research(
+    responses: Sequence[BetaMessage], evidence: Sequence[str] = ()
+) -> tuple[tuple[Source, ...], tuple[str, ...]]:
+    """검색한 말과 검색 결과의 주소·제목 (기사 본문은 남기지 않는다).
+
+    AI가 근거로 쓴 기사(evidence)는 실제 검색 결과에 있는 주소만 인정해 앞에 둔다
+    (지어낸 주소는 버린다).
+    """
     sources: dict[str, Source] = {}
     queries: list[str] = []
     for response in responses:
@@ -214,4 +242,18 @@ def _research(responses: Sequence[BetaMessage]) -> tuple[tuple[Source, ...], tup
             elif block.type == "web_search_tool_result" and isinstance(block.content, list):
                 for result in block.content:
                     sources.setdefault(result.url, Source(result.url, result.title))
-    return tuple(sources.values()), tuple(queries)
+    # AI가 주소를 조금 다르게 옮겨 적을 수 있다 (http/https, www, 끝의 /, 대소문자)
+    by_key = {_url_key(u): u for u in sources}
+    picked = (by_key.get(_url_key(u)) for u in evidence)
+    used = [u for u in dict.fromkeys(picked) if u is not None][:MAX_EVIDENCE]
+    cited = [Source(u, sources[u].title, used=True) for u in used]
+    rest = [s for u, s in sources.items() if u not in used]
+    return (*cited, *rest), tuple(queries)
+
+
+def _url_key(url: str) -> str:
+    """주소 비교용: 스킴·www·끝의 /·호스트 대소문자를 무시한다."""
+    rest = url.strip().split("://", 1)[-1]
+    host, _, path = rest.partition("/")
+    host = host.lower().removeprefix("www.")
+    return f"{host}/{path}".rstrip("/")

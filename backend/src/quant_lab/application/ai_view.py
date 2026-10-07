@@ -37,7 +37,7 @@ class AiDay:
     weights: dict[str, int] | None  # 목표 비중 (현금은 CASH)
     weights_before: dict[str, str]  # 판단할 때의 비중 % (현금은 CASH)
     reasons: dict[str, str] | None
-    sources: list[dict[str, str]]
+    sources: list[dict[str, Any]]  # [{url, title, used}] 근거로 쓴 기사(used)가 앞
     queries: list[str]
     model: str | None
     cost: Decimal | None
