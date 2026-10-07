@@ -240,8 +240,11 @@ npm run lint && npm run build
 ```bash
 cd infra/lightsail && terraform apply   # (서버를 옮길 때) 서울 VM·고정 IP·자동 스냅샷
 sudo bash deploy/bootstrap.sh           # 새 서버에서 한 번
-bash deploy/deploy.sh                   # 배포할 때마다 (main 기준, 마이그레이션 성공해야 api·worker가 뜸)
+bash deploy/deploy.sh                   # 운영 (main 기준, 마이그레이션 성공해야 api·worker가 뜸)
+bash deploy/deploy.sh demo              # 데모 (수동)
 ```
+
+**운영은 자동 배포**입니다. `main`의 CI가 통과하면 [deploy 워크플로](.github/workflows/deploy.yml)가 운영 서버에 설치한 GitHub Actions 러너(라벨 `quant-lab`)에서 `deploy.sh`를 실행합니다. 러너가 밖으로만 연결하므로 공개 포트는 0개 그대로이고, 장 마감 판단 시간(뉴욕 17:45~19:30)이면 끝날 때까지 기다렸다 배포합니다. 데모는 자동으로 배포하지 않습니다. `deploy.sh`는 `origin/main`을 `.deploy/src`에 꺼내 빌드하므로 작업 폴더의 브랜치를 바꾸지 않습니다.
 
 Windows에서는 **Git Bash**로 실행합니다. PowerShell의 `bash`는 WSL bash라 Windows에 저장된 GitHub 로그인을 못 써서 사용자 이름을 묻습니다. PowerShell에서는 `& "C:\Program Files\Git\bin\bash.exe" deploy/deploy.sh`.
 
