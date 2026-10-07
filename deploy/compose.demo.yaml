@@ -7,7 +7,7 @@ name: quant-lab-demo
 
 x-app: &app
   image: quant-lab:latest
-  env_file: ../.secrets/demo.env
+  env_file: ${SECRETS_DIR:-../.secrets}/demo.env
   environment:
     DEMO_MODE: "true"
   restart: unless-stopped
@@ -16,7 +16,7 @@ services:
   demo-db:
     image: postgres:17
     restart: unless-stopped
-    env_file: ../.secrets/demo.env
+    env_file: ${SECRETS_DIR:-../.secrets}/demo.env
     environment:
       POSTGRES_USER: quant
       POSTGRES_DB: quant_lab_demo
