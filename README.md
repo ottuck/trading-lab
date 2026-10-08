@@ -16,7 +16,7 @@
 | **미래** | 다음에 무엇을 할까? | 다음 월급날 종목별로 살 금액·모아 둘 금액과 이유, "이 가격 아래면 몰아 사요 / 이 가격 위면 쉬어요"까지의 거리, 모아 둔 돈의 내력 |
 | **실제** | 진짜 돈으로도 똑같이 움직일까? | 모의 매수를 **1/100 금액으로 실제 계좌에서 따라 사기**. 한도 안의 주문은 자동으로 사고, 한도를 넘는 주문만 앱에서 승인합니다 |
 
-실제 큰돈 투자는 다른 증권사에서 하고, 이 앱의 토스 계좌는 "같은 판단이 진짜 돈으로도 그대로 움직인다"를 작은 금액(한 달 약 1만원)으로 증명하는 곳입니다 ([설계 1절](docs/project.md#1-한-줄-정의), [실거래 트랙](docs/roadmap.md#실거래-트랙-마일스톤-3-2026-10-04-다시-계획-2026-10-07-완료)).
+실제 큰돈 투자는 다른 증권사에서 하고, 이 앱의 토스 계좌는 "같은 판단이 진짜 돈으로도 그대로 움직인다"를 작은 금액(한 달 약 1만원)으로 증명하는 곳입니다 ([설계 1절](docs/project.md#1-한-줄-정의), [실거래 트랙](docs/roadmap.md#실거래-트랙-마일스톤-3-완료)).
 
 ## AI 봇
 
@@ -40,6 +40,7 @@
 | 따라 하기 · 데모 · 원화 | 다음에 할 일, 포트폴리오 데모, 원화로 보기 | 완료 |
 | 3. 실거래 | 실제 계좌 읽기, 1/100로 실제로 따라 사기, 파는 전략·레버리지(QLD·TQQQ) | 완료 · 태그 [`milestone-3`](https://github.com/ottuck/quant-lab/tree/milestone-3) |
 | **4. AI 퀀트봇** | AI가 시장을 조사해 정해 준 종목 안에서 비중을 정하는 봇, 판단 기록, 나 카피 봇과 비교, 실제로 따라 하기 | **진행 중** · 만들기 완료, 운영에서 매일 판단하며 1~2주 지켜보는 중 |
+| 다음 계획 | **캔들분석 AI 봇**(뉴스 대신 캔들 차트를 보고 판단하는 AI 봇, 시장분석 AI 봇과 별도 전략), 서버 이전(Lightsail 시드니) | 계획 · [로드맵](docs/roadmap.md) |
 
 | 문서 | 내용 |
 | --- | --- |
@@ -151,7 +152,7 @@ flowchart LR
 
 - 공개 인바운드 포트가 없습니다. 화면은 Cloudflare Tunnel(밖으로만 연결)과 Access(본인 이메일만)로 엽니다. 데모는 별도 DB·네트워크라 운영 DB와 Worker에 닿지 않습니다.
 - API와 Worker는 **DB를 통해서만** 대화합니다. 화면의 명령과 승인은 DB에 쌓이고 Worker가 15초 안에 처리합니다. 토스·텔레그램·Claude는 Worker만 부릅니다.
-- 지금은 개발 PC에서 돌리고, 서울 리전 VM(Lightsail, Terraform 준비됨)이나 홈서버로 옮길 수 있게 VM 한 대 구성으로 만들었습니다.
+- 지금은 개발 PC에서 돌리고, 시드니 리전 VM(Lightsail, Terraform 준비됨)이나 홈서버로 옮길 수 있게 VM 한 대 구성으로 만들었습니다.
 
 ```text
 Worker 15초마다
@@ -239,7 +240,7 @@ npm run lint && npm run build
 서버 한 대에서 Docker Compose로 운영(api·worker·db·cloudflared)과 데모를 함께 띄웁니다. 단계별 절차는 [project.md 6절](docs/project.md).
 
 ```bash
-cd infra/lightsail && terraform apply   # (서버를 옮길 때) 서울 VM·고정 IP·자동 스냅샷
+cd infra/lightsail && terraform apply   # (서버를 옮길 때) 시드니 VM·고정 IP·자동 스냅샷
 sudo bash deploy/bootstrap.sh           # 새 서버에서 한 번
 bash deploy/deploy.sh                   # 운영 (main 기준, 마이그레이션 성공해야 api·worker가 뜸)
 bash deploy/deploy.sh demo              # 데모 (수동)
