@@ -147,6 +147,7 @@
 | 서버 이전 (Lightsail 시드니) | 계획 | 아래 |
 | 알림 | 선택 | Healthchecks 알림 한국어 webhook (project.md 6절, 사용자 설정) |
 | 다종목 자동 실행 | 대기 | 2–3종목, 포트폴리오 단위 위험 한도 |
+| `target_long` 정리 | 선택 | 나 카피 봇은 항상 true인 `Signal.long`·`DecisionRecord.target_long`과 DB 컬럼 `decisions.target_long`을 지운다. 화면 표시와 얽혀 있고 마이그레이션이 필요해서 유명 전략 4종 제거 때 두었다 |
 | 레버리지 ETF | 대기 | 남은 것: 레버리지 전용 위험 한도 (보유 기간·손절) |
 | 실시간 판단 | 대기 | 현재가 표시는 REST 30초로 이미 있다. WebSocket은 실시간 판단이 필요해질 때 |
 
