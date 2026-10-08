@@ -203,7 +203,14 @@ class LiveView(BaseModel):
     per_month: Decimal
     per_trade: Decimal = Decimal("150")  # 사고팔기 봇 한 건 한도
     ratios: list[str]
-    bought_this_month: Decimal = Decimal(0)  # 이번 달 실제로 산(체결된) 금액
+    # 봇이 낸 실제 주문의 장부 (체결 기준, 수수료 제외 어림값)
+    bought_this_month: Decimal = Decimal(0)  # 이번 달 산 금액
+    sold_this_month: Decimal = Decimal(0)  # 이번 달 판 금액
+    sold_total: Decimal = Decimal(0)  # 지금까지 판 금액 (0이면 팔아 본 적 없음)
+    realized_this_month: Decimal = Decimal(0)  # 이번 달 팔아서 확정된 손익
+    realized_total: Decimal = Decimal(0)  # 지금까지 확정 손익
+    held_cost: Decimal = Decimal(0)  # 봇이 산 채로 들고 있는 주식의 원가
+    held_value: Decimal = Decimal(0)  # 그 주식의 지금 값
     shortfall: list[dict[str, str]] = []  # 실제 계좌 대조 [{symbol, held, bought}]
     checked_at: datetime | None = None
     orders: list[LiveOrderView]
