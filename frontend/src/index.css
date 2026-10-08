@@ -1959,6 +1959,17 @@ button.link.back {
   font-size: 13px;
   color: var(--faint);
 }
+/* 아직 없는 AI 봇 종류: 설명과 [+ 만들기] 한 줄 */
+.bot-list-make {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bot-list-make .link {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 13px;
+}
 @media (max-width: 640px) {
   .me-start-steps {
     grid-template-columns: 1fr;

@@ -16,7 +16,7 @@ import { ago, isPast, kstTime, money, percent, roundMoney, shares, signedMoney, 
 import { FALLBACK, leverageOf, useInstruments } from '../instruments'
 import { sourceLabel } from '../source'
 import { realKeepNote } from '../live'
-import { isAiBot, isMeBot, useStrategies } from '../strategies'
+import { AI_KINDS, isAiBot, isMeBot, useStrategies, type AiKind } from '../strategies'
 import { useDemo } from '../demo'
 import { FxNote } from './Currency'
 import { AccountCard, LiveApprovals } from './Live'
@@ -819,31 +819,38 @@ function BotParallel({ bot }: { bot: Bot }) {
   )
 }
 
+// 만들기 확인창에서 무엇을 보고 판단하는지
+const AI_HOW: Record<AiKind, string> = {
+  ai_judge: '시장을 조사해',
+  ai_candle: '가격 차트만 보고(종목 이름·날짜는 가리고, 뉴스는 보지 않아요)',
+}
+
 /** AI 봇 만들기: 관심 종목 전부, 입금은 나 카피 봇과 같게 (같은 돈으로 비교하려고). 만들자마자 시작한다. */
 function useCreateAiBot(bots: Bot[]) {
   const qc = useQueryClient()
   const watchlist = useInstruments().data?.map((i) => i.symbol)
   return useMutation({
-    mutationFn: async () => {
+    mutationFn: async (kind: AiKind) => {
       const me = bots.find(isMeBot)
       const deposit = me?.params.deposit ?? 1000
       const day = me?.params.day ?? 25
       const symbols = watchlist?.length ? watchlist : FALLBACK
+      const info = AI_KINDS[kind]
       const ok = window.confirm(
-        `AI 봇을 만들까요?
-관심 종목 ${symbols.length}개(${symbols.join(' · ')}) 안에서 AI가 매일 장이 끝난 뒤 시장을 조사해 비중을 정해요.
+        `${info.name}을 만들까요?
+관심 종목 ${symbols.length}개(${symbols.join(' · ')}) 안에서 AI가 매일 장이 끝난 뒤 ${AI_HOW[kind]} 비중을 정해요.
 매달 ${day}일 $${deposit.toLocaleString('en-US')}를 넣어요${me ? ' (나 카피 봇과 같게)' : ''}. 모의 투자예요.
-AI 판단 비용은 하루 약 $0.1이고, 한 달 상한을 넘으면 그달은 쉬어요.`,
+AI 판단 비용은 하루 약 ${info.cost}이고, 이 봇의 한 달 상한을 넘으면 그달은 쉬어요.`,
       )
       if (!ok) return null
       const bot = await botApi.create({
-        strategy: 'ai_judge',
+        strategy: kind,
         params: { deposit, day },
         commission_rate: '0.001',
         slippage_bps: '5',
         max_position_value: null,
         max_order_value: null,
-        name: '시장분석 AI 봇',
+        name: info.name,
         symbol: symbols[0],
         symbols: evenSplit(symbols), // AI 봇은 비율을 쓰지 않는다 (AI가 정한다)
         initial_cash: String(deposit),
@@ -887,6 +894,8 @@ function BotSide({ bots, current, onPick }: { bots: Bot[]; current?: Bot; onPick
   const ais = bots.filter(isAiBot)
   const others = bots.filter((b) => !isMeBot(b) && !isAiBot(b))
   const createAi = useCreateAiBot(bots)
+  // 아직 없는 AI 봇 종류 (전략마다 하나)
+  const missing = demo ? [] : (Object.keys(AI_KINDS) as AiKind[]).filter((k) => !ais.some((b) => b.strategy === k))
   const row = (b: Bot) => <BotItem key={b.id} bot={b} active={b.id === current?.id} onPick={() => onPick(b)} />
   return (
     <aside className="home-side">
@@ -898,17 +907,18 @@ function BotSide({ bots, current, onPick }: { bots: Bot[]; current?: Bot; onPick
           </button>
         </div>
         {mine.length ? mine.map(row) : <div className="bot-list-empty">아직 없어요</div>}
-        {(ais.length > 0 || !demo) && (
-          <div className="bot-list-head sub">
-            AI 봇
-            {!demo && !ais.length && (
-              <button className="link" disabled={createAi.isPending} onClick={() => createAi.mutate()}>
-                + 만들기
-              </button>
-            )}
+        {(ais.length > 0 || !demo) && <div className="bot-list-head sub">AI 봇</div>}
+        {ais.map(row)}
+        {missing.map((k) => (
+          <div key={k} className="bot-list-empty bot-list-make">
+            <span>
+              {AI_KINDS[k].short}: {AI_KINDS[k].desc}
+            </span>
+            <button className="link" disabled={createAi.isPending} onClick={() => createAi.mutate(k)}>
+              + 만들기
+            </button>
           </div>
-        )}
-        {ais.length ? ais.map(row) : !demo && <div className="bot-list-empty">AI가 매일 시장을 보고 비중을 정해요</div>}
+        ))}
         <div className="bot-list-head sub">
           다른 봇
           {!demo && (
