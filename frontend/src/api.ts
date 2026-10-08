@@ -198,17 +198,22 @@ export type EquityPoint = { date: string; equity: Money; contributed: Money; ben
 
 export type Bar = { date: string; open: Money; high: Money; low: Money; close: Money; volume: Money; live?: boolean }
 
+// 서버가 다시 시작하는 동안(배포 1~2분) Cloudflare가 HTML 오류 페이지(502 등)를 돌려준다
+const RESTARTING = '서버가 잠시 응답하지 않아요. 새 버전을 올리는 중이면 1~2분 안에 돌아와요.'
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, init)
+  const res = await fetch(path, init).catch(() => {
+    throw new Error(RESTARTING)
+  })
   if (!res.ok && res.status !== 503) {
     // FastAPI의 {"detail": "..."}는 사람이 읽는 문장만 보여준다.
     const text = await res.text()
-    let message = text.slice(0, 200)
+    let message = text.trimStart().startsWith('<') ? RESTARTING : text.slice(0, 200)
     try {
       const detail = (JSON.parse(text) as { detail?: unknown }).detail
       if (typeof detail === 'string') message = detail
     } catch {
-      // JSON이 아니면 원문 일부를 그대로 쓴다.
+      // JSON이 아니면 원문 일부를 그대로 쓴다 (HTML 오류 페이지는 위 안내로).
     }
     throw new Error(message || `요청 실패 (${res.status})`)
   }
