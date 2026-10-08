@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from quant_lab import __version__
 from quant_lab.adapters.claude.advisor import ClaudeAdvisor
+from quant_lab.adapters.claude.candles import ClaudeCandleAdvisor
 from quant_lab.adapters.heartbeat_ping import HeartbeatPinger
 from quant_lab.adapters.market_calendar import get_calendar
 from quant_lab.adapters.telegram import TelegramClient
@@ -118,7 +119,8 @@ def run(stop: threading.Event) -> None:
         ai=AiConfig(
             ClaudeAdvisor(key.get_secret_value()) if (key := settings.anthropic_api_key) else None,
             settings.ai_monthly_budget,
-            candle_budget=settings.ai_candle_monthly_budget,
+            ClaudeCandleAdvisor(key.get_secret_value()) if key else None,
+            settings.ai_candle_monthly_budget,
         ),
     )
     notifier = build_notifier(settings, make_session)
