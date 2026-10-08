@@ -21,7 +21,7 @@ from quant_lab.domain.broker import (
     OrderStatus,
     SellOrder,
 )
-from quant_lab.domain.live import AUTO_AFTER, LiveState, partial_sell_qty
+from quant_lab.domain.live import LiveState, partial_sell_qty
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.persistence.bots import create_bot
 from quant_lab.persistence.broker_account import save_snapshot
@@ -98,10 +98,10 @@ def make_session(engine: Engine, session: Session) -> Callable[[], Session]:
     return sessionmaker(engine)
 
 
-def live_bot(session: Session, streak: int = 0) -> BotRow:
+def live_bot(session: Session) -> BotRow:
     bot = create_bot(
         session,
-        name=f"나 카피 봇 {streak}",
+        name="나 카피 봇",
         symbol="VOO",
         strategy="dip_saver",
         params={"deposit": 675},
@@ -110,11 +110,7 @@ def live_bot(session: Session, streak: int = 0) -> BotRow:
         limits=RiskLimits(),
         now=OPEN - timedelta(days=3),
     )
-    bot.live_ratio, bot.live_since, bot.live_streak = (
-        Decimal("0.01"),
-        OPEN - timedelta(days=2),
-        streak,
-    )
+    bot.live_ratio, bot.live_since = Decimal("0.01"), OPEN - timedelta(days=2)
     session.flush()
     return bot
 
@@ -154,7 +150,46 @@ def live_order(session: Session) -> LiveOrderRow:
     return session.scalars(select(LiveOrderRow)).one()
 
 
-def test_first_orders_wait_for_approval_and_resend_only_with_same_key(
+def test_order_within_limit_goes_out_without_asking_and_resends_only_with_same_key(
+    make_session: Callable[[], Session], session: Session
+) -> None:
+    bot = live_bot(session)
+    sim_buy(session, bot, "337.5")
+    trader = FakeTrader()
+    trader.fail_next = 1
+    desk = LiveDesk(make_session, trader, WeekdayCalendar())
+
+    desk.tick(SEND)  # 한도 안의 주문은 묻지 않고 바로 보낸다. 결과를 모름: SENDING으로 남는다
+    order = live_order(session)
+    assert (order.state, order.amount, order.trade_date) == (
+        LiveState.SENDING, Decimal("3.37"), TRADE,
+    )  # fmt: skip
+    desk.tick(SEND + timedelta(minutes=2))  # 멱등 유효 시간 안: 같은 키로 다시 → 접수 → 체결 확인
+    assert [p.key for p in trader.placed] == [order.key, order.key]
+    assert live_order(session).state == LiveState.FILLED
+    desk.tick(SEND + timedelta(minutes=10))
+    assert len(trader.placed) == 2  # 같은 모의 매수로 다시 주문하지 않는다
+
+
+def test_order_over_limit_waits_for_approval(
+    make_session: Callable[[], Session], session: Session
+) -> None:
+    bot = live_bot(session)
+    sim_buy(session, bot, "3000")  # 실제 주문 $30: 한 건 한도 $20을 넘는다
+    trader = FakeTrader()
+    desk = LiveDesk(make_session, trader, WeekdayCalendar())
+
+    desk.tick(SEND)
+    order = live_order(session)
+    assert (order.state, order.amount) == (LiveState.WAITING_APPROVAL, Decimal("30.00"))
+    assert trader.placed == []  # 사람이 승인하기 전에는 보내지 않는다
+
+    approve(session, order.id, SEND)
+    desk.tick(SEND)
+    assert live_order(session).state == LiveState.FILLED
+
+
+def test_unknown_result_is_never_resent_after_window(
     make_session: Callable[[], Session], session: Session
 ) -> None:
     bot = live_bot(session)
@@ -162,43 +197,12 @@ def test_first_orders_wait_for_approval_and_resend_only_with_same_key(
     trader = FakeTrader()
     desk = LiveDesk(make_session, trader, WeekdayCalendar())
 
-    desk.tick(SEND)  # 처음 몇 번은 승인 없이는 보내지 않는다
-    order = live_order(session)
-    assert (order.state, order.amount, order.trade_date) == (
-        LiveState.WAITING_APPROVAL, Decimal("3.37"), TRADE,
-    )  # fmt: skip
-    assert trader.placed == []
-
-    approve(session, order.id, SEND)
-    trader.fail_next = 1
-    desk.tick(SEND)  # 보내다 결과를 모름: 먼저 적어 둔 SENDING으로 남는다
-    assert live_order(session).state == LiveState.SENDING
-    desk.tick(SEND + timedelta(minutes=2))  # 멱등 유효 시간 안: 같은 키로 다시 → 접수 → 체결 확인
-    assert [p.key for p in trader.placed] == [order.key, order.key]
-    assert live_order(session).state == LiveState.FILLED
-    session.refresh(bot)
-    assert bot.live_streak == 1
-    desk.tick(SEND + timedelta(minutes=10))
-    assert len(trader.placed) == 2  # 같은 모의 매수로 다시 주문하지 않는다
-
-
-def test_unknown_result_is_never_resent_after_window_and_auto_after_streak(
-    make_session: Callable[[], Session], session: Session
-) -> None:
-    bot = live_bot(session, streak=AUTO_AFTER)
-    sim_buy(session, bot, "337.5")
-    trader = FakeTrader()
-    desk = LiveDesk(make_session, trader, WeekdayCalendar())
-
     trader.fail_next = 2
-    desk.tick(SEND)  # 연속 성공이 쌓였으면 묻지 않고 바로 보낸다
+    desk.tick(SEND)
     assert live_order(session).state == LiveState.SENDING
     desk.tick(SEND + timedelta(minutes=30))  # 멱등 시간이 지났다: 다시 보내지 않고 찾기만
     assert len(trader.placed) == 1
-    order = live_order(session)
-    assert order.state == LiveState.UNKNOWN
-    session.refresh(bot)
-    assert bot.live_streak == 0  # 다음 주문부터 다시 승인
+    assert live_order(session).state == LiveState.UNKNOWN
 
 
 def test_small_shares_are_carried_until_they_reach_the_minimum(
@@ -216,13 +220,13 @@ def test_small_shares_are_carried_until_they_reach_the_minimum(
     session.expire_all()
     first, second = session.scalars(select(LiveOrderRow).order_by(LiveOrderRow.id))
     assert (first.state, first.reason, first.carried_into) == ("SKIPPED", "carried", second.id)
-    assert (second.state, second.amount) == (LiveState.WAITING_APPROVAL, Decimal("1.00"))
+    assert (second.state, second.amount) == (LiveState.APPROVED, Decimal("1.00"))
 
 
-def test_account_with_fewer_shares_than_bot_bought_goes_back_to_approval(
+def test_account_with_fewer_shares_than_bot_bought_asks_before_new_orders(
     make_session: Callable[[], Session], session: Session
 ) -> None:
-    bot = live_bot(session, streak=AUTO_AFTER)
+    bot = live_bot(session)
     session.add(
         LiveOrderRow(
             bot_id=bot.id, symbol="VOO", signal_date=SIGNAL, trade_date=TRADE,
@@ -242,16 +246,19 @@ def test_account_with_fewer_shares_than_bot_bought_goes_back_to_approval(
     check_holdings(session, snap("0.0020"), later)  # 같은 부족은 한 번만 알린다
     session.commit()
 
-    session.refresh(bot)
-    assert bot.live_streak == 0  # 다시 승인부터
     kinds = session.scalars(select(EventRow.kind).where(EventRow.kind == "live_reconcile")).all()
     assert len(kinds) == 1
+    sim_buy(session, bot, "337.5")  # 부족이 있는 동안의 새 주문은 한도 안이어도 묻는다
+    LiveDesk(make_session, FakeTrader(), WeekdayCalendar()).plan(SEND)
+    session.expire_all()
+    newest = session.scalars(select(LiveOrderRow).order_by(LiveOrderRow.id.desc())).first()
+    assert newest is not None and newest.state == LiveState.WAITING_APPROVAL
 
 
-def test_short_of_dollars_warns_early_then_skips_without_turning_off_auto(
+def test_short_of_dollars_warns_early_then_skips(
     make_session: Callable[[], Session], session: Session
 ) -> None:
-    bot = live_bot(session, streak=1)
+    bot = live_bot(session)
     snapshot = AccountSnapshot("test", Decimal("2.86"), Decimal(0), [], [])
     save_snapshot(session, snapshot, OPEN - timedelta(hours=13))
     sim_buy(session, bot, "675")  # 실제 주문 $6.75
@@ -267,13 +274,10 @@ def test_short_of_dollars_warns_early_then_skips_without_turning_off_auto(
         "deadline": "10/02 22:35",
     }  # fmt: skip
 
-    approve(session, live_order(session).id, SEND)
     desk.tick(SEND)  # 그때도 모자라면 보내지 않고 이번 몫은 넘긴다
     order = live_order(session)
     assert (order.state, order.reason) == (LiveState.SKIPPED, "no_funds")
     assert trader.placed == []
-    session.refresh(bot)
-    assert bot.live_streak == 1  # 돈 부족은 고장이 아니라 자동 단계(연속 성공)를 지우지 않는다
 
 
 def test_trading_bot_buys_a_hundredth_of_cash_and_sells_only_what_it_bought(
@@ -308,11 +312,10 @@ def test_trading_bot_buys_a_hundredth_of_cash_and_sells_only_what_it_bought(
     assert [(o.symbol, o.side, o.state, o.reason) for o in orders] == [
         ("TQQQ", "SELL", LiveState.SKIPPED, "nothing_held"),
         ("SOXL", "BUY", LiveState.SKIPPED, "leveraged"),
-        ("TQQQ", "BUY", LiveState.WAITING_APPROVAL, None),
+        ("TQQQ", "BUY", LiveState.APPROVED, None),
     ]
     assert orders[2].amount == Decimal("100.00")
 
-    approve(session, orders[2].id, SEND)
     desk.tick(SEND)  # 사서 체결 (0.0048주)
     session.scalars(select(SimOrderRow).where(SimOrderRow.symbol == "TQQQ")).all()[
         -1
@@ -322,7 +325,6 @@ def test_trading_bot_buys_a_hundredth_of_cash_and_sells_only_what_it_bought(
     desk.plan(SEND)
     sell = session.scalars(select(LiveOrderRow).order_by(LiveOrderRow.id.desc())).first()
     assert sell is not None and sell.side == "SELL" and sell.quantity == Decimal("0.0048")
-    approve(session, sell.id, SEND)
     desk.tick(SEND + timedelta(days=3))  # 월요일 장이 열리고 5분 뒤
     assert [(s.symbol, s.quantity) for s in trader.sold] == [("TQQQ", Decimal("0.0048"))]
     assert live_position(session, bot.id, "TQQQ") == 0  # 산 만큼 모두 팔았다

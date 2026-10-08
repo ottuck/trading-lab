@@ -571,9 +571,7 @@ def event_message(
             if ratio is None:
                 return Message("⚙️", "실제로 따라 사기를 껐어요", "", "INFO", False)
             share = f"1/{round(1 / Decimal(str(ratio)))}"
-            body = (
-                f"모의 매수의 {share} 금액을 실제 계좌에서 따라 사요. 처음 몇 번은 승인을 받아요."
-            )
+            body = f"모의 매수의 {share} 금액을 실제 계좌에서 따라 사요. 한도를 넘는 주문만 승인을 받아요."
             return Message("⚙️", "실제로 따라 사기를 켰어요", body, "INFO", False)
         if kind_of == ConfigChange.SYMBOLS:
             body = f"{_weights_label(change.get('before', {}).get('symbols') or [])} → {_weights_label(change['after']['symbols'])}"
@@ -644,10 +642,10 @@ def _live_order_message(d: LiveOrderData) -> Message | None:
         if d.get("reason") == "insufficient_funds":  # 돈 부족은 고장이 아니라 자동은 그대로
             body = f"{why} 이번 몫은 넘어가요."
         else:
-            body = f"{why} 다음 주문부터 다시 승인을 받아요.".strip()
+            body = f"{why} 증권사 앱에서 확인해 주세요.".strip()
         return Message("⚠️", f"{title} · {sym}", body, "WARN", True)
     if state == "UNKNOWN":
-        body = f"증권사 앱에서 {sym} {amount} 주문이 들어갔는지 확인해 주세요. 다음 주문부터 다시 승인을 받아요."
+        body = f"증권사 앱에서 {sym} {amount} 주문이 들어갔는지 확인해 주세요."
         return Message("⚠️", f"실제 주문을 확인하지 못했어요 · {sym}", body, "WARN", True)
     return None  # SENDING·SENT는 내부 상태
 
@@ -677,7 +675,7 @@ def _live_sell_message(d: LiveOrderData) -> Message | None:
             "CANCELED": "실제 매도가 취소됐어요",
             "UNKNOWN": "실제 매도를 확인하지 못했어요",
         }[state]
-        body = f"{why} 증권사 앱에서 {sym}를 확인해 주세요. 다음 주문부터 다시 승인을 받아요."
+        body = f"{why} 증권사 앱에서 {sym}를 확인해 주세요."
         return Message("⚠️", f"{title} · {sym}", body.strip(), "WARN", True)
     return None
 

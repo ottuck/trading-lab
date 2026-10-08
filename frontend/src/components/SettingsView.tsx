@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { api, botApi, liveApi, notifyApi, type Bot, type NotifyScope, type SymbolWeight, type BrokerAccount } from '../api'
-import { useLive } from '../live'
+import { realKeepNote, useLive } from '../live'
 import { useDemo } from '../demo'
 import { LiveOrderList } from './Live'
-import { ago, dollars, money, shares, won } from '../format'
+import { ago, dollars, MAX_CASH, money, plainDollars, shares, won } from '../format'
 import { closeNewBot, openBot, selectBot, startMeEdit, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
 import { isAiBot, isMeBot, sameParams, useStrategies } from '../strategies'
 import { answersOf, describe } from '../me'
@@ -202,7 +202,8 @@ function DangerZone({ bot, others }: { bot: Bot; others: Bot[] }) {
   const confirmReset = () =>
     window.confirm(
       `${bot.name}의 모의 잔고를 ${money(bot.account.initial_cash)}로 되돌리고 판단·거래 기록을 모두 지울까요?\n` +
-        '설정과 실행 상태는 그대로예요. 되돌릴 수 없어요.',
+        '설정과 실행 상태는 그대로예요. 되돌릴 수 없어요.' +
+        realKeepNote(bot, 'reset'),
     )
   // 따로 상자로 묶지 않고 다른 설정과 같은 줄로 둔다. 되돌릴 수 없음은 누를 때 확인 메시지로 알린다.
   return (
@@ -223,7 +224,7 @@ function DangerZone({ bot, others }: { bot: Bot; others: Bot[] }) {
           <button
             className="danger"
             disabled={remove.isPending}
-            onClick={() => window.confirm(`${bot.name}의 모든 기록을 지울까요? 되돌릴 수 없어요.`) && remove.mutate()}
+            onClick={() => window.confirm(`${bot.name}의 모든 기록을 지울까요? 되돌릴 수 없어요.${realKeepNote(bot, 'delete')}`) && remove.mutate()}
           >
             봇 삭제
           </button>
@@ -312,14 +313,13 @@ function BrokerAccountSection() {
   )
 }
 
-const RATIO_OF: Record<string, string> = { '0.01': '1/100', '0.1': '1/10' }
+const RATIO_OF: Record<string, string> = { '0.01': '1/100' }
 
-/** 실제로 따라 사기 (실거래 R2): 나 카피 봇의 모의 매수를 비율만큼 줄여 실제 계좌에서 산다. */
+/** 실제로 따라 하기: 모의 주문을 1/100로 줄여 실제 계좌에서 낸다. 한도 안의 주문은 묻지 않고 바로 낸다. */
 function LiveSection({ bot }: { bot: Bot }) {
   const qc = useQueryClient()
   const { data: live } = useLive()
   const { byName } = useStrategies()
-  const [unsupported, setUnsupported] = useState(false)
   const setRatio = useMutation({
     mutationFn: (ratio: string | null) => botApi.setLive(bot.id, ratio),
     onSuccess: () => {
@@ -333,27 +333,30 @@ function LiveSection({ bot }: { bot: Bot }) {
   const ai = isAiBot(bot)
   const trading = !byName[bot.strategy]?.accumulates
   const current = bot.live_ratio == null ? null : (RATIO_OF[String(Number(bot.live_ratio))] ?? bot.live_ratio)
+  const limits = trading
+    ? `한도: 사는 주문 1건 ${dollars(live.per_trade)}.`
+    : `한도: 주문 1건 ${dollars(live.per_order)}, 한 달 ${dollars(live.per_month)}.`
+  // 지금 설정으로 실제로 얼마가 나가는지 (이 봇의 금액으로 계산한다)
+  const deposit = Number(bot.params.deposit ?? 0)
+  const rough = trading
+    ? `지금 봇 현금 ${plainDollars(Math.round(Number(bot.account.cash)))}의 1/100이면 사는 한 번에 약 ${plainDollars(Math.round(Number(bot.account.cash)) / 100)}이에요.`
+    : `매달 넣는 돈 ${plainDollars(deposit)}의 1/100이라, 한 달 약 ${plainDollars(deposit / 100)}이 실제로 나가요.`
   const pick = (ratio: string | null) => {
-    setUnsupported(false)
     if (ratio === current) return
     const what = ai
       ? `AI 봇이 모의로 살 때 그 금액의 ${ratio}만큼 사고, 모의로 팔 때 실제로 산 수량에서 같은 비율만큼 팔아요.`
       : trading
-        ? `모의로 살 때 봇 현금의 ${ratio}만큼 사고, 모의로 팔 때 실제로 산 만큼 모두 팔아요.`
+        ? `모의로 살 때 봇 현금의 ${ratio}만큼 사고, 모의로 팔 때 이 봇이 실제로 산 만큼 모두 팔아요.`
         : `모의 매수의 ${ratio} 금액을 같은 날 같은 종목으로 사요.`
     const ok =
       !ratio ||
       window.confirm(
-        `${what} 실제 ${sourceLabel(live.trader)} 계좌의 돈이 움직여요.\n` +
-          `처음 ${live.auto_after}번은 앱에서 승인해야 나가고, 그다음부터 자동이에요. 켤까요?`,
+        `${what} 실제 ${sourceLabel(live.trader)} 계좌의 돈이 움직여요.\n${rough}\n` +
+          `${limits} 한도 안의 주문은 묻지 않고 바로 내고, 넘는 주문만 앱에서 승인해야 나가요. 켤까요?`,
       )
     if (ok) setRatio.mutate(ratio)
   }
   const mine = live.orders.filter((o) => o.bot_id === bot.id)
-  const left = Math.max(0, live.auto_after - bot.live_streak)
-  const limits = trading
-    ? `한도: 사는 주문 1건 ${dollars(live.per_trade)}.`
-    : `한도: 주문 1건 ${dollars(live.per_order)}, 한 달 ${dollars(live.per_month)}.`
   return (
     <Section
       title={trading || ai ? '실제로 따라 하기' : '실제로 따라 사기'}
@@ -377,24 +380,12 @@ function LiveSection({ bot }: { bot: Bot }) {
             {r}
           </button>
         ))}
-        <button className="seg unsupported" aria-disabled="true" onClick={() => setUnsupported(true)}>
-          1/10
-        </button>
         {setRatio.error && <span className="bad small">{setRatio.error.message}</span>}
       </div>
-      {unsupported && (
-        <div className="notice">
-          <b>1/10은 지원하지 않아요.</b> 실제 돈은 1/100로만 따라 해요. 1/10이면{' '}
-          {trading ? '한 번에 $1,000 안팎(약 135만원)을 사고팔게 되고' : '한 달 약 $68(약 9만원)이 나가고'}, 지금 안전장치의 한도(
-          {trading ? `1건 ${dollars(live.per_trade)}` : `1건 ${dollars(live.per_order)}, 한 달 ${dollars(live.per_month)}`})도 훨씬 넘어요.
-          이 앱의 실제 계좌는 같은 판단이 진짜 돈으로도 그대로 움직이는지 작은 금액으로 확인하는 곳이라 비율은 키우지 않기로 했어요.
-        </div>
-      )}
+      <div className="faint small">{rough}</div>
       {current && (
         <div className="faint small">
-          {left > 0
-            ? `처음 ${live.auto_after}번은 홈에서 승인해야 나가요 (앞으로 ${left}번). 문제가 생기면 다시 승인부터 해요.`
-            : '자동으로 내요. 한도를 넘거나 문제가 생기면 다시 승인을 받아요.'}
+          한도 안의 주문은 자동으로 내요. 한도를 넘거나 실제 계좌의 주식이 봇 기록보다 적을 때만 홈에서 승인을 받아요.
         </div>
       )}
       {mine.length > 0 && (
@@ -564,6 +555,12 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
             <span className="faint small">또는 아래에서 바로 고칠 수 있어요</span>
           </div>
           <StrategyFields draft={draft} onChange={setDraft} />
+          {bot.live_ratio != null && (
+            <div className="faint small">
+              실제로 따라 하는 중이라, 저장하면 다음 입금부터 실제 주문은 매달 넣는 돈 {plainDollars(Number(draft.params.deposit ?? 0))}의
+              1/100, 한 달 약 {plainDollars(Number(draft.params.deposit ?? 0) / 100)}이에요.
+            </div>
+          )}
         </Section>
       ) : (
       <Section title="전략" desc="언제 사고팔지 정해요. 돌아가는 중에도 바꿀 수 있고, 다음 판단부터 적용돼요.">
@@ -673,7 +670,7 @@ function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
           <label>
             시작 금액
             <span>
-              <AmountInput id="new-bot-cash" value={cash} onChange={setCustomCash} placeholder="예: 10000" />
+              <AmountInput id="new-bot-cash" value={cash} onChange={setCustomCash} placeholder="예: 10000" max={MAX_CASH} />
             </span>
           </label>
         </div>
@@ -685,7 +682,7 @@ function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
         </label>
         <button
           className="primary"
-          disabled={create.isPending || !name.trim() || !Number(cash) || badLimit(draft) || (chosen.length > 1 && total !== 100)}
+          disabled={create.isPending || !name.trim() || !Number(cash) || Number(cash) > MAX_CASH || badLimit(draft) || (chosen.length > 1 && total !== 100)}
           onClick={() => create.mutate()}
         >
           {startNow ? '만들고 시작하기' : '만들기'}

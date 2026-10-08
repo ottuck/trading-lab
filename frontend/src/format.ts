@@ -18,6 +18,15 @@ export function roundMoney(value: number): string {
 }
 
 /** 실제 증권사 계좌의 달러처럼 바꿔 보면 안 되는 금액. 늘 달러로 보여준다. */
+/** 입력 상한 (백엔드 domain/strategy.py MAX_DEPOSIT, application/bots.py MAX_CASH와 같게). 한 자리 더 친 오타를 막는다. */
+export const MAX_DEPOSIT = 100_000
+export const MAX_CASH = 1_000_000
+
+/** 달러 금액을 군더더기 없이: $1,350 / $13.50 (정수면 소수점 없이). 원화로 바꾸지 않는다. */
+export function plainDollars(value: number): string {
+  return Number.isInteger(value) ? `$${value.toLocaleString('en-US')}` : `$${value.toFixed(2)}`
+}
+
 /** 원화 어림값: 134만 원, 9,500원 */
 export function manwon(krw: number): string {
   return krw >= 10_000 ? `${Math.round(krw / 10_000).toLocaleString('ko-KR')}만 원` : `${Math.round(krw).toLocaleString('ko-KR')}원`

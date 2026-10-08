@@ -141,7 +141,7 @@ export type Bot = {
   data_fetched_at: string | null
   data_source: string | null
   live_ratio: Money | null // 실제로 따라 사기 비율 (꺼짐이면 null)
-  live_streak: number // 연속으로 문제없이 체결된 실제 주문
+  has_real_fills: boolean // 실제 계좌에서 산(판) 기록이 있다 (따라 하기를 끈 뒤에도 남는다)
 }
 
 /** 실제 주문 1건 (실거래 R2) */
@@ -167,11 +167,11 @@ export type LiveOrder = {
 export type Live = {
   trader: string | null // 실거래 스위치가 켜졌으면 증권사 출처 코드
   halted: boolean
-  auto_after: number
   per_order: Money
   per_month: Money
   per_trade: Money // 사고팔기 봇 한 건 한도
   ratios: string[]
+  bought_this_month: Money // 이번 달 실제로 산(체결된) 금액
   shortfall: { symbol: string; held: Money; bought: Money }[] // 실제 계좌 대조: 봇이 산 것보다 적은 종목
   checked_at: string | null
   orders: LiveOrder[]
