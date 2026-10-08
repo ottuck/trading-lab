@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ColorType, createChart, LineSeries, type Time } from 'lightweight-charts'
 import { useEffect, useRef, useState } from 'react'
-import { api, backtestApi, type BacktestDetail, type BacktestSummary, type StrategyInfo, type SymbolWeight } from '../api'
+import { api, backtestApi, botApi, type BacktestDetail, type BacktestSummary, type StrategyInfo, type SymbolWeight } from '../api'
 import { useCurrency } from '../currency'
 import { MAX_CASH, money, percent, roundMoney, setAmount, shares, signedMoney, tone } from '../format'
 import { isAiBot, isMeBot, useStrategies } from '../strategies'
@@ -9,7 +9,8 @@ import { useDemo, usePriceWord } from '../demo'
 import { cssVar, useTheme } from '../theme'
 import { FxNote } from './Currency'
 import { Term } from './Help'
-import { goTo, openBot, startMeEdit, startNewBot } from '../selectedBot'
+import { goTo, openBot, selectBot, startMeEdit, startNewBot } from '../selectedBot'
+import { toConfig, toDraft } from '../botConfig'
 import { ParallelWorlds } from './Parallel'
 import { PresetFields } from './PresetFields'
 import { StrategyGlyph } from './StrategyGlyph'
@@ -295,6 +296,23 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
   const demo = useDemo()
   const { data } = useQuery({ queryKey: ['backtest', id], queryFn: () => backtestApi.get(id), refetchInterval: false })
   const [showTrades, setShowTrades] = useState(false)
+  const qc = useQueryClient()
+  const { data: bots } = useQuery({ queryKey: ['bots'], queryFn: api.bots })
+  // 나 카피 봇은 하나만 만들 수 있다: 이미 있으면 새로 만들지 않고 이 시험의 규칙·종목을 그 봇에 적용한다.
+  const meBot = demo ? undefined : bots?.find(isMeBot)
+  const applyToMe = async (params: Record<string, number>) => {
+    if (!meBot || !data) return
+    const next = activeOf(data.symbols ?? [{ symbol: data.symbol, weight: 100 }])
+    try {
+      await botApi.updateConfig(meBot.id, { ...toConfig(toDraft(meBot), meBot), params })
+      if (JSON.stringify(activeOf(meBot.symbols)) !== JSON.stringify(next)) await botApi.updateSymbols(meBot.id, next)
+      await qc.invalidateQueries({ queryKey: ['bots'] })
+      selectBot(meBot.id)
+      goTo('dashboard')
+    } catch (e) {
+      window.alert(`바꾸지 못했어요: ${e instanceof Error ? e.message : e}`)
+    }
+  }
   if (!data) return <div className="line-empty">불러오는 중…</div>
   const m = data.metrics
   const won = Number(m.final_equity) >= Number(m.benchmark_final_equity)
@@ -329,20 +347,33 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
         </div>
         {!demo && (
           <div className="hero-actions">
-            <button
-              className="primary"
-              onClick={() =>
-                startNewBot({
-                  symbol: data.symbol,
-                  symbols: data.symbols ?? undefined,
-                  strategy: data.strategy,
-                  params: data.params,
-                  cash: monthly ? undefined : String(Math.round(Number(m.initial_cash))),
-                })
-              }
-            >
-              이 전략으로 모의 투자 시작
-            </button>
+            {meBot && data.strategy === 'dip_saver' ? (
+              <button
+                className="primary"
+                onClick={() =>
+                  window.confirm(
+                    `${meBot.name}의 규칙과 종목을 이 시험의 값으로 바꿀까요?\n나 카피 봇은 하나만 만들 수 있어서 새로 만들지 않고 이 봇을 바꿔요. 다음 판단부터 적용되고 지금까지의 기록은 그대로예요.`,
+                  ) && void applyToMe(data.params)
+                }
+              >
+                이 규칙을 {meBot.name}에 적용
+              </button>
+            ) : (
+              <button
+                className="primary"
+                onClick={() =>
+                  startNewBot({
+                    symbol: data.symbol,
+                    symbols: data.symbols ?? undefined,
+                    strategy: data.strategy,
+                    params: data.params,
+                    cash: monthly ? undefined : String(Math.round(Number(m.initial_cash))),
+                  })
+                }
+              >
+                이 전략으로 모의 투자 시작
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -500,8 +531,15 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
             })
           }
           sub={() => `${ym(m.start)}부터, 규칙을 하나씩 바꿨다면`}
-          chooseLabel="로 모의 투자 시작"
-          onChoose={demo ? undefined : (params) => startNewBot({ symbol: data.symbol, symbols: data.symbols ?? undefined, strategy: data.strategy, params })}
+          chooseLabel={meBot ? '로 바꾸기' : '로 모의 투자 시작'}
+          confirm={meBot ? `${meBot.name}의 규칙과 종목을 바꿀까요? 다음 판단부터 적용되고 지금까지의 기록은 그대로예요.` : undefined}
+          onChoose={
+            demo
+              ? undefined
+              : meBot
+                ? applyToMe
+                : (params) => startNewBot({ symbol: data.symbol, symbols: data.symbols ?? undefined, strategy: data.strategy, params })
+          }
         />
       )}
     </section>

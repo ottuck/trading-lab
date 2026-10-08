@@ -20,6 +20,7 @@ from quant_lab.adapters.toss.client import TossClient
 from quant_lab.application.ai_judge import AiConfig, judge
 from quant_lab.application.backtesting import backtest_symbol
 from quant_lab.application.bar_sync import sync_daily_bars
+from quant_lab.application.bots import ONE_PER_STRATEGY
 from quant_lab.application.demo_advisor import DemoAdvisor
 from quant_lab.application.demo_prices import DEMO_START, DEMO_USD_KRW, LEVERAGE, demo_bars
 from quant_lab.application.dry_run import latest_completed_session
@@ -324,7 +325,7 @@ DEMO_BOTS: tuple[tuple[str, str, dict[str, int], dict[str, int], Decimal], ...] 
     ("TQQQ 봇", "trend_filter", {}, {"TQQQ": 100}, Decimal(10_000)),
     # AI 봇 (마일스톤 4): 데모에는 AI 키가 없어 규칙으로 만든 예시 판단(DemoAdvisor)을 쓴다
     (
-        "AI 봇",
+        "시장분석 AI 봇",
         "ai_judge",
         {"deposit": 1000, "day": 25},
         {s: 10 for s in ("QQQ", "VOO", "QLD", "TQQQ", "SOXL", "NVDA", "GLD", "MAGS", "EWY", "EWJ")},
@@ -345,7 +346,15 @@ def _seed_demo_bots(end: date, now: datetime) -> None:
         start = calendar.sessions(date(end.year - years, end.month, 1), end)[0]
         strategy = STRATEGIES[strategy_name](**params)
         with make_session() as session:
-            bot = next((b for b in list_bots(session) if b.name == name), None)
+            bot = next(
+                (
+                    b
+                    for b in list_bots(session)
+                    if b.name == name
+                    or (strategy_name in ONE_PER_STRATEGY and b.strategy == strategy_name)
+                ),
+                None,
+            )
             if bot is None:
                 bot = create_bot(
                     session,

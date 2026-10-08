@@ -150,6 +150,12 @@ def test_bot_management(client: TestClient, session: Session, bot_id: int) -> No
         "params": {"deposit": 500000},
     }
     assert client.post("/api/bots", json=deposit).status_code == 400
+    # 나 카피 봇·AI 봇은 전략마다 하나만 (같은 전략의 두 번째는 이름이 달라도 막는다)
+    for strategy in ("dip_saver", "ai_judge"):
+        first = {"name": f"{strategy}-1", "symbol": "voo", "strategy": strategy}
+        assert client.post("/api/bots", json=first).status_code == 201
+        second = {**first, "name": f"{strategy}-2"}
+        assert client.post("/api/bots", json=second).status_code == 409
 
     created = client.post(
         "/api/bots", json={"name": "voo", "symbol": "voo", "strategy": "sma_cross"}
