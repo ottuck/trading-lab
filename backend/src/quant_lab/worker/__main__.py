@@ -118,6 +118,7 @@ def run(stop: threading.Event) -> None:
         ai=AiConfig(
             ClaudeAdvisor(key.get_secret_value()) if (key := settings.anthropic_api_key) else None,
             settings.ai_monthly_budget,
+            candle_budget=settings.ai_candle_monthly_budget,
         ),
     )
     notifier = build_notifier(settings, make_session)

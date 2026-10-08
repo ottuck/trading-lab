@@ -21,7 +21,7 @@ from quant_lab.application.ai_judge import AiConfig, judge
 from quant_lab.application.backtesting import backtest_symbol
 from quant_lab.application.bar_sync import sync_daily_bars
 from quant_lab.application.bots import ONE_PER_STRATEGY
-from quant_lab.application.demo_advisor import DemoAdvisor
+from quant_lab.application.demo_advisor import DemoAdvisor, DemoCandleAdvisor
 from quant_lab.application.demo_prices import DEMO_START, DEMO_USD_KRW, LEVERAGE, demo_bars
 from quant_lab.application.dry_run import latest_completed_session
 from quant_lab.application.replay import replay_bot
@@ -312,6 +312,8 @@ def cmd_seed_demo(args: argparse.Namespace) -> int:
     return 0
 
 
+DEMO_AI_SYMBOLS = ("QQQ", "VOO", "QLD", "TQQQ", "SOXL", "NVDA", "GLD", "MAGS", "EWY", "EWJ")
+
 # 데모 홈에 미리 돌고 있는 예시 봇: (이름, 전략, 파라미터, 종목·비율, 시작 금액)
 DEMO_BOTS: tuple[tuple[str, str, dict[str, int], dict[str, int], Decimal], ...] = (
     (
@@ -326,7 +328,15 @@ DEMO_BOTS: tuple[tuple[str, str, dict[str, int], dict[str, int], Decimal], ...] 
         "시장분석 AI 봇",
         "ai_judge",
         {"deposit": 1000, "day": 25},
-        {s: 10 for s in ("QQQ", "VOO", "QLD", "TQQQ", "SOXL", "NVDA", "GLD", "MAGS", "EWY", "EWJ")},
+        {s: 10 for s in DEMO_AI_SYMBOLS},
+        Decimal(1000),
+    ),
+    # 캔들분석 AI 봇: 익명 캔들 표만 받는 규칙 예시 판단(DemoCandleAdvisor)
+    (
+        "캔들분석 AI 봇",
+        "ai_candle",
+        {"deposit": 1000, "day": 25},
+        {s: 10 for s in DEMO_AI_SYMBOLS},
         Decimal(1000),
     ),
 )
@@ -382,7 +392,9 @@ def _seed_demo_bots(end: date, now: datetime) -> None:
             session.commit()
             bot_id = bot.id
         if first <= end:
-            ai = AiConfig(DemoAdvisor(), Decimal(1_000_000))  # 예시 판단은 비용이 없다
+            # 예시 판단은 비용이 없다
+            free = Decimal(1_000_000)
+            ai = AiConfig(DemoAdvisor(), free, DemoCandleAdvisor(), free)
             outcomes = replay_bot(make_session, bot_id, calendar, first, end, ai=ai)
             print(f"  {name}: {first} ~ {end} 평가 {len(outcomes)}회")
 
@@ -441,7 +453,7 @@ def cmd_ai_judge(args: argparse.Namespace) -> int:
         key = settings.anthropic_api_key
         advisor = ClaudeAdvisor(key.get_secret_value()) if key else None
         judgment = judge(advisor, request)
-        save_judgment(session, None, judgment, datetime.now(UTC))
+        save_judgment(session, None, judgment, datetime.now(UTC), AiJudge.name)
         session.commit()
     print(f"{judgment.session_date} 판단: {judgment.status.value}")
     if judgment.usage:

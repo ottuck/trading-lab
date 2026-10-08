@@ -38,5 +38,5 @@ export const SLIPPAGE_CHOICES = [
 /** 나 카피 봇 (나처럼 투자). 있으면 홈 첫 화면이 "나 vs 매달 그냥 사기"와 평행세계의 나가 된다. */
 export const isMeBot = (b: { strategy: string }) => b.strategy === 'dip_saver'
 
-/** AI 봇 (마일스톤 4): 고른 종목 안에서 AI가 매일 비중을 정한다. */
-export const isAiBot = (b: { strategy: string }) => b.strategy === 'ai_judge'
+/** AI 봇 (마일스톤 4): 고른 종목 안에서 AI가 매일 비중을 정한다 (시장분석·캔들분석). */
+export const isAiBot = (b: { strategy: string }) => b.strategy === 'ai_judge' || b.strategy === 'ai_candle'
