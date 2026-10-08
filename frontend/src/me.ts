@@ -66,7 +66,7 @@ export function withCurrent(options: Option[], value: number): Option[] {
 
 export const START: Answers = { symbols: [], regular: 1, deposit: 1000, day: 25, hot: 15, dip: 10 }
 
-/** 이미 있는 나 카피 봇의 규칙 → 답 (질문 다시 하기) */
+/** 이미 있는 나 카피 봇의 규칙 → 답 (다시 카피하기) */
 export function answersOf(bot: Bot): Answers {
   const p = bot.params
   return {

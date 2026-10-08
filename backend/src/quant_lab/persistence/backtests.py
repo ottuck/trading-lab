@@ -67,9 +67,34 @@ def save_backtest(
         actions=to_jsonable(actions),
         equity=to_jsonable(result.equity),
     )
+    _drop_same_condition(session, row)
     session.add(row)
     session.commit()
     return row.id
+
+
+def _drop_same_condition(session: Session, new: BacktestRow) -> None:
+    """같은 조건으로 다시 시험하면 지난 결과를 지우고 새 결과만 남긴다 (같은 것이 쌓이지 않게).
+
+    같은 조건: 종목·비율·전략·규칙·금액·비용이 같고 시험 시작이 같은 달.
+    시작일은 날마다 하루씩 밀리므로 달 단위로 본다.
+    """
+    month = str(new.metrics["start"])[:7]
+    same = select(BacktestRow).where(
+        BacktestRow.symbol == new.symbol,
+        BacktestRow.strategy == new.strategy,
+        BacktestRow.initial_cash == new.initial_cash,
+        BacktestRow.commission_rate == new.commission_rate,
+        BacktestRow.slippage_bps == new.slippage_bps,
+    )
+    for old in session.scalars(same):
+        if (
+            old.params == new.params
+            and old.symbols == new.symbols
+            and old.risk == new.risk
+            and str(old.metrics["start"])[:7] == month
+        ):
+            session.delete(old)
 
 
 def list_backtests(

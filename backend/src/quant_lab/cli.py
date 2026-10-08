@@ -316,9 +316,9 @@ DEMO_BOTS: tuple[tuple[str, str, dict[str, int], dict[str, int], Decimal], ...] 
     (
         "나 카피 봇",
         "dip_saver",
-        {"deposit": 1350, "day": 25, "dip": 10, "hot": 15, "high": 252, "sma": 200, "regular": 1},
+        {"deposit": 1000, "day": 25, "dip": 10, "hot": 15, "high": 252, "sma": 200, "regular": 1},
         {"QQQ": 50, "VOO": 50},
-        Decimal(1350),
+        Decimal(1000),
     ),
     ("QQQ 봇", "sma_cross", {}, {"QQQ": 100}, Decimal(10_000)),
     ("TQQQ 봇", "trend_filter", {}, {"TQQQ": 100}, Decimal(10_000)),
@@ -326,9 +326,9 @@ DEMO_BOTS: tuple[tuple[str, str, dict[str, int], dict[str, int], Decimal], ...] 
     (
         "AI 봇",
         "ai_judge",
-        {"deposit": 1350, "day": 25},
+        {"deposit": 1000, "day": 25},
         {s: 10 for s in ("QQQ", "VOO", "QLD", "TQQQ", "SOXL", "NVDA", "GLD", "MAGS", "EWY", "EWJ")},
-        Decimal(1350),
+        Decimal(1000),
     ),
 )
 
