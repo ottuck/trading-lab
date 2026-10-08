@@ -118,32 +118,50 @@ export function AccountCard() {
         <EyeIcon off={hidden} />
       </span>
       <span className="value tnum">{amount(dollars(account.cash_usd), '4.2em')}</span>
-      <span className="faint small">원화 {amount(won(account.cash_krw), '5em')}</span>
-      {live?.trader && (
-        <span className="small muted">
-          이번 달 실제로 산 금액 {amount(dollars(String(bought)), '3.4em')}
-          {sold > 0 && <> · 판 금액 {amount(dollars(String(sold)), '3.4em')}</>}
-          {waiting > 0 && ` · 승인 기다림 ${waiting}건`}
+      <span className="account-rows">
+        <span className="account-row">
+          <span>원화</span>
+          <span className="tnum">{amount(won(account.cash_krw), '3em')}</span>
         </span>
-      )}
-      {live?.trader && heldCost > 0 && (
-        <span className="small muted">
-          봇이 산 주식 평가 손익{' '}
-          {hidden ? (
-            amount('', '4em')
-          ) : (
-            <b className={tone(String(unrealized))}>
-              {signedDollars(unrealized)} ({percent(String(unrealized / heldCost))})
-            </b>
-          )}
-        </span>
-      )}
-      {live?.trader && everSold && (
-        <span className="small muted">
-          판 주식 확정 손익{' '}
-          {hidden ? amount('', '4em') : <b className={tone(String(realized))}>{signedDollars(realized)}</b>}
-        </span>
-      )}
+        {live?.trader && (
+          <>
+            <span className="account-row">
+              <span>이번 달 산 금액</span>
+              <span className="tnum">{amount(dollars(String(bought)), '3.2em')}</span>
+            </span>
+            {sold > 0 && (
+              <span className="account-row">
+                <span>이번 달 판 금액</span>
+                <span className="tnum">{amount(dollars(String(sold)), '3.2em')}</span>
+              </span>
+            )}
+            {heldCost > 0 && (
+              <span className="account-row">
+                <span>안 판 주식 손익</span>
+                {hidden ? (
+                  amount('', '4.5em')
+                ) : (
+                  <span className={`tnum ${tone(String(unrealized))}`}>
+                    {signedDollars(unrealized)} <small>{percent(String(unrealized / heldCost))}</small>
+                  </span>
+                )}
+              </span>
+            )}
+            {everSold && (
+              <span className="account-row">
+                <span>판 주식 손익</span>
+                {hidden ? amount('', '3.5em') : <span className={`tnum ${tone(String(realized))}`}>{signedDollars(realized)}</span>}
+              </span>
+            )}
+            {waiting > 0 && (
+              <span className="account-row">
+                <span>승인 기다림</span>
+                <span className="tnum">{waiting}건</span>
+              </span>
+            )}
+          </>
+        )}
+      </span>
       <span className="faint small">{ago(account.fetched_at)}에 읽었어요</span>
     </button>
   )
