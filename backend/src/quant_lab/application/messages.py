@@ -60,47 +60,6 @@ class StrategyInfo:
 
 
 CATALOG: dict[str, StrategyInfo] = {
-    "sma_cross": StrategyInfo(
-        name="sma_cross",
-        nickname="느긋한 추세 타기",
-        summary="큰 상승 흐름이 이어지는 동안만 들고 있어요. 자주 사고팔지 않고, 큰 하락장을 피하는 데 강해요.",
-        risk="낮음",
-        trades="1년에 1번 안팎",
-        presets=[
-            Preset("steady", "느긋하게 (기본)", {"fast": 50, "slow": 200}),
-            Preset("quick", "조금 빠르게", {"fast": 20, "slow": 100}),
-        ],
-    ),
-    "trend_filter": StrategyInfo(
-        name="trend_filter",
-        nickname="200일선 지킴이",
-        summary="주가가 지난 200일 평균보다 위에 있을 때만 들고 있어요. 단순하지만, 오르내림이 잦으면 자주 사고팔아요.",
-        risk="보통",
-        trades="1년에 몇 번",
-        presets=[
-            Preset("steady", "200일 기준 (기본)", {"sma": 200}),
-            Preset("quick", "100일 기준 (빠르게)", {"sma": 100}),
-        ],
-    ),
-    "rsi2": StrategyInfo(
-        name="rsi2",
-        nickname="급락 줍줍",
-        summary="오르는 흐름 속에서 짧게 크게 떨어지면 사고, 반등하면 바로 팔아요. 들고 있는 기간이 짧아요.",
-        risk="낮음",
-        trades="한 달에 몇 번",
-        presets=[Preset("steady", "기본", {"rsi": 2, "entry": 10, "exit_sma": 5, "trend": 200})],
-    ),
-    "donchian": StrategyInfo(
-        name="donchian",
-        nickname="신고가 올라타기",
-        summary="최근 최고가를 넘어서면 사고, 최근 최저가 아래로 내려가면 팔아요. 강한 상승을 잘 타지만 헛신호도 있어요.",
-        risk="보통",
-        trades="1년에 여러 번",
-        presets=[
-            Preset("steady", "55일 기준 (기본)", {"entry": 55, "exit": 20}),
-            Preset("quick", "20일 기준 (빠르게)", {"entry": 20, "exit": 10}),
-        ],
-    ),
     "dip_saver": StrategyInfo(
         name="dip_saver",
         nickname="나처럼 투자",
@@ -207,7 +166,7 @@ def _limit_text(value: Any) -> str:
 
 
 def settings_changes(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
-    """설정을 바꾼 기록을 쉬운 말로: ["전략 급락 줍줍 → 느긋한 추세 타기", "최대 투자 금액 ..."]."""
+    """설정을 바꾼 기록을 쉬운 말로: ["전략 나처럼 투자 → AI에게 맡기기", "최대 투자 금액 ..."]."""
     lines = []
     old, new = before.get("strategy", ""), after.get("strategy", "")
     bp, ap = before.get("params") or {}, after.get("params") or {}
@@ -246,16 +205,10 @@ def _shares(value: Any) -> str:
     return text.rstrip("0").rstrip(".") if "." in text else text
 
 
-def _ind(indicators: dict[str, Any], key: str) -> str:
-    return _usd(indicators[key]) if key in indicators else "?"
-
-
 def decision_reason(
     strategy: str,
     params: dict[str, Any],
     indicators: dict[str, Any],
-    target_long: bool,
-    holding: bool,
     action: str | None = None,
     raw: str = "",
 ) -> str:
@@ -285,38 +238,6 @@ def decision_reason(
         if action == "BUY":
             return "적당한 가격이에요. 이번 달 넣은 돈으로 사요."
         return "적당한 가격이에요. 다음 월급날에 사요."
-    if strategy == "sma_cross":
-        fast, slow = (
-            _ind(indicators, f"sma{p.get('fast')}"),
-            _ind(indicators, f"sma{p.get('slow')}"),
-        )
-        if target_long:
-            return f"상승 흐름이에요. 최근 {p.get('fast')}일 평균 가격({fast})이 {p.get('slow')}일 평균({slow})보다 높아요."
-        return f"하락 흐름이에요. 최근 {p.get('fast')}일 평균 가격({fast})이 {p.get('slow')}일 평균({slow})보다 낮아요."
-    if strategy == "trend_filter":
-        avg = _ind(indicators, f"sma{p.get('sma')}")
-        side = "위에" if target_long else "아래에"
-        return f"주가가 지난 {p.get('sma')}일 평균({avg}) {side} 있어요."
-    if strategy == "rsi2":
-        if holding and not target_long:
-            return f"반등했어요. 주가가 최근 {p.get('exit_sma')}일 평균을 넘었어요."
-        if holding:
-            return "아직 반등을 기다리는 중이에요."
-        if target_long:
-            return "오르는 흐름 속에서 단기간에 크게 떨어졌어요. 싸게 살 기회예요."
-        return "아직 살 만큼 떨어지지 않았어요."
-    if strategy == "donchian":
-        high, low = (
-            _ind(indicators, f"high{p.get('entry')}"),
-            _ind(indicators, f"low{p.get('exit')}"),
-        )
-        if target_long and not holding:
-            return f"최근 {p.get('entry')}일 최고가({high})를 넘어섰어요."
-        if not target_long and holding:
-            return f"최근 {p.get('exit')}일 최저가({low}) 아래로 내려갔어요."
-        if holding:
-            return f"최근 {p.get('exit')}일 최저가({low}) 위에서 버티고 있어요."
-        return f"최근 {p.get('entry')}일 최고가({high})를 넘기를 기다리는 중이에요."
     return ""
 
 
@@ -388,8 +309,6 @@ def event_message(
             d.get("strategy", ""),
             d.get("params", {}),
             d.get("indicators", {}),
-            bool(d.get("target_long")),
-            bool(d.get("holding")),
             action=d.get("action"),
             raw=str(d.get("reason", "")),
         )

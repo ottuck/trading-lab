@@ -10,8 +10,8 @@ export type Draft = {
 
 export function toDraft(bot?: Pick<Bot, 'strategy' | 'params'> & Partial<Bot>): Draft {
   return {
-    strategy: bot?.strategy ?? 'sma_cross',
-    params: bot?.params ?? { fast: 50, slow: 200 },
+    strategy: bot?.strategy ?? 'dip_saver',
+    params: bot?.params ?? {},
     slippage: bot?.slippage_bps ? String(Number(bot.slippage_bps)) : '5',
     maxPosition: bot?.risk?.max_position_value ?? '',
   }

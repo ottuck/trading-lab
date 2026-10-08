@@ -24,13 +24,11 @@
   --bad-soft: rgba(229, 72, 77, 0.09);
   --warn: #c27c00;
   --warn-soft: rgba(214, 138, 0, 0.1);
-  --dry: #d68a00;
   /* 가격 오름·내림은 국내 관례대로 빨강·파랑. 상태 색(--ok/--bad)과 분리한다. */
   --rise: #e5484d;
   --rise-soft: rgba(229, 72, 77, 0.1);
   --fall: #3b74f5;
   --fall-soft: rgba(59, 116, 245, 0.1);
-  --line-fast: #7b5cff;
   --neutral-soft: rgba(108, 108, 117, 0.1);
   --hover: rgba(17, 17, 20, 0.04);
   --chip: #f4f4f6;
@@ -69,12 +67,10 @@
   --bad-soft: rgba(255, 99, 105, 0.12);
   --warn: #f1a10d;
   --warn-soft: rgba(241, 161, 13, 0.12);
-  --dry: #f1a10d;
   --rise: #ff6369;
   --rise-soft: rgba(255, 99, 105, 0.12);
   --fall: #5b8cff;
   --fall-soft: rgba(91, 140, 255, 0.13);
-  --line-fast: #a78bff;
   --neutral-soft: rgba(142, 142, 151, 0.12);
   --hover: rgba(255, 255, 255, 0.05);
   --chip: rgba(255, 255, 255, 0.06);
@@ -694,40 +690,6 @@ fieldset.plain:disabled {
   align-items: center;
   gap: 4px;
   color: var(--muted);
-}
-
-/* 전략 고르기 카드 */
-.pick-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 10px;
-}
-button.pick {
-  text-align: left;
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--card);
-  display: grid;
-  gap: 4px;
-  font-weight: 400;
-}
-button.pick.active {
-  border-color: var(--ink);
-  box-shadow: 0 0 0 1px var(--ink);
-}
-.pick-title {
-  font-weight: 600;
-  font-size: 15px;
-}
-.pick-desc {
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.45;
-}
-.pick-meta {
-  color: var(--faint);
-  font-size: 12px;
 }
 
 /* 레버리지 배수 표시 */
@@ -2003,7 +1965,7 @@ button.link.back {
   }
 }
 
-/* 시험해 보기: 나처럼 투자가 주력, 유명 전략은 참고용 */
+/* 시험해 보기: 나 카피 봇 소개 */
 .bt-modes {
   display: grid;
   gap: 14px;
@@ -2033,54 +1995,6 @@ button.link.back {
   font-size: 13.5px;
   line-height: 1.6;
   color: var(--muted);
-}
-.bt-main.active {
-  border-color: var(--ink);
-  box-shadow: inset 0 0 0 1px var(--ink);
-}
-.bt-refs {
-  display: grid;
-  gap: 8px;
-}
-.bt-refs .label {
-  font-size: 12.5px;
-  color: var(--muted);
-}
-.bt-ref-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.bt-ref-desc {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  min-height: 84px;
-  padding: 12px 16px;
-  border-radius: 12px;
-  background: var(--surface);
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--muted);
-}
-.bt-ref-desc .glyph {
-  flex: 0 0 160px;
-  height: 56px;
-}
-.bt-ref-desc > div {
-  min-width: 0;
-}
-.bt-ref-desc .title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-}
-.bt-ref-desc p {
-  margin: 2px 0 0;
-}
-.bt-ref-desc.empty p {
-  margin: 0;
-  color: var(--faint);
 }
 /* 나 카피하기로 이끄는 칸: 처음 온 사람에게 가장 쉬운 시작점 */
 .bt-mine {
@@ -2133,9 +2047,6 @@ body {
   max-width: 160px;
   height: 44px;
 }
-.pick .glyph {
-  margin-bottom: 10px;
-}
 .bt-main-text {
   display: grid;
   gap: 4px;
@@ -2154,16 +2065,6 @@ body {
   .bt-main-glyph {
     flex-basis: auto;
     height: 48px;
-  }
-  .bt-ref-desc {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
-  }
-  .bt-ref-desc .glyph {
-    flex: none;
-    width: 160px;
-    height: 52px;
   }
 }
 
