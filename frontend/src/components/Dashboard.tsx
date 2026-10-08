@@ -857,7 +857,7 @@ AI 판단 비용은 하루 약 $0.1이고, 한 달 상한을 넘으면 그달은
         slippage_bps: '5',
         max_position_value: null,
         max_order_value: null,
-        name: 'AI 봇',
+        name: '시장분석 AI 봇',
         symbol: symbols[0],
         symbols: evenSplit(symbols), // AI 봇은 비율을 쓰지 않는다 (AI가 정한다)
         initial_cash: String(deposit),
