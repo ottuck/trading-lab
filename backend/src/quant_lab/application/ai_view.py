@@ -141,7 +141,7 @@ def ai_compare(session: Session, bot_id: int) -> BotParallel:
         )
     except ValueError:
         return BotParallel(first, note="시작한 지 얼마 안 돼서 아직 비교할 날이 없어요.")
-    worlds = [world("me", "AI 봇", None, result, daily=True)]
+    worlds = [world("me", bot.name, None, result, daily=True)]
     me = _copy_bot(session)
     if me is None:
         # 나 카피 봇이 없으면 AI 봇 종목을 똑같이 나눠 매달 그냥 산 것과만 비교한다
