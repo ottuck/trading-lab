@@ -90,7 +90,7 @@ jobs:
           done
           echo '배포 뒤 api가 응답하지 않습니다'; exit 1
 
-  # 오래된 이미지를 정리한다. 배포마다 GHCR에 버전이 3개쯤(태그 붙은 목록, 이미지, 출처 증명) 쌓이므로 최근 30개(약 10번 배포, 롤백 가능 범위)만 둔다.
+  # 오래된 이미지를 정리한다. 배포마다 GHCR에 버전이 3개쯤(태그 붙은 목록, 이미지, 출처 증명) 쌓이므로 최근 30개(약 10번 배포, 롤백 가능 범위)만 둔다. 액션은 한 번에 기본 1개만 지우므로 10개로 올렸다.
   # 정리가 실패해도 배포 결과는 그대로 둔다.
   cleanup:
     needs: prod
@@ -104,3 +104,4 @@ jobs:
           package-name: ${{ github.event.repository.name }}
           package-type: container
           min-versions-to-keep: 30
+          num-old-versions-to-delete: 10
