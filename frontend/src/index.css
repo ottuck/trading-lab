@@ -2440,6 +2440,38 @@ button.account-card:hover:not(:disabled) {
 .account-card:hover .eye {
   color: var(--muted);
 }
+/* 카드 안 줄: 이름은 왼쪽, 숫자는 오른쪽 끝에 맞춘다 */
+.account-rows {
+  display: grid;
+  width: 100%;
+  margin-top: 10px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.account-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.account-row > :last-child {
+  color: var(--text);
+  font-weight: 550;
+  text-align: right;
+}
+.account-row > :last-child.rise {
+  color: var(--rise);
+}
+.account-row > :last-child.fall {
+  color: var(--fall);
+}
+.account-row small {
+  font-size: 11.5px;
+  font-weight: 500;
+}
 /* 가린 금액: 숫자 대신 같은 높이의 둥근 막대 */
 .redact {
   display: inline-block;
