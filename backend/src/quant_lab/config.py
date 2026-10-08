@@ -45,7 +45,8 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = None
     ai_monthly_budget: Decimal = Decimal(
         15
-    )  # 한 달 AI 비용 상한 (USD). 넘으면 그달은 판단하지 않음
+    )  # 시장분석 AI 봇의 한 달 비용 상한 (USD). 넘으면 그달은 판단하지 않음
+    ai_candle_monthly_budget: Decimal = Decimal(5)  # 캔들분석 AI 봇의 한 달 비용 상한 (따로 센다)
 
     worker_heartbeat_interval_s: float = 15.0
     # stored: DB에 저장된 봉만 사용 (토스 호출 없음, 로컬 기본값). toss: 운영 서버.

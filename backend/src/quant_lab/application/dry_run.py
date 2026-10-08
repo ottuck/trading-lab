@@ -47,6 +47,7 @@ from quant_lab.domain.strategy import (
     STRATEGIES,
     Strategy,
     is_ai,
+    is_candle,
     min_bars,
     month_key,
 )
@@ -510,6 +511,7 @@ def _ai_decisions(
                 previous=prev.weights if prev else None,
                 previous_date=prev.session_date if prev else None,
                 as_of=now,
+                candles=is_candle(strategy),
             )
         )
     ok = row.status == JudgmentStatus.OK

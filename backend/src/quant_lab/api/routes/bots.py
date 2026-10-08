@@ -28,6 +28,7 @@ from quant_lab.application import ai_view, bot_status, bots, queries, research
 from quant_lab.application.bot_status import BotStatus
 from quant_lab.application.bots import BotSettings
 from quant_lab.config import get_settings
+from quant_lab.domain.strategy import AI_STRATEGY, CANDLE_STRATEGY
 
 router = APIRouter()
 
@@ -158,7 +159,12 @@ def plan(session: SessionDep, bot_id: int) -> PlanView | None:
 @router.get("/bots/{bot_id}/ai")
 def ai(session: SessionDep, bot_id: int) -> AiView:
     """AI 봇: 오늘의 판단·출처·판단 기록·이번 달 비용."""
-    result = ai_view.ai_overview(session, bot_id, get_settings().ai_monthly_budget, _now())
+    settings = get_settings()
+    budgets = {
+        AI_STRATEGY: settings.ai_monthly_budget,
+        CANDLE_STRATEGY: settings.ai_candle_monthly_budget,
+    }
+    result = ai_view.ai_overview(session, bot_id, budgets, _now())
     return AiView.model_validate(result, from_attributes=True)
 
 

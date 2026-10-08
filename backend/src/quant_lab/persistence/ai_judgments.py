@@ -11,11 +11,12 @@ from quant_lab.persistence.models import AiJudgmentRow
 
 
 def save_judgment(
-    session: Session, bot_id: int | None, judgment: Judgment, now: datetime
+    session: Session, bot_id: int | None, judgment: Judgment, now: datetime, strategy: str
 ) -> AiJudgmentRow:
     advice, usage = judgment.advice, judgment.usage
     row = AiJudgmentRow(
         bot_id=bot_id,
+        strategy=strategy,
         session_date=judgment.session_date,
         status=judgment.status.value,
         source=judgment.source,
@@ -41,11 +42,13 @@ def save_judgment(
     return row
 
 
-def spent(session: Session, start: datetime, end: datetime) -> Decimal:
-    """[start, end)에 부른 판단의 비용 합 (모든 봇·시험 판단). 한 달 비용 상한에 쓴다."""
+def spent(session: Session, start: datetime, end: datetime, strategy: str) -> Decimal:
+    """[start, end)에 부른 그 전략 판단의 비용 합 (지운 봇·시험 판단 포함). 한 달 상한에 쓴다."""
     total = session.scalar(
         select(func.sum(AiJudgmentRow.cost)).where(
-            AiJudgmentRow.created_at >= start, AiJudgmentRow.created_at < end
+            AiJudgmentRow.strategy == strategy,
+            AiJudgmentRow.created_at >= start,
+            AiJudgmentRow.created_at < end,
         )
     )
     return Decimal(total or 0)

@@ -14,11 +14,14 @@ from quant_lab.domain.advisor import (
     AdviceRequest,
     Advisor,
     AdvisorError,
+    CandleAdvisor,
     Judgment,
     JudgmentStatus,
+    Unmasking,
     check_advice,
 )
 from quant_lab.domain.events import AiJudgmentData, EventKind
+from quant_lab.domain.strategy import AI_STRATEGY, CANDLE_STRATEGY
 from quant_lab.persistence.ai_judgments import save_judgment, spent
 from quant_lab.persistence.bots import add_event
 from quant_lab.persistence.models import AiJudgmentRow
@@ -26,10 +29,22 @@ from quant_lab.persistence.models import AiJudgmentRow
 
 @dataclass(frozen=True)
 class AiConfig:
-    """Worker 조립 지점이 넘긴다. advisor가 없으면(키 없음) AI 봇은 판단하지 않는다."""
+    """Worker 조립 지점이 넘긴다. 공급자가 없으면(키 없음) 그 AI 봇은 판단하지 않는다.
+
+    한 달 비용 상한은 시장분석·캔들분석 AI 봇이 따로 센다.
+    """
 
     advisor: Advisor | None
     monthly_budget: Decimal
+    candle_advisor: CandleAdvisor | None = None
+    candle_budget: Decimal = Decimal(5)
+
+    def pick(self, candles: bool) -> tuple[Advisor | None, Decimal]:
+        """판단할 공급자와 그 전략의 한 달 비용 상한. 캔들 공급자는 익명 입력만 받게 감싼다."""
+        if candles:
+            inner = self.candle_advisor
+            return (Unmasking(inner) if inner else None), self.candle_budget
+        return self.advisor, self.monthly_budget
 
 
 def judge(advisor: Advisor | None, request: AdviceRequest) -> Judgment:
@@ -68,7 +83,7 @@ def judge_bot(
 ) -> None:
     """봇의 그날 판단을 받아 기록하고 커밋한다. 받지 못했으면 알린다.
 
-    이번 달(UTC) 비용이 상한 이상이면 부르지 않는다. 같은 판단일은 다시 부르지 않는다
+    이번 달(UTC) 그 전략의 비용이 상한 이상이면 부르지 않는다. 같은 판단일은 다시 부르지 않는다
     (매번 비용이 들고 결과가 달라질 수 있어서): 기록이 있으면 아무것도 하지 않는다.
     """
     exists = session.scalar(
@@ -78,19 +93,22 @@ def judge_bot(
     )
     if exists is not None:
         return
+    candles = request.candles is not None
+    strategy = CANDLE_STRATEGY if candles else AI_STRATEGY
+    advisor, budget = ai.pick(candles) if ai else (None, Decimal(0))
     start, end = month_of(now)
-    used = spent(session, start, end)
+    used = spent(session, start, end, strategy)
     data = AiJudgmentData(status="", session_date=request.session_date.isoformat())
-    if ai is not None and ai.advisor is not None and used >= ai.monthly_budget:
+    if advisor is not None and used >= budget:
         judgment = Judgment(
             request.session_date,
             JudgmentStatus.OVER_BUDGET,
             request,
-            error=f"이번 달 AI 비용 ${used:.2f}, 상한 ${ai.monthly_budget}",
+            error=f"이번 달 AI 비용 ${used:.2f}, 상한 ${budget}",
         )
-        data["spent"], data["budget"] = str(used.quantize(Decimal("0.01"))), str(ai.monthly_budget)
+        data["spent"], data["budget"] = str(used.quantize(Decimal("0.01"))), str(budget)
     else:
-        judgment = judge(ai.advisor if ai else None, request)
+        judgment = judge(advisor, request)
     already_over = session.scalar(
         select(AiJudgmentRow.id).where(
             AiJudgmentRow.bot_id == bot_id,
@@ -98,7 +116,7 @@ def judge_bot(
             AiJudgmentRow.created_at >= start,
         )
     )
-    save_judgment(session, bot_id, judgment, now)
+    save_judgment(session, bot_id, judgment, now, strategy)
     if judgment.status is not JudgmentStatus.OK:
         data["status"] = judgment.status.value
         # 비용 상한은 그달 처음 한 번만 알린다

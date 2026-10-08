@@ -8,7 +8,7 @@
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -21,7 +21,7 @@ from quant_lab.application.parallel import copy_world, dca_world, world
 from quant_lab.application.research import COPY_STRATEGY, BotParallel
 from quant_lab.domain.advisor import JudgmentStatus
 from quant_lab.domain.backtest import run_backtest
-from quant_lab.domain.strategy import AiJudge, is_ai
+from quant_lab.domain.strategy import STRATEGIES, AiJudge, is_ai
 from quant_lab.persistence.ai_judgments import spent
 from quant_lab.persistence.bots import active_weights, bot_costs, bot_limits, bot_weights
 from quant_lab.persistence.models import AiJudgmentRow, BotRow, DecisionRow
@@ -49,7 +49,7 @@ class AiDay:
 class AiOverview:
     latest: AiDay | None
     history: list[AiDay]  # 최근 판단부터
-    spent: Decimal  # 이번 달(UTC) AI 비용, 모든 봇 합계
+    spent: Decimal  # 이번 달(UTC) 이 봇 전략의 AI 비용 (시장분석·캔들분석은 따로 센다)
     budget: Decimal
 
 
@@ -84,8 +84,11 @@ def _ai_bot(session: Session, bot_id: int) -> BotRow:
     return bot
 
 
-def ai_overview(session: Session, bot_id: int, budget: Decimal, now: datetime) -> AiOverview:
-    _ai_bot(session, bot_id)
+def ai_overview(
+    session: Session, bot_id: int, budgets: dict[str, Decimal], now: datetime
+) -> AiOverview:
+    """budgets는 전략마다의 한 달 비용 상한."""
+    bot = _ai_bot(session, bot_id)
     rows = list(
         session.scalars(
             select(AiJudgmentRow)
@@ -96,7 +99,8 @@ def ai_overview(session: Session, bot_id: int, budget: Decimal, now: datetime) -
     )
     days = [_day(r) for r in rows]
     start, end = month_of(now)
-    return AiOverview(days[0] if days else None, days, spent(session, start, end), budget)
+    used = spent(session, start, end, bot.strategy)
+    return AiOverview(days[0] if days else None, days, used, budgets[bot.strategy])
 
 
 def _copy_bot(session: Session) -> BotRow | None:
@@ -121,7 +125,7 @@ def ai_compare(session: Session, bot_id: int) -> BotParallel:
     judgments = {
         r.session_date: (r.weights if r.status == JudgmentStatus.OK else None) for r in rows
     }
-    strategy = AiJudge(**bot.params)
+    strategy = cast(AiJudge, STRATEGIES[bot.strategy](**bot.params))
     weights = bot_weights(bot)
     costs = bot_costs(bot)
     try:
