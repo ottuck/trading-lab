@@ -58,6 +58,28 @@ class BotSettings:
 NAME_MAX = 20  # 봇 목록·칩·제목에 한 줄로 보이는 길이
 
 
+# 전략마다 봇 하나만 만들 수 있는 것 (2026-10-08). 나중에 생길 다른 AI 봇(예: 캔들분석)은
+# 다른 전략이라 따로 하나씩 만든다. 이름은 구분하는 이름표일 뿐 제한은 전략으로 건다.
+ONE_PER_STRATEGY = {
+    "dip_saver": "나 카피 봇은 하나만 만들 수 있어요. 이미 있는 봇을 '다시 카피하기'로 바꿔 주세요",
+    "ai_judge": "시장분석 AI 봇은 하나만 만들 수 있어요. 이미 있는 봇의 설정에서 바꿔 주세요",
+}
+
+
+def check_single(session: Session, strategy: str, *, except_bot_id: int | None = None) -> None:
+    """하나만 만들 수 있는 전략이면 같은 전략의 다른 봇이 이미 있는지 본다."""
+    message = ONE_PER_STRATEGY.get(strategy)
+    if message is None:
+        return
+    taken = session.scalar(
+        select(BotRow.id)
+        .where(BotRow.strategy == strategy, BotRow.id != (except_bot_id or 0))
+        .limit(1)
+    )
+    if taken is not None:
+        raise Conflict(message)
+
+
 def check_name(name: str) -> str:
     name = name.strip()
     if not name:
@@ -169,6 +191,7 @@ def create(
     if _name_taken(session, name):
         raise Conflict(f"같은 이름의 봇이 있습니다: {name}")
     weights = check_weights(symbol, symbols, strategy)
+    check_single(session, strategy.name)
     bot = create_bot(
         session,
         name=name,
@@ -199,6 +222,8 @@ def update_settings(session: Session, bot_id: int, settings: BotSettings, now: d
     bot = require_bot(session, bot_id, for_update=True)
     strategy = check_strategy(settings.strategy, settings.params)
     check_limits(settings)
+    if strategy.name != bot.strategy:
+        check_single(session, strategy.name, except_bot_id=bot.id)
     if len(bot.symbols) > 1 and deposit_plan(strategy) is None:
         raise Invalid("여러 종목 봇은 매달 넣고 사 모으는 전략만 쓸 수 있어요")
     limits = to_jsonable(settings.limits())
