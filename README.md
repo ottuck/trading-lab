@@ -219,7 +219,7 @@ uv run python -m quant_lab.cli sync-bars QQQ VOO                                
 uv run python -m quant_lab.cli backtest QQQ --params deposit=1000,dip=15 --save    # 백테스트
 uv run python -m quant_lab.cli bot create my-copy QQQ --params deposit=1000        # DRY RUN 봇
 uv run python -m quant_lab.cli bot cmd <봇 ID> START                            # START·PAUSE·STOP·RUN_ONCE
-uv run python -m quant_lab.cli bot create-ai "AI 봇"                            # AI 봇 (관심 10종목, 월 $1,000·25일)
+uv run python -m quant_lab.cli bot create-ai "시장분석 AI 봇"                   # 시장분석 AI 봇 (관심 10종목, 월 $1,000·25일)
 uv run python -m quant_lab.cli ai-judge QQQ VOO GLD --show                      # AI에 넘길 입력 보기 (--show 빼면 실제로 1번 판단, 비용 듦)
 uv run python -m quant_lab.cli ai-judge QQQ VOO GLD --candle                    # 캔들분석 판단 1번 (--show면 AI가 볼 익명 표, --effort low|medium|high)
 uv run python -m quant_lab.cli replay QQQ --start 2024-01-02 --end 2026-09-30   # 정기 평가 재생 vs 백테스트

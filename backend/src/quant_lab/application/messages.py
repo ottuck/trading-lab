@@ -112,7 +112,7 @@ CATALOG: dict[str, StrategyInfo] = {
     ),
     "ai_judge": StrategyInfo(
         name="ai_judge",
-        nickname="AI에게 맡기기",
+        nickname="뉴스·금리 보고 판단",
         summary=(
             "매달 돈을 넣고, 고른 종목 안에서 무엇을 얼마나 들고 있을지 AI가 매일 시장을 "
             "조사해 정해요. 이유와 참고한 뉴스를 함께 보여줘요."
@@ -124,7 +124,7 @@ CATALOG: dict[str, StrategyInfo] = {
     ),
     "ai_candle": StrategyInfo(
         name="ai_candle",
-        nickname="AI 차트 읽기",
+        nickname="차트만 보고 판단",
         summary=(
             "매달 돈을 넣고, 고른 종목 안에서 무엇을 얼마나 들고 있을지 AI가 매일 가격 차트만 "
             "보고 정해요. 뉴스는 보지 않고, 종목 이름도 가린 채 판단해요."
@@ -168,7 +168,7 @@ def _limit_text(value: Any) -> str:
 
 
 def settings_changes(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
-    """설정을 바꾼 기록을 쉬운 말로: ["전략 나처럼 투자 → AI에게 맡기기", "최대 투자 금액 ..."]."""
+    """설정을 바꾼 기록을 쉬운 말로: ["전략 나처럼 투자 → 뉴스·금리 보고 판단", "최대 투자 금액 ..."]."""
     lines = []
     old, new = before.get("strategy", ""), after.get("strategy", "")
     bp, ap = before.get("params") or {}, after.get("params") or {}
