@@ -143,7 +143,7 @@ flowchart LR
     subgraph HOST[서버 1대 · Docker Compose]
         API[api<br/>FastAPI + React] <--> DB[(PostgreSQL 17)]
         WORKER[worker<br/>수집·판단·모의 체결·실주문] <--> DB
-        DEMO <--> DEMODB[(데모 DB)]
+        DEMO <--> DEMODB[(같은 PostgreSQL · 데모 DB)]
     end
     WORKER -->|고정 송신 IP<br/>시세·계좌 읽기, 실주문은 스위치 켤 때만| TOSS[토스증권 Open API]
     WORKER --> TG[텔레그램]
@@ -240,7 +240,7 @@ bash deploy/deploy.sh demo              # 데모 (수동)
 bash deploy/reset-demo.sh               # 데모 DB를 비우고 예시 시세·예시 봇을 처음부터 다시 채움 (수동)
 ```
 
-**운영은 자동 배포**입니다. `main`의 CI가 통과하면 [deploy 워크플로](.github/workflows/deploy.yml)가 운영 서버(Lightsail 시드니)에 설치한 GitHub Actions 러너(라벨 `quant-lab`)에서 `deploy.sh`를 실행합니다. 러너가 밖으로만 연결하므로 공개 포트는 0개 그대로이고, 장 마감 판단 시간(뉴욕 17:45~19:30)이면 끝날 때까지 기다렸다 배포합니다. 데모는 자동으로 배포하지 않습니다. 예시 봇의 값(`DEMO_BOTS`)을 바꾸면 시드가 이름이 같은 봇을 이어서 채우기만 해서 새 값이 보이지 않으므로, `deploy/reset-demo.sh`로 데모 DB를 비우고 다시 채웁니다(운영에는 영향 없음, **Git Bash에서** 실행). `deploy.sh`는 `origin/main`을 `.deploy/src`에 꺼내 빌드하므로 작업 폴더의 브랜치를 바꾸지 않습니다.
+**운영은 자동 배포**입니다. `main`의 CI가 통과하면 [deploy 워크플로](.github/workflows/deploy.yml)가 ① GitHub 서버에서 이미지를 빌드해 GHCR(`ghcr.io/ottuck/quant-lab`, 태그는 커밋 해시와 `latest`)에 올리고 ② 운영 서버(Lightsail 시드니)의 GitHub Actions 러너(라벨 `quant-lab`)가 그 이미지를 받아 `deploy.sh`로 띄웁니다. 서버는 빌드하지 않아 가볍고, 이전 버전으로 되돌리려면 `TAG=<커밋 해시> bash deploy/deploy.sh`입니다. 러너가 밖으로만 연결하므로 공개 포트는 0개 그대로이고, 장 마감 판단 시간(뉴욕 17:45~19:30)이면 끝날 때까지 기다렸다 배포합니다. 데모는 자동으로 배포하지 않습니다. 데모는 운영과 같은 Postgres 컨테이너 안의 별도 데이터베이스(`quant_lab_demo`)를 쓰고, 예시 봇의 값(`DEMO_BOTS`)을 바꾸면 시드가 이름이 같은 봇을 이어서 채우기만 해서 새 값이 보이지 않으므로 `deploy/reset-demo.sh`로 데모 DB를 비우고 다시 채웁니다(운영 DB에는 영향 없음, 서버에서 실행). `deploy.sh`는 `origin/main`의 compose 파일을 `.deploy/src`에 꺼내 쓰므로 작업 폴더의 브랜치를 바꾸지 않습니다.
 
 러너는 `C:\actions-runner`에 있고, 로그인하면 시작 프로그램의 바로가기가 **창 없이**(`conhost.exe --headless run.cmd`) 켭니다. 창으로 띄우면 창을 클릭했을 때(선택 모드) 출력이 막혀 배포가 멈추고, Windows 서비스로 두면 다른 계정이라 Docker를 못 씁니다. 켜져 있는지는 GitHub 설정 → Actions → Runners에서 `home-pc`가 Idle인지로, 로그는 Actions 탭과 `C:\actions-runner\_diag`에서 봅니다.
 

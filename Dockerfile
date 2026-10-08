@@ -1,5 +1,6 @@
 # 운영 이미지 하나로 api·worker·migrate를 모두 실행한다 (시작 명령만 다름).
-# 서버에서 직접 빌드하므로 x86(Lightsail)·ARM(OCI) 모두 그대로 쓴다.
+# CI(.github/workflows/deploy.yml)가 빌드해 GHCR에 올린다. 지금은 linux/amd64(Lightsail)만 만든다.
+# ARM 서버(OCI·맥)로 옮기면 워크플로의 platforms에 linux/arm64를 추가한다.
 
 FROM node:24-slim AS web
 WORKDIR /web

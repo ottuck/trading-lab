@@ -1,7 +1,7 @@
 name: deploy
 
-# main의 CI가 통과하면 운영을 배포한다. 운영 서버(Lightsail 시드니)에 설치한 러너(라벨 quant-lab)가 밖으로만 연결해 받아 간다
-# (공개 포트 0개 그대로). 데모는 자동으로 배포하지 않는다: bash deploy/deploy.sh demo
+# main의 CI가 통과하면 ① GitHub 호스팅 러너가 이미지를 빌드해 GHCR에 올리고 ② 운영 서버(Lightsail 시드니)의 러너가
+# 그 이미지를 받아 띄운다. 서버 러너는 밖으로만 연결한다 (공개 포트 0개). 데모는 자동으로 배포하지 않는다: bash deploy/deploy.sh demo
 on:
   workflow_run:
     workflows: [CI]
@@ -13,15 +13,51 @@ concurrency:
   group: deploy-prod
   cancel-in-progress: false
 
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+  SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
 jobs:
-  prod:
+  image:
     if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SHA }}
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # 태그는 커밋 해시(롤백용)와 latest. 지금은 linux/amd64만 만든다 (Lightsail).
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ env.IMAGE }}:${{ env.SHA }}
+            ${{ env.IMAGE }}:latest
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  prod:
+    needs: image
     runs-on: [self-hosted, quant-lab, Linux]
+    permissions:
+      contents: read
+      packages: read
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ env.SHA }}
 
       # 장 마감 판단(뉴욕 18:00, AI 판단 포함) 중에 Worker를 다시 띄우지 않는다. 그 시간이면 끝날 때까지 기다린다.
       - name: 판단 시간 피하기
@@ -37,8 +73,13 @@ jobs:
         env:
           SRC: ${{ github.workspace }}
           SECRETS_DIR: ${{ vars.DEPLOY_SECRETS_DIR }}
+          TAG: ${{ env.SHA }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.actor }}
         run: |
           [ -n "$SECRETS_DIR" ] || { echo '저장소 변수 DEPLOY_SECRETS_DIR(운영 .secrets 폴더)가 없습니다'; exit 1; }
+          echo "$REGISTRY_TOKEN" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
+          trap 'docker logout ghcr.io' EXIT
           bash deploy/deploy.sh
 
       - name: 확인
