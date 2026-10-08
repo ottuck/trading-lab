@@ -294,7 +294,7 @@ function BrokerAccountSection() {
             <div className="acct-title">주문에 쓸 수 있는 돈</div>
             <div className="acct-tiles">
               <Tile label={<><span className="acct-cur">$</span>달러</>} value={dollars(data.cash_usd)} note="실제 주문은 이 돈으로 나가요" />
-              <Tile label={<><span className="acct-cur">₩</span>원화</>} value={won(data.cash_krw)} note="달러 주문과는 따로예요" dim />
+              <Tile label={<><span className="acct-cur">₩</span>원화</>} value={won(data.cash_krw)} note="달러로 바꿔야 주문에 쓸 수 있어요" dim />
             </div>
           </div>
           <div className="acct-block">
