@@ -253,16 +253,31 @@ function orderTitle(o: BrokerAccount['orders'][number]) {
   return `${o.symbol} ${o.amount ? amountOf(o.amount, o.currency) + ' ' : ''}${done ? verb : o.side === 'BUY' ? '사기 주문' : '팔기 주문'}`
 }
 
+/** 칸 하나: 작은 이름, 큰 숫자, 아래 한 줄 설명. */
+function Tile({ label, value, note, tone: t, chip, dim }: { label: React.ReactNode; value: React.ReactNode; note?: React.ReactNode; tone?: string; chip?: string; dim?: boolean }) {
+  return (
+    <div className={`acct-tile ${dim ? 'dim' : ''}`}>
+      <div className="acct-label">{label}</div>
+      <div className={`acct-big tnum ${t ?? ''}`}>
+        {value}
+        {chip && <span className={`acct-chip ${t ?? ''}`}>{chip}</span>}
+      </div>
+      {note && <div className="acct-note">{note}</div>}
+    </div>
+  )
+}
+
 /** 실제 증권사 계좌 (실거래 R1). Worker가 한 시간마다 읽은 값을 보여주기만 하고 주문은 내지 않는다. */
 function BrokerAccountSection() {
   const { data } = useQuery({ queryKey: ['broker-account'], queryFn: api.brokerAccount, refetchInterval: 60_000 })
   const { data: live } = useLive()
   if (!data) return null
+  const name = data.source ? sourceLabel(data.source) : '증권사'
+  const failing = !!data.error_at && (!data.fetched_at || data.error_at > data.fetched_at)
   const heldCost = Number(live?.held_cost ?? 0)
   const unrealized = Number(live?.held_value ?? 0) - heldCost
   const realized = Number(live?.realized_total ?? 0)
-  const name = data.source ? sourceLabel(data.source) : '증권사'
-  const failing = !!data.error_at && (!data.fetched_at || data.error_at > data.fetched_at)
+  const everSold = Number(live?.sold_total ?? 0) > 0
   return (
     <Section title={`${name} 계좌`} desc={`실제 ${name} 계좌를 한 시간마다 읽어 와요. 실제 주문은 봇 설정의 "실제로 따라 사기"에서 켜요.`}>
       {failing && (
@@ -275,63 +290,67 @@ function BrokerAccountSection() {
       )}
       {data.fetched_at && (
         <>
-          <div>
-            <div className="faint small">주문에 쓸 수 있는 돈</div>
-            <div>
-              달러 {dollars(data.cash_usd)} <span className="muted">· 원화 {won(data.cash_krw)}</span>
+          <div className="acct-block">
+            <div className="acct-title">주문에 쓸 수 있는 돈</div>
+            <div className="acct-tiles">
+              <Tile label={<><span className="acct-cur">$</span>달러</>} value={dollars(data.cash_usd)} note="실제 주문은 이 돈으로 나가요" />
+              <Tile label={<><span className="acct-cur">₩</span>원화</>} value={won(data.cash_krw)} note="달러 주문과는 따로예요" dim />
             </div>
           </div>
-          <div>
-            <div className="faint small">들고 있는 주식</div>
+          <div className="acct-block">
+            <div className="acct-title">들고 있는 주식</div>
             {data.holdings.length ? (
-              data.holdings.map((h) => (
-                <div key={h.symbol}>
-                  {h.symbol} {shares(h.qty)}주 <span className="muted">· {amountOf(h.value, h.currency)}</span>
-                </div>
-              ))
+              <div className="acct-list">
+                {data.holdings.map((h) => (
+                  <div key={h.symbol} className="acct-row">
+                    <b>{h.symbol}</b>
+                    <span className="muted tnum">{shares(h.qty)}주</span>
+                    <span className="tnum acct-row-r">{amountOf(h.value, h.currency)}</span>
+                  </div>
+                ))}
+              </div>
             ) : (
               <div className="muted">없어요</div>
             )}
           </div>
           {live?.trader && (
-            <div>
-              <div className="faint small">봇이 낸 실제 주문의 손익</div>
-              <div>
-                이번 달 산 금액 {dollars(live.bought_this_month)}
-                {Number(live.sold_this_month) > 0 && <span className="muted"> · 판 금액 {dollars(live.sold_this_month)}</span>}
+            <div className="acct-block">
+              <div className="acct-title">봇이 낸 실제 주문의 손익</div>
+              <div className="acct-tiles">
+                <Tile label="이번 달 산 금액" value={dollars(live.bought_this_month)} />
+                <Tile label="이번 달 판 금액" value={dollars(live.sold_this_month)} />
+                <Tile
+                  label="평가 손익"
+                  value={heldCost > 0 ? signedDollars(unrealized) : '—'}
+                  chip={heldCost > 0 ? percent(String(unrealized / heldCost)) : undefined}
+                  tone={heldCost > 0 ? tone(String(unrealized)) : undefined}
+                  note="아직 안 판 주식 기준"
+                />
+                <Tile
+                  label="확정 손익"
+                  value={everSold ? signedDollars(realized) : '—'}
+                  tone={everSold ? tone(String(realized)) : undefined}
+                  note={everSold ? `이번 달 ${signedDollars(Number(live.realized_this_month))}` : '아직 판 적이 없어요'}
+                />
               </div>
-              {heldCost > 0 && (
-                <div>
-                  산 채로 들고 있는 주식 평가 손익{' '}
-                  <b className={tone(String(unrealized))}>
-                    {signedDollars(unrealized)} ({percent(String(unrealized / heldCost))})
-                  </b>
-                </div>
-              )}
-              {Number(live.sold_total) > 0 && (
-                <div>
-                  판 주식 확정 손익 <b className={tone(String(realized))}>{signedDollars(realized)}</b>
-                  <span className="muted"> · 이번 달 {signedDollars(Number(live.realized_this_month))}</span>
-                </div>
-              )}
-              <div className="faint small">
-                봇이 낸 실제 주문만 체결 기준으로 센 어림값이에요. 수수료는 빼지 않았고, 직접 산 주식은 포함하지 않아요.
-              </div>
+              <div className="acct-foot">봇이 낸 주문만 체결 기준으로 센 어림값이에요. 수수료는 빼지 않았고, 직접 산 주식은 포함하지 않아요.</div>
             </div>
           )}
-          <div className="set-log">
-            <div className="faint small">최근 30일 주문</div>
+          <div className="acct-block">
+            <div className="acct-title">최근 30일 주문</div>
             {data.orders.length ? (
-              data.orders.slice(0, 5).map((o) => (
-                <div key={o.ordered_at + o.symbol} className="log-item">
-                  <span className="pip" />
-                  <div>
-                    <div className="title">{orderTitle(o)}</div>
-                    <div className="body">{ORDER_STATUS[o.status] ?? o.status}</div>
+              <div className="set-log">
+                {data.orders.slice(0, 5).map((o) => (
+                  <div key={o.ordered_at + o.symbol} className="log-item">
+                    <span className="pip" />
+                    <div>
+                      <div className="title">{orderTitle(o)}</div>
+                      <div className="body">{ORDER_STATUS[o.status] ?? o.status}</div>
+                    </div>
+                    <time dateTime={o.ordered_at}>{ago(o.ordered_at)}</time>
                   </div>
-                  <time dateTime={o.ordered_at}>{ago(o.ordered_at)}</time>
-                </div>
-              ))
+                ))}
+              </div>
             ) : (
               <div className="muted">없어요</div>
             )}
