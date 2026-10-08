@@ -196,7 +196,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | 방화벽 | 처음엔 Lightsail 콘솔 브라우저 SSH(22번, 콘솔 대역만)만 허용. Tailscale SSH가 동작하면 인바운드 전부 차단 |
 | 비밀값 | **저장소 안 `.secrets/`** (`.gitignore`·`.dockerignore`로 제외, 로컬·서버 같은 위치): `env`(DB 비밀번호·`DATABASE_URL`, 부트스트랩이 생성)와 `worker.env`(토스 키·`TOSS_ACCOUNT_ENABLED`·`LIVE_TRADING`·Claude 키 `ANTHROPIC_API_KEY`·텔레그램·`HEARTBEAT_PING_URL`, **worker 컨테이너에만** 주입). 둘 다 권한 600. 개발용 실행은 루트 `.env`를 쓴다. **토스 키 만료 2027-09-28** (발급 2026-09-28, 1년). 만료 전 WTS에서 재발급하고 `worker.env` 교체 |
 | 서버 생성 | Terraform(`infra/lightsail`). 콘솔에서 손으로 만들지 않는다 |
-| 배포 | `bash deploy/deploy.sh`: `origin/main`을 `.deploy/src`에 꺼내(작업 폴더 브랜치는 그대로) → 이미지 빌드(프론트 포함 단일 이미지) → 운영 `compose up -d`. **운영은 자동:** `main`의 CI(push)가 통과하면 `.github/workflows/deploy.yml`이 운영 서버(Lightsail 시드니)의 self-hosted 러너(Linux, 라벨 `quant-lab`, systemd 서비스, 밖으로만 연결)에서 받아 둔 코드(`SRC`)와 비밀값 폴더(저장소 변수 `DEPLOY_SECRETS_DIR` → `SECRETS_DIR`, Compose의 `env_file`이 이것을 읽음)로 실행하고 `/api/health`를 확인한다. 장 마감 판단(뉴욕 18:00, AI 판단 포함) 앞뒤 17:45~19:30이면 지나서 배포한다. 문서만 바뀌면 이미지가 같아 컨테이너도 그대로다. 데모는 같은 이미지를 쓰지만 **수동** `bash deploy/deploy.sh demo`로만 바뀐다. `index.html`은 `no-cache`, 해시 붙은 `assets/`는 오래 캐시해 배포 뒤 바로 새 화면이 보인다. 저장소는 읽기 전용 deploy key로 받음. Compose 프로젝트 이름은 `quant-lab-prod` |
+| 배포 | **이미지는 CI가 만든다 (2026-10-08, GHCR):** `main`의 CI(push)가 통과하면 `.github/workflows/deploy.yml`이 ① GitHub 호스팅 러너에서 이미지를 빌드해(프론트 포함 단일 이미지, `linux/amd64`) `ghcr.io/ottuck/quant-lab`에 커밋 해시와 `latest` 태그로 올리고 ② 운영 서버(Lightsail 시드니)의 self-hosted 러너(Linux, 라벨 `quant-lab`, systemd 서비스, 밖으로만 연결)가 받아 둔 코드(`SRC`)와 비밀값 폴더(저장소 변수 `DEPLOY_SECRETS_DIR` → `SECRETS_DIR`, Compose의 `env_file`이 이것을 읽음)로 `bash deploy/deploy.sh`를 실행한다. `deploy.sh`는 이미지를 `pull`해서 `compose up -d`만 한다 (서버에서 빌드하지 않는다. 서버는 `TAG`로 받을 버전을 정하고, 롤백은 `TAG=<이전 커밋 해시> bash deploy/deploy.sh`). 비공개 이미지라 받기 전에 작업 안에서 `GITHUB_TOKEN`으로 `docker login ghcr.io`를 하고 끝나면 로그아웃한다 (서버에 토큰을 남기지 않는다). 그다음 `/api/health`를 확인한다. 장 마감 판단(뉴욕 18:00, AI 판단 포함) 앞뒤 17:45~19:30이면 지나서 배포한다. 문서만 바뀌어도 이미지는 새로 빌드되지만 내용이 같으면 컨테이너는 그대로다. 오래된 이미지는 GHCR에 쌓이므로 필요하면 정리한다. ARM 서버로 옮기면 워크플로의 `platforms`에 `linux/arm64`를 더한다. 데모는 같은 이미지를 쓰지만 **수동** `bash deploy/deploy.sh demo`로만 바뀐다. `index.html`은 `no-cache`, 해시 붙은 `assets/`는 오래 캐시해 배포 뒤 바로 새 화면이 보인다. 저장소는 읽기 전용 deploy key로 받음. Compose 프로젝트 이름은 `quant-lab-prod` |
 | 마이그레이션 | `migrate` 일회성 서비스가 성공해야 api·worker가 시작 (`depends_on: service_completed_successfully`) |
 | 백업 | `deploy/backup.sh`를 cron이 매일 03:00 UTC(12:00 KST, 평가 시각과 겹치지 않음)에 실행, `pg_dump` 7일 보관 + Lightsail 자동 스냅샷. 파괴적 마이그레이션 전에는 수동 덤프 |
 | 모니터링 | 화면의 Worker 상태: 마지막 heartbeat가 45초 안이면 살아 있다. **잘 돌 때는 아무것도 보이지 않고, 멈췄거나 서버에 닿지 않을 때만** 위 점과 화면 맨 위 한 줄("프로그램이 멈췄어요 (3분 전)")로 알린다. 그 밖에 마지막 실행 표시, `docker compose logs`, 앱의 기록(최근 활동·전체 기록 서랍). **텔레그램 알림**은 화면 설정에서 켜고 범위를 고른다 (9절). 켜면 Worker가 `events` 테이블을 따라가며 보내고, 매주 마지막 거래일 판단 뒤에는 **주간 리포트**(이번 주 자산 변화(입금 제외), 그냥 보유 대비, 거래 횟수)를 보낸다. 아무것도 하지 않는 날의 일일 점검과 월급 입금은 앱 기록에만 남긴다. 한 번에 생긴 소식은 한 통으로 묶는다(3,800자 넘으면 나눔). 알림 실패는 판단에 영향이 없다. **외부 heartbeat**: `HEARTBEAT_PING_URL`(Healthchecks.io 등)에 5분마다 신호를 보내 Worker·PC·서버가 멈추면 외부 서비스가 알린다 |
@@ -210,7 +210,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | down 본문 | `{"chat_id": "<채팅 ID>", "text": "⚠️ Quant Lab 프로그램이 응답하지 않아요\n20분 넘게 신호가 없어요. PC나 서버가 꺼졌는지 확인해 주세요."}` |
 | up 본문 | `{"chat_id": "<채팅 ID>", "text": "✅ Quant Lab 프로그램이 다시 응답해요"}` |
 
-서버 리소스는 처음부터 Terraform으로 관리한다. 운영 배포는 위 "배포" 항목처럼 self-hosted 러너가 하고, 서버를 옮기면 그 서버에 러너만 다시 등록한다.
+서버 리소스는 처음부터 Terraform으로 관리한다. 이미지는 CI가 GHCR에 올리고, 운영 배포는 위 "배포" 항목처럼 서버의 self-hosted 러너가 받아서 띄운다. 서버를 옮기면 그 서버에 러너만 다시 등록한다.
 
 **서버 준비 절차** (Terraform과 스크립트로 재현한다):
 
@@ -254,7 +254,7 @@ Lightsail도 VM 한 대에 같은 Compose를 올리는 구조라, 서버가 준�
 | 항목 | 내용 |
 | --- | --- |
 | 비밀값 | 저장소 안 `.secrets/env`, `.secrets/worker.env` (서버와 같은 위치·형식, Git 제외) |
-| 실행 | `docker compose -f deploy/compose.prod.yaml up -d --build` (Compose 이름 `quant-lab-prod`, 개발용 DB와 분리) |
+| 실행 | `bash deploy/deploy.sh` (= `docker compose -f deploy/compose.prod.yaml pull && up -d`, Compose 이름 `quant-lab-prod`, 개발용 DB와 분리) |
 | 접속 | `tailscale serve --bg 8000` → `https://<PC 이름>.<tailnet>.ts.net` (tailnet 안에서만) |
 | 토스 | 개발 PC 공인 IP가 허용 목록에 있어야 한다. 이 Worker가 토큰을 가지므로, 동작 중에는 개발용 CLI(`sync-bars`, `toss_probe`)로 토스를 호출하지 않는다 |
 | 한계 | PC가 꺼지거나 절전에 들어가면 평가가 빠진다 (`missed_sessions` 경고). 가정용 IP가 바뀌면 토스 403 → 봇 `ERROR` |
@@ -417,9 +417,9 @@ MWP는 "실거래 경로 없이 정기 모의 운영을 사람 손 없이 돌린
 
 ## 11-1. 포트폴리오 데모 (2026-10-03 결정, 마일스톤 3 앞)
 
-누구나 볼 수 있는 데모를 **운영과 따로** 띄운다. 토스 시세와 그것으로 계산한 결과는 남에게 보여줄 수 없으므로 데모는 **합성 예시 시세**만 쓴다. 같은 코드에 설정만 다르게(데모 모드) 띄우고, 토스·주문 키는 아예 넣지 않는다. 지금은 개발 PC에서 운영과 나란히 별도 Compose로 띄우고 같은 Tunnel에 `demo.trading-lab.me`를 더한다. **실거래를 시작해도 데모는 같은 기계에 둔다** (2026-10-03, 사용자 결정. 처음 계획은 다른 기계로 옮기는 것이었다). 대신 데모에는 토스·주문 키를 넣지 않고, 데모 DB·비밀값을 나누고, 데모는 `quant-lab-edge` 네트워크로만 터널과 이어져 운영 DB·Worker에 닿지 않으며, 바꾸기 요청은 막는다. 실거래 키는 운영 Worker에만 둔다. 단계는 roadmap.md "포트폴리오 데모 트랙".
+누구나 볼 수 있는 데모를 **운영과 따로** 띄운다. 토스 시세와 그것으로 계산한 결과는 남에게 보여줄 수 없으므로 데모는 **합성 예시 시세**만 쓴다. 같은 코드에 설정만 다르게(데모 모드) 띄우고, 토스·주문 키는 아예 넣지 않는다. 지금은 개발 PC에서 운영과 나란히 별도 Compose로 띄우고 같은 Tunnel에 `demo.trading-lab.me`를 더한다. **실거래를 시작해도 데모는 같은 기계에 둔다** (2026-10-03, 사용자 결정. 처음 계획은 다른 기계로 옮기는 것이었다). 대신 데모에는 토스·주문 키를 넣지 않고, 데모 DB 계정·비밀값을 나누고(DB는 운영 Postgres 안의 별도 데이터베이스, 운영 DB 접속 권한 없음), 데모는 `quant-lab-edge` 네트워크로만 터널과 이어져 운영 api·Worker에 닿지 않으며, 바꾸기 요청은 막는다. 실거래 키는 운영 Worker에만 둔다. 단계는 roadmap.md "포트폴리오 데모 트랙".
 
-**구성 (D3, 2026-10-03):** `deploy/compose.demo.yaml`(이름 `quant-lab-demo`): `demo-db`(데모 전용 PostgreSQL), `demo-migrate`, `demo-seeder`(6시간마다 `seed-demo`: 예시 시세를 오늘까지 늘리고 예시 봇을 이어서 평가), `demo-api`(`DEMO_MODE=true`, 바꾸기 요청은 403). Worker·토스 키·Access 설정은 없다. 비밀값은 `.secrets/demo.env`(데모 DB 전용 비밀번호)뿐이고, 데모는 `bash deploy/deploy.sh demo`로 띄운다 (수동, 운영 자동 배포와 따로). **시드는 이름이 같은 봇이 있으면 새로 만들지 않고 이어서 채우므로**(`DEMO_BOTS`의 값을 바꿔도 이미 있는 봇은 그대로) 바뀐 값을 보려면 `bash deploy/reset-demo.sh`(Git Bash)로 데모 DB 볼륨만 비우고 다시 채운다 (2026-10-08, 운영 DB·Worker는 그대로, 방문자의 지난 시험 목록은 사라진다). 바깥 접속은 운영의 `cloudflared`가 `demo.trading-lab.me` → `http://demo-api:8000`으로 잇는다. 둘은 `quant-lab-edge` 네트워크만 함께 쓰고 운영 DB·Worker는 그 네트워크에 없어 데모에서 닿지 않는다. Cloudflare 대시보드에서 터널에 Public hostname `demo`를 더하고 **Access 앱은 만들지 않는다** (누구나 본다. Access 앱은 `app.trading-lab.me`만 덮는다).
+**구성 (D3, 2026-10-03):** `deploy/compose.demo.yaml`(이름 `quant-lab-demo`): `demo-migrate`, `demo-seeder`(6시간마다 `seed-demo`: 예시 시세를 오늘까지 늘리고 예시 봇을 이어서 평가), `demo-api`(`DEMO_MODE=true`, 바꾸기 요청은 403). Worker·토스 키·Access 설정은 없다. **DB는 운영 Postgres 컨테이너 안의 별도 데이터베이스 `quant_lab_demo`다 (2026-10-08, 컨테이너를 하나로 합침).** 데모 전용 계정 `quant_demo`는 그 DB의 소유자일 뿐 운영 DB(`quant_lab`)에는 접속 권한이 없다(`CONNECT` 회수). 데모는 `quant-lab-dbnet` 네트워크로만 운영 Postgres(별칭 `shared-db`)에 닿고 운영 api·worker와는 네트워크가 다르다. 비밀값은 `.secrets/demo.env`(`DEMO_DB_PASSWORD`, 그 비밀번호로 만든 `DATABASE_URL`)뿐이고, 데모는 `bash deploy/deploy.sh demo`로 띄운다 (수동, 운영 자동 배포와 따로, 운영이 먼저 떠 있어야 하며 이 스크립트가 계정·DB·권한을 멱등하게 만든다). 데모 데이터는 예시라 운영 DB 백업(`backup.sh`)에 넣지 않는다. **시드는 이름이 같은 봇이 있으면 새로 만들지 않고 이어서 채우므로**(`DEMO_BOTS`의 값을 바꿔도 이미 있는 봇은 그대로) 바뀐 값을 보려면 `bash deploy/reset-demo.sh`(Git Bash)로 운영 Postgres 안의 데모 데이터베이스만 지우고 다시 채운다 (2026-10-08, 운영 DB·Worker는 그대로, 방문자의 지난 시험 목록은 사라진다). 바깥 접속은 운영의 `cloudflared`가 `demo.trading-lab.me` → `http://demo-api:8000`으로 잇는다. 둘은 `quant-lab-edge` 네트워크만 함께 쓰고 운영 api·Worker는 그 네트워크에 없어 데모에서 닿지 않는다. Cloudflare 대시보드에서 터널에 Public hostname `demo`를 더하고 **Access 앱은 만들지 않는다** (누구나 본다. Access 앱은 `app.trading-lab.me`만 덮는다).
 
 ## 12. 서비스화하지 않는 이유 (2026-10-03 결정)
 

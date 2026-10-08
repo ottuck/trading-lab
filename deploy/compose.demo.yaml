@@ -1,41 +1,25 @@
-# 포트폴리오 데모 (D3, project.md 11-1절). 운영과 DB·비밀값을 나눈 별도 구성이다.
-# 예시 시세만 있고 토스·주문 키는 없다. 운영과 같은 이미지(quant-lab:latest)를 데모 모드로 띄운다.
-#   demo.env : POSTGRES_PASSWORD, DATABASE_URL (데모 DB 전용, 운영 값과 다르게)
+# 포트폴리오 데모 (D3, project.md 11-1절). 운영과 비밀값을 나눈 별도 구성이다.
+# 예시 시세만 있고 토스·주문 키는 없다. 운영과 같은 이미지를 데모 모드로 띄운다.
+# DB는 운영 Postgres 컨테이너 안의 별도 데이터베이스(quant_lab_demo)를 쓴다. 전용 계정(quant_demo)은 운영 DB(quant_lab)에
+# 접속 권한이 없다 (deploy.sh가 계정·DB를 만들고 권한을 정리한다). 그래서 운영이 먼저 떠 있어야 한다.
+#   demo.env : DEMO_DB_PASSWORD, DATABASE_URL (postgresql+psycopg://quant_demo:<비밀번호>@shared-db:5432/quant_lab_demo)
 # 바깥 접속은 운영의 cloudflared가 demo.trading-lab.me → http://demo-api:8000 으로 잇는다
-# (Access 없이 누구나 본다). 둘은 quant-lab-edge 네트워크만 함께 쓰고, 데모는 운영 DB에 닿지 않는다.
+# (Access 없이 누구나 본다). 데모는 quant-lab-edge(터널)와 quant-lab-dbnet(데모 DB) 네트워크만 쓰고 운영 api·worker에는 닿지 않는다.
 name: quant-lab-demo
 
 x-app: &app
-  image: quant-lab:latest
+  image: ghcr.io/ottuck/quant-lab:${TAG:-latest}
   env_file: ${SECRETS_DIR:-../.secrets}/demo.env
   environment:
     DEMO_MODE: "true"
+  networks: [default, dbnet]
   restart: unless-stopped
 
 services:
-  demo-db:
-    image: postgres:17
-    restart: unless-stopped
-    env_file: ${SECRETS_DIR:-../.secrets}/demo.env
-    environment:
-      POSTGRES_USER: quant
-      POSTGRES_DB: quant_lab_demo
-      TZ: UTC
-    volumes:
-      - demo-db-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U quant -d quant_lab_demo"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
   demo-migrate:
     <<: *app
     command: ["alembic", "upgrade", "head"]
     restart: "no"
-    depends_on:
-      demo-db:
-        condition: service_healthy
 
   # 예시 시세를 오늘까지 늘리고 예시 봇을 이어서 평가한다 (6시간마다, 처음엔 2년치라 몇 분 걸린다)
   demo-seeder:
@@ -47,7 +31,7 @@ services:
 
   demo-api:
     <<: *app
-    networks: [default, edge]
+    networks: [default, dbnet, edge]
     depends_on:
       demo-migrate:
         condition: service_completed_successfully
@@ -61,6 +45,6 @@ networks:
   edge:
     name: quant-lab-edge
     external: true
-
-volumes:
-  demo-db-data:
+  dbnet:
+    name: quant-lab-dbnet
+    external: true
