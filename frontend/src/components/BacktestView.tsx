@@ -3,7 +3,7 @@ import { ColorType, createChart, LineSeries, type Time } from 'lightweight-chart
 import { useEffect, useRef, useState } from 'react'
 import { api, backtestApi, botApi, type BacktestDetail, type BacktestSummary, type StrategyInfo, type SymbolWeight } from '../api'
 import { useCurrency } from '../currency'
-import { MAX_CASH, money, percent, roundMoney, setAmount, shares, signedMoney, tone } from '../format'
+import { money, percent, roundMoney, setAmount, shares, signedMoney, tone } from '../format'
 import { isAiBot, isMeBot, useStrategies } from '../strategies'
 import { useDemo, usePriceWord } from '../demo'
 import { cssVar, useTheme } from '../theme'
@@ -15,8 +15,7 @@ import { ParallelWorlds } from './Parallel'
 import { PresetFields } from './PresetFields'
 import { StrategyGlyph } from './StrategyGlyph'
 import { activeOf, basketLabel } from '../basket'
-import { BasketPicker, SymbolPicker } from './SymbolPicker'
-import { AmountInput } from './AmountInput'
+import { BasketPicker } from './SymbolPicker'
 
 const PERIODS = [
   { label: '최근 3년', years: 3 },
@@ -39,74 +38,39 @@ function ym(date: string) {
 
 const created = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric' })
 
-type Choice = { symbol: string; strategy: string; symbols?: SymbolWeight[] | null }
+const STRATEGY = 'dip_saver' // 시험해 보기는 나 카피 봇(나처럼 투자) 규칙만 한다
+const DEFAULT_BASKET: SymbolWeight[] = [
+  { symbol: 'QQQ', weight: 50 },
+  { symbol: 'VOO', weight: 50 },
+]
 
-/** 나처럼 투자가 주력, 유명 전략들은 아래 참고용 작은 목록. */
-function StrategyModes({
-  list,
-  value,
-  onChange,
-  aiBotId,
-}: {
-  list: StrategyInfo[]
-  value: string
-  onChange: (name: string) => void
-  aiBotId?: number
-}) {
-  const me = list.find((s) => s.accumulates)
-  const refs = list.filter((s) => !s.accumulates)
-  const ref = refs.find((s) => s.name === value)
+/** 나 카피 봇 소개 카드와, AI 봇은 과거로 시험하지 않는다는 안내. */
+function Intro({ info, aiBotId }: { info?: StrategyInfo; aiBotId?: number }) {
   return (
     <div className="bt-modes">
-      {me && (
-        <button className={`bt-main ${value === me.name ? 'active' : ''}`} aria-pressed={value === me.name} onClick={() => onChange(me.name)}>
+      {info && (
+        <div className="bt-main">
           <span className="bt-main-text">
             <span className="eyebrow">나 카피 봇</span>
-            <span className="title">{me.nickname}</span>
-            <span className="desc">{me.summary}</span>
+            <span className="title">{info.nickname}</span>
+            <span className="desc">{info.summary}</span>
           </span>
-          <StrategyGlyph name={me.name} className="bt-main-glyph" />
-        </button>
+          <StrategyGlyph name={info.name} className="bt-main-glyph" />
+        </div>
       )}
-      <div className="bt-refs">
-        <span className="label">유명 전략 참고</span>
-        {/* 그림과 설명이 위, 고르는 버튼이 아래. 아직 안 골랐어도 자리를 잡아 두어 버튼이 움직이지 않게 한다. */}
-        <div className={`bt-ref-desc ${ref ? '' : 'empty'}`}>
-          {ref ? (
-            <>
-              <StrategyGlyph name={ref.name} />
-              <div>
-                <div className="title">{ref.nickname}</div>
-                <p>
-                  {ref.summary} <span className="faint">위험 {ref.risk} · 거래 {ref.trades}</span>
-                </p>
-              </div>
-            </>
-          ) : (
-            <p>유명한 투자법을 고르면 언제 사고파는지 그림으로 보여드려요. 나처럼 투자와 비교해 볼 때 써요.</p>
-          )}
-        </div>
-        <div className="bt-ref-list">
-          {refs.map((s) => (
-            <button key={s.name} className={`seg ${s.name === value ? 'active' : ''}`} aria-pressed={s.name === value} onClick={() => onChange(s.name)}>
-              {s.nickname}
+      {/* AI는 지난 일의 결과를 이미 알고 있어 과거 시험이 부풀려진다 (project.md 14절) */}
+      <p className="bt-ai-note">
+        AI 봇은 과거로 시험하지 않아요. AI가 지난 일의 결과를 이미 알고 있어서 실제보다 좋게 나오거든요. 대신 오늘부터 모의 투자하며 나 카피 봇과
+        같은 돈으로 나란히 비교해요.
+        {aiBotId != null && (
+          <>
+            {' '}
+            <button className="link" onClick={() => openBot(aiBotId)}>
+              AI 봇 비교 보기 →
             </button>
-          ))}
-        </div>
-        {/* AI는 지난 일의 결과를 이미 알고 있어 과거 시험이 부풀려진다 (project.md 14절) */}
-        <p className="bt-ai-note">
-          AI 봇은 과거로 시험하지 않아요. AI가 지난 일의 결과를 이미 알고 있어서 실제보다 좋게 나오거든요. 대신 오늘부터 모의 투자하며 나 카피
-          봇과 같은 돈으로 나란히 비교해요.
-          {aiBotId != null && (
-            <>
-              {' '}
-              <button className="link" onClick={() => openBot(aiBotId)}>
-                AI 봇 비교 보기 →
-              </button>
-            </>
-          )}
-        </p>
-      </div>
+          </>
+        )}
+      </p>
     </div>
   )
 }
@@ -119,50 +83,39 @@ function periodOf(s: BacktestSummary): number {
 }
 
 function RunForm({
-  choice,
+  basket,
   seed,
-  onChoice,
+  onBasket,
   onDone,
 }: {
-  choice: Choice
+  basket: SymbolWeight[]
   seed?: BacktestSummary
-  onChoice: (c: Choice) => void
+  onBasket: (v: SymbolWeight[]) => void
   onDone: (id: string) => void
 }) {
   const qc = useQueryClient()
-  const { list, byName } = useStrategies()
+  const { byName } = useStrategies()
   const { data: bots } = useQuery({ queryKey: ['bots'], queryFn: api.bots })
   const meBot = bots?.find(isMeBot)
   const aiBot = bots?.find(isAiBot)
   // 나 카피 봇이 있으면 질문은 그 봇의 규칙 바꾸기다 (데모의 예시 봇은 바꿀 수 없어 새로 해 본다)
   const editMe = useDemo() ? undefined : meBot
   const priceWord = usePriceWord()
-  // 전략마다 고른 프리셋 값을 기억한다. 고르지 않았으면 기본값.
-  // 아래에 보이는 결과(seed)가 있으면 그 결과의 규칙·기간·처음 금액으로 시작한다.
-  const [picked, setPicked] = useState<Record<string, Record<string, number>>>(() => (seed ? { [seed.strategy]: seed.params } : {}))
-  const { symbol, strategy } = choice
-  const setSymbol = (s: string) => onChoice({ ...choice, symbol: s, symbols: null })
-  // 모으기 전략은 여러 종목(최대 10개)을 비율대로 시험한다.
-  const basket = choice.symbols?.length ? choice.symbols : [{ symbol, weight: 100 }]
-  const setBasket = (v: SymbolWeight[]) => onChoice({ ...choice, symbol: v[0].symbol, symbols: v })
-  const setStrategy = (s: string) => onChoice({ ...choice, strategy: s })
+  const info = byName[STRATEGY]
+  // 고른 규칙을 기억한다. 고르지 않았으면 기본값. 아래에 보이는 결과(seed)가 있으면 그 규칙·기간으로 시작한다.
+  const [picked, setPicked] = useState<Record<string, number> | null>(() => seed?.params ?? null)
   const [years, setYears] = useState(() => (seed ? periodOf(seed) : 10))
-  // 유명 전략은 처음 한 번 넣는 돈으로 시험한다 (직접 정한다)
-  const [cash, setCash] = useState(() => (seed && Number(seed.metrics.initial_cash) > 0 && !seed.metrics.deposits ? String(Math.round(Number(seed.metrics.initial_cash))) : '10000'))
-  const info = byName[strategy]
-  const params = picked[strategy] ?? info?.default_params ?? {}
-  const multi = !!info?.accumulates && basket.length > 1
+  const params = picked ?? info?.default_params ?? {}
   const total = basket.reduce((sum, b) => sum + b.weight, 0)
   const run = useMutation({
-    // 모으기 전략은 시작 금액을 보내지 않는다 (서버가 첫 달 입금액으로 시작한다).
+    // 시작 금액은 보내지 않는다 (서버가 첫 달 입금액으로 시작한다).
     mutationFn: () =>
       backtestApi.run({
-        symbol: multi ? basket[0].symbol : symbol,
-        symbols: multi ? basket : undefined,
-        strategy,
+        symbol: basket[0].symbol,
+        symbols: basket,
+        strategy: STRATEGY,
         params,
         start: startDate(years),
-        initial_cash: info?.accumulates ? undefined : cash,
       }),
     onSuccess: (d) => {
       void qc.invalidateQueries({ queryKey: ['backtests'] })
@@ -176,40 +129,34 @@ function RunForm({
         <span className="sub">예전부터 그렇게 했다면 어땠을지 {priceWord}으로 계산해요</span>
       </div>
       <div className="stack">
-        <StrategyModes list={list} value={strategy} onChange={setStrategy} aiBotId={aiBot?.id} />
-        {info?.accumulates && (
-          <div className="bt-mine">
-            <div className="bt-mine-text">
-              <b>{editMe ? '내 규칙을 바꾸려면, 다시 카피하기' : '내 규칙을 모르겠다면, 나 카피하기'}</b>
-              <span className="muted small">
-                {editMe
-                  ? `질문 몇 개에 다시 답하면 ${editMe.name}의 규칙이 바뀌어요. 바꾸기 전에 지난 10년을 먼저 보여줘요.`
-                  : '질문 몇 개에 답하면 내 투자 습관이 규칙이 되고 지난 10년을 바로 보여줘요. 1분이면 끝나요.'}
-              </span>
-            </div>
-            <div className="bt-mine-actions">
-              <button className="accent" onClick={() => (editMe ? startMeEdit(editMe.id) : goTo('me'))}>
-                {editMe ? '다시 카피하기 →' : '질문으로 내 규칙 정하기 →'}
-              </button>
-              {meBot && (
-                <button
-                  onClick={() => {
-                    setPicked({ ...picked, [strategy]: meBot.params })
-                    setBasket(activeOf(meBot.symbols))
-                  }}
-                >
-                  {meBot.name} 설정 불러오기
-                </button>
-              )}
-            </div>
+        <Intro info={info} aiBotId={aiBot?.id} />
+        <div className="bt-mine">
+          <div className="bt-mine-text">
+            <b>{editMe ? '내 규칙을 바꾸려면, 다시 카피하기' : '내 규칙을 모르겠다면, 나 카피하기'}</b>
+            <span className="muted small">
+              {editMe
+                ? `질문 몇 개에 다시 답하면 ${editMe.name}의 규칙이 바뀌어요. 바꾸기 전에 지난 10년을 먼저 보여줘요.`
+                : '질문 몇 개에 답하면 내 투자 습관이 규칙이 되고 지난 10년을 바로 보여줘요. 1분이면 끝나요.'}
+            </span>
           </div>
-        )}
-        {info && <PresetFields info={info} params={params} onChange={(p) => setPicked({ ...picked, [strategy]: p })} />}
-        {info?.accumulates ? (
-          <BasketPicker value={basket} onChange={setBasket} />
-        ) : (
-          <SymbolPicker label="종목" value={symbol} onChange={setSymbol} />
-        )}
+          <div className="bt-mine-actions">
+            <button className="accent" onClick={() => (editMe ? startMeEdit(editMe.id) : goTo('me'))}>
+              {editMe ? '다시 카피하기 →' : '질문으로 내 규칙 정하기 →'}
+            </button>
+            {meBot && (
+              <button
+                onClick={() => {
+                  setPicked(meBot.params)
+                  onBasket(activeOf(meBot.symbols))
+                }}
+              >
+                {meBot.name} 설정 불러오기
+              </button>
+            )}
+          </div>
+        </div>
+        {info && <PresetFields info={info} params={params} onChange={setPicked} />}
+        <BasketPicker value={basket} onChange={onBasket} />
         <div className="controls">
           <span className="label">기간</span>
           {PERIODS.map((p) => (
@@ -218,32 +165,12 @@ function RunForm({
             </button>
           ))}
         </div>
-        {info && !info.accumulates && (
-          <div className="controls">
-            <span className="label">처음 넣는 돈</span>
-            <AmountInput value={cash} onChange={setCash} placeholder="예: 10000" label="처음 넣는 돈" max={MAX_CASH} />
-          </div>
-        )}
         <div className="controls">
-          <button
-            className="primary"
-            disabled={run.isPending || !list.length || (multi && total !== 100) || (!info?.accumulates && (!Number(cash) || Number(cash) > MAX_CASH))}
-            onClick={() => run.mutate()}
-          >
-            {run.isPending
-              ? '계산 중…'
-              : info?.accumulates
-                ? `매달 ${setAmount(Number(params.deposit ?? 0))}씩 시험해 보기`
-                : `처음에 ${setAmount(Number(cash) || 0)} 넣고 시험해 보기`}
+          <button className="primary" disabled={run.isPending || !info || total !== 100} onClick={() => run.mutate()}>
+            {run.isPending ? '계산 중…' : `매달 ${setAmount(Number(params.deposit ?? 0))}씩 시험해 보기`}
           </button>
           {run.error && <span className="bad small">{run.error.message}</span>}
         </div>
-        {/* 유명 전략은 매달 넣지 않는다: 처음 돈 한 번으로 사고판다 */}
-        {info && !info.accumulates && (
-          <p className="faint small" style={{ margin: 0 }}>
-            더 넣지 않아요. 살 때는 가진 현금 전부로 사고, 팔 때는 전부 팔아요. 비교 기준은 같은 돈으로 첫날 사서 그냥 들고 있기예요.
-          </p>
-        )}
       </div>
     </section>
   )
@@ -315,14 +242,10 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
   }
   if (!data) return <div className="line-empty">불러오는 중…</div>
   const m = data.metrics
-  const won = Number(m.final_equity) >= Number(m.benchmark_final_equity)
-  const smallerDrop = Number(m.max_drawdown) > Number(m.benchmark_max_drawdown)
   const abs = (v: string | null | undefined) => percent(v).replace('+', '')
   const paid = m.contributed ?? m.initial_cash
-  const monthly = (m.deposits ?? 0) > 0
   const gain = String(Number(m.final_equity) - Number(paid))
-  // 입금이 있으면 비교 기준은 "넣을 때마다 바로 사기"다.
-  const bench = monthly ? '매달 그냥 사기' : '그냥 보유'
+  const bench = '매달 그냥 사기' // 넣을 때마다 바로 사는 것이 비교 기준이다
   return (
     <section className="bt-result">
       <div className="hero-head">
@@ -330,10 +253,8 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
           <div className="bot-line">
             <span className="name">{info?.nickname ?? data.strategy}</span>
             <span>
-              · {basketLabel(data.symbols, data.symbol)} ·{' '}
-              {monthly
-                ? `${ym(m.start)}부터 매달 ${setAmount(Number(data.params.deposit ?? 0))}씩 넣었다면 (모두 ${money(paid)})`
-                : `${ym(m.start)}에 처음 ${money(m.initial_cash)}만 넣고 시작했다면`}
+              · {basketLabel(data.symbols, data.symbol)} · {ym(m.start)}부터 매달 {setAmount(Number(data.params.deposit ?? 0))}씩 넣었다면 (모두{' '}
+              {money(paid)})
             </span>
           </div>
           <div className="hero-value">{money(m.final_equity)}</div>
@@ -347,12 +268,13 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
         </div>
         {!demo && (
           <div className="hero-actions">
-            {meBot && data.strategy === 'dip_saver' ? (
+            {meBot ? (
               <button
                 className="primary"
                 onClick={() =>
                   window.confirm(
-                    `${meBot.name}의 규칙과 종목을 이 시험의 값으로 바꿀까요?\n나 카피 봇은 하나만 만들 수 있어서 새로 만들지 않고 이 봇을 바꿔요. 다음 판단부터 적용되고 지금까지의 기록은 그대로예요.`,
+                    `${meBot.name}의 규칙과 종목을 이 시험의 값으로 바꿀까요?
+나 카피 봇은 하나만 만들 수 있어서 새로 만들지 않고 이 봇을 바꿔요. 다음 판단부터 적용되고 지금까지의 기록은 그대로예요.`,
                   ) && void applyToMe(data.params)
                 }
               >
@@ -362,41 +284,20 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
               <button
                 className="primary"
                 onClick={() =>
-                  startNewBot({
-                    symbol: data.symbol,
-                    symbols: data.symbols ?? undefined,
-                    strategy: data.strategy,
-                    params: data.params,
-                    cash: monthly ? undefined : String(Math.round(Number(m.initial_cash))),
-                  })
+                  startNewBot({ symbol: data.symbol, symbols: data.symbols ?? undefined, strategy: data.strategy, params: data.params })
                 }
               >
-                이 전략으로 모의 투자 시작
+                이 규칙으로 모의 투자 시작
               </button>
             )}
           </div>
         )}
       </div>
       {/* 나처럼 투자는 판정하지 않는다 (평가가 아니라 구경, project.md 1절) */}
-      {!monthly && <p className="bt-verdict">
-        <span className={`mark ${won ? 'rise' : 'fall'}`} />
-        <span>
-          {monthly
-            ? won
-              ? '매달 그냥 산 것보다 결과가 좋았어요.'
-              : '매달 그냥 산 게 더 많이 벌었어요.'
-            : won
-              ? '그냥 들고 있는 것보다 결과가 좋았어요.'
-              : '그냥 들고 있는 게 더 많이 벌었어요.'}{' '}
-          {smallerDrop &&
-            `${won ? '게다가' : '대신'} 가장 크게 떨어진 폭은 ${abs(m.max_drawdown)}로, ${bench}(${abs(m.benchmark_max_drawdown)})보다 작았어요.`}
-        </span>
-      </p>}
-
       <EquityChart detail={data} />
       <div className="eq-foot">
         <span className="legend">
-          <i className="strat" />이 전략
+          <i className="strat" />이 규칙
         </span>
         <span className="legend">
           <i className="bench" />
@@ -421,15 +322,7 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
         <Fact
           term="투자 중이던 기간"
           a={abs(m.exposure)}
-          b={
-            monthly ? (
-              `${data.fills.length}번 샀어요 · 팔지 않아요`
-            ) : (
-              <>
-                사고판 횟수 {m.round_trips}번 · <Term k="이긴 거래 비율">이긴 비율</Term> {m.win_rate == null ? '—' : abs(m.win_rate)}
-              </>
-            )
-          }
+          b={`${data.fills.length}번 샀어요 · 팔지 않아요`}
         />
       </div>
 
@@ -443,7 +336,7 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
               <thead>
                 <tr>
                   <th>연도</th>
-                  <th className="num">이 전략</th>
+                  <th className="num">이 규칙</th>
                   <th className="num">{bench}</th>
                   <th className="num">차이</th>
                 </tr>
@@ -472,11 +365,7 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
       <section className="block">
         <div className="block-head">
           <h2>거래 내역</h2>
-          <span className="sub">
-            {data.fills.length}건
-            {!monthly && data.fills.length > 0 &&
-              ` (산 것 ${data.fills.filter((f) => f.side === 'BUY').length} · 판 것 ${data.fills.filter((f) => f.side === 'SELL').length})`}
-          </span>
+          <span className="sub">{data.fills.length}건</span>
           {data.fills.length > 0 && (
             <button className="link" aria-expanded={showTrades} onClick={() => setShowTrades(!showTrades)}>
               {showTrades ? '숨기기' : '펼쳐 보기'}
@@ -492,7 +381,6 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
                   <th>내용</th>
                   <th className="qty">수량</th>
                   <th className="num">한 주 가격</th>
-                  <th className="num">확정 손익</th>
                 </tr>
               </thead>
               <tbody>
@@ -500,13 +388,10 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
                   <tr key={`${f.fill_date}-${f.side}`}>
                     <td className="d">{f.fill_date}</td>
                     <td>
-                      <span className={`side-tag ${f.side === 'BUY' ? 'rise' : 'fall'}`}>{f.side === 'BUY' ? '샀어요' : '팔았어요'}</span>
+                      <span className="side-tag rise">샀어요</span>
                     </td>
                     <td className="qty">{shares(f.qty)}주</td>
                     <td className="num">{money(f.price)}</td>
-                    <td className={`num ${tone(f.realized_pnl)}`}>
-                      {f.realized_pnl != null ? signedMoney(f.realized_pnl) : <span className="faint">—</span>}
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -514,34 +399,32 @@ function Result({ id, info }: { id: string; info?: StrategyInfo }) {
           </div>
         )}
         <p className="strategy-meta">
-          가정: 장 마감 가격으로 판단하고 다음 날 장이 열릴 때 사고팔아요. 토스증권 수수료 0.1%와 조금 불리한 체결 가격을
+          가정: 장 마감 가격으로 판단하고 다음 날 장이 열릴 때 사요. 토스증권 수수료 0.1%와 조금 불리한 체결 가격을
           반영했어요. 과거 결과가 미래를 보장하지는 않아요.
         </p>
       </section>
-      {data.strategy === 'dip_saver' && (
-        <ParallelWorlds
-          queryKey={['parallel', data.id]}
-          fetch={() =>
-            backtestApi.parallel({
-              symbol: data.symbol,
-              symbols: data.symbols ?? undefined,
-              params: data.params,
-              start: m.start,
-              initial_cash: m.initial_cash,
-            })
-          }
-          sub={() => `${ym(m.start)}부터, 규칙을 하나씩 바꿨다면`}
-          chooseLabel={meBot ? '로 바꾸기' : '로 모의 투자 시작'}
-          confirm={meBot ? `${meBot.name}의 규칙과 종목을 바꿀까요? 다음 판단부터 적용되고 지금까지의 기록은 그대로예요.` : undefined}
-          onChoose={
-            demo
-              ? undefined
-              : meBot
-                ? applyToMe
-                : (params) => startNewBot({ symbol: data.symbol, symbols: data.symbols ?? undefined, strategy: data.strategy, params })
-          }
-        />
-      )}
+      <ParallelWorlds
+        queryKey={['parallel', data.id]}
+        fetch={() =>
+          backtestApi.parallel({
+            symbol: data.symbol,
+            symbols: data.symbols ?? undefined,
+            params: data.params,
+            start: m.start,
+            initial_cash: m.initial_cash,
+          })
+        }
+        sub={() => `${ym(m.start)}부터, 규칙을 하나씩 바꿨다면`}
+        chooseLabel={meBot ? '로 바꾸기' : '로 모의 투자 시작'}
+        confirm={meBot ? `${meBot.name}의 규칙과 종목을 바꿀까요? 다음 판단부터 적용되고 지금까지의 기록은 그대로예요.` : undefined}
+        onChoose={
+          demo
+            ? undefined
+            : meBot
+              ? applyToMe
+              : (params) => startNewBot({ symbol: data.symbol, symbols: data.symbols ?? undefined, strategy: data.strategy, params })
+        }
+      />
     </section>
   )
 }
@@ -552,9 +435,9 @@ export function BacktestView() {
   const [selected, setSelected] = useState<string | null>(null)
   const current = selected ?? list?.[0]?.id ?? null
   const currentInfo = list?.find((b) => b.id === current)
-  // 양식의 선택(전략·종목)은 아래에 보이는 결과와 맞춘다. 직접 바꾸면 그 선택을 따른다.
-  const [picked, setPicked] = useState<Choice | null>(null)
-  const choice = picked ?? (currentInfo ? { symbol: currentInfo.symbol, strategy: currentInfo.strategy, symbols: activeOf(currentInfo.symbols ?? []) } : { symbol: 'QQQ', strategy: 'dip_saver', symbols: [{ symbol: 'QQQ', weight: 50 }, { symbol: 'VOO', weight: 50 }] })
+  // 양식의 선택(종목)은 아래에 보이는 결과와 맞춘다. 직접 바꾸면 그 선택을 따른다.
+  const [picked, setPicked] = useState<SymbolWeight[] | null>(null)
+  const basket = picked ?? (currentInfo ? activeOf(currentInfo.symbols ?? [{ symbol: currentInfo.symbol, weight: 100 }]) : DEFAULT_BASKET)
   const show = (id: string) => {
     setSelected(id)
     setPicked(null)
@@ -563,11 +446,11 @@ export function BacktestView() {
     <div className="home bt">
       <div className="home-main">
         {/* 양식은 보이는 결과에 맞춘다. 방금 시험한 결과는 목록에 늦게 들어오므로 들어온 뒤 한 번 더 맞춘다. */}
-        <RunForm key={`${current}:${currentInfo ? 1 : 0}`} choice={choice} seed={currentInfo} onChoice={setPicked} onDone={show} />
+        <RunForm key={`${current}:${currentInfo ? 1 : 0}`} basket={basket} seed={currentInfo} onBasket={setPicked} onDone={show} />
         {current ? (
-          <Result key={current} id={current} info={currentInfo ? byName[currentInfo.strategy] : undefined} />
+          <Result key={current} id={current} info={byName[STRATEGY]} />
         ) : (
-          <div className="bt-result line-empty">아직 시험한 결과가 없어요. 위에서 전략과 종목을 골라 시험해 보세요.</div>
+          <div className="bt-result line-empty">아직 시험한 결과가 없어요. 위에서 규칙과 종목을 골라 시험해 보세요.</div>
         )}
       </div>
       {list && list.length > 0 && (
@@ -578,7 +461,7 @@ export function BacktestView() {
               <button key={b.id} className={`bt-item ${b.id === current ? 'active' : ''}`} aria-current={b.id === current} onClick={() => show(b.id)}>
                 <div>
                   <div className="sym">
-                    {byName[b.strategy]?.nickname ?? b.strategy} · {b.symbols?.map((x) => x.symbol).join('·') ?? b.symbol}
+                    {byName[STRATEGY]?.nickname ?? STRATEGY} · {b.symbols?.map((x) => x.symbol).join('·') ?? b.symbol}
                   </div>
                   <div className="sub">
                     {b.metrics.start.slice(0, 4)}년부터 · {created.format(new Date(b.created_at))}

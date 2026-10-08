@@ -1,82 +1,35 @@
-from collections.abc import Sequence
-from dataclasses import dataclass, field, replace
-from datetime import date
+from dataclasses import replace
 from decimal import ROUND_DOWN, Decimal
-from typing import ClassVar
 
 import pytest
 
 from quant_lab.domain.backtest import run_backtest
-from quant_lab.domain.bars import DailyBar
 from quant_lab.domain.portfolio import QTY_STEP, CostModel, RiskLimits
-from quant_lab.domain.strategy import DipSaver, Signal, SmaCross
+from quant_lab.domain.strategy import DipSaver
 from quant_lab.domain.trading import Action
 from tests.fakes import make_bars
 
 NO_COST = CostModel(commission_rate=Decimal(0), slippage_bps=Decimal(0))
-CASH = Decimal(10_000)
-
-
-@dataclass
-class SpyStrategy:
-    """미리 정한 날짜에 long/flat을 바꾸고, 받은 이력을 기록한다."""
-
-    long_from: date
-    flat_from: date | None = None
-    name: ClassVar[str] = "spy"
-    seen: list[tuple[date, int]] = field(default_factory=list)
-
-    @property
-    def params(self) -> dict[str, int]:
-        return {}
-
-    @property
-    def warmup(self) -> int:
-        return 1
-
-    def signal(self, history: Sequence[DailyBar], holding: bool) -> Signal:
-        today = history[-1].session_date
-        self.seen.append((today, len(history)))
-        long = today >= self.long_from and (self.flat_from is None or today < self.flat_from)
-        return Signal(long, "spy")
 
 
 def test_decision_at_close_fills_next_open() -> None:
-    bars = make_bars("X", [100, 101, 102, 103, 104, 105])
-    strategy = SpyStrategy(long_from=bars[1].session_date, flat_from=bars[3].session_date)
-    result = run_backtest(bars, strategy, CASH, NO_COST)
+    bars = make_bars("X", [100 + i % 7 for i in range(60)])
+    s = DipSaver(deposit=500, day=1, high=20, sma=10)
+    result = run_backtest({"X": bars}, s, Decimal(500), NO_COST)
 
-    buy, sell = result.fills
-    assert (buy.side, buy.signal_date, buy.fill_date) == (
-        Action.BUY,
-        bars[1].session_date,
-        bars[2].session_date,
-    )
-    assert buy.price == bars[2].open
-    assert buy.qty == (CASH / bars[2].open).quantize(QTY_STEP, rounding=ROUND_DOWN)  # 소수점 6자리
-    assert (sell.side, sell.signal_date, sell.fill_date) == (
-        Action.SELL,
-        bars[3].session_date,
-        bars[4].session_date,
-    )
-    assert sell.price == bars[4].open
-
-
-def test_strategy_never_sees_future_bars() -> None:
-    bars = make_bars("X", [100 + i for i in range(30)])
-    strategy = SpyStrategy(long_from=bars[5].session_date)
-    run_backtest(bars, strategy, CASH, NO_COST)
-    for i, (today, length) in enumerate(strategy.seen):
-        assert today == bars[i].session_date
-        assert length == i + 1
+    index = {b.session_date: i for i, b in enumerate(bars)}
+    buy = result.fills[0]
+    assert (buy.side, buy.price) == (Action.BUY, bars[index[buy.signal_date] + 1].open)
+    assert buy.fill_date == bars[index[buy.signal_date] + 1].session_date  # 종가 판단 → 다음 시가
+    assert buy.qty == (Decimal(500) / buy.price).quantize(QTY_STEP, rounding=ROUND_DOWN)
 
 
 def test_truncated_data_gives_same_decisions_as_full_data() -> None:
     closes = [100 + (i % 17) * 3 - (i % 5) * 4 for i in range(300)]
     bars = make_bars("X", closes)
-    s = SmaCross(fast=5, slow=20)
-    full = run_backtest(bars, s, CASH, CostModel())
-    cut = run_backtest(bars[:200], s, CASH, CostModel())
+    s = DipSaver(deposit=500, day=1, dip=5, hot=5, high=20, sma=10)
+    full = run_backtest({"X": bars}, s, Decimal(500), CostModel())
+    cut = run_backtest({"X": bars[:200]}, s, Decimal(500), CostModel())
 
     cutoff = bars[199].session_date
     assert [d for d in full.decisions if d.session_date <= cutoff] == cut.decisions
@@ -84,15 +37,18 @@ def test_truncated_data_gives_same_decisions_as_full_data() -> None:
 
 
 def test_risk_limit_caps_position() -> None:
-    bars = make_bars("X", [100, 100, 100, 100])
+    bars = make_bars("X", [100] * 40)
     limits = RiskLimits(max_position_value=Decimal(1_000))
-    result = run_backtest(bars, SpyStrategy(long_from=bars[0].session_date), CASH, NO_COST, limits)
+    s = DipSaver(deposit=5000, day=1, high=20, sma=10)
+    result = run_backtest({"X": bars}, s, Decimal(5000), NO_COST, limits)
     assert result.fills[0].qty == 10
 
 
 def test_risk_metrics_and_annual_returns() -> None:
     bars = make_bars("X", [100 * (1.001**i) * (1 + 0.01 * (i % 3 - 1)) for i in range(400)])
-    m = run_backtest(bars, SmaCross(fast=5, slow=20), CASH, NO_COST).metrics
+    m = run_backtest(
+        {"X": bars}, DipSaver(deposit=500, day=1, high=20, sma=10), Decimal(500), NO_COST
+    ).metrics
     years = [y.year for y in m.annual_returns]
     assert years == sorted(set(years)) and len(years) >= 2
     assert m.benchmark_volatility > 0
@@ -105,7 +61,7 @@ def test_dip_saver_deposits_monthly_buys_dips_and_never_sells() -> None:
     closes += [145 - 3 * i for i in range(1, 16)] + [100] * 40
     bars = make_bars("VOO", closes)
     s = DipSaver(deposit=500, day=1, dip=10, hot=10, high=20, sma=10)
-    result = run_backtest(bars, s, Decimal(500), NO_COST)
+    result = run_backtest({"VOO": bars}, s, Decimal(500), NO_COST)
     m = result.metrics
 
     # 시작 금액이 시작한 달의 입금이라 그달에는 또 넣지 않는다 (한 달에 한 번)
@@ -129,11 +85,11 @@ def test_dip_saver_deposits_monthly_buys_dips_and_never_sells() -> None:
     assert result.equity[-1].contributed == m.contributed
 
     # 고점에 쉬지 않기(hot=0): 고점이어도 입금일에 산다
-    eager = run_backtest(bars, replace(s, hot=0), Decimal(500), NO_COST)
+    eager = run_backtest({"VOO": bars}, replace(s, hot=0), Decimal(500), NO_COST)
     assert {d.session_date for d in hot} & {f.signal_date for f in eager.fills}
 
     # 떨어졌을 때만 사기(regular=0): 평소엔 모아 두고 하락장에만 산다
-    saver = run_backtest(bars, replace(s, regular=0), Decimal(500), NO_COST)
+    saver = run_backtest({"VOO": bars}, replace(s, regular=0), Decimal(500), NO_COST)
     days = {d.session_date: d for d in saver.decisions}
     assert saver.fills
     assert all(days[f.signal_date].indicators["drawdown"] <= Decimal("-0.1") for f in saver.fills)
@@ -143,7 +99,7 @@ def test_dip_saver_young_listing_uses_available_history() -> None:
     # 상장 석 달(63일) 종목: 1년이 안 돼도 한 달 이력부터 있는 만큼으로 판단한다
     bars = make_bars("NEW", [100 + i % 5 for i in range(63)])
     s = DipSaver(deposit=500, day=1)
-    result = run_backtest(bars, s, Decimal(500), NO_COST)
+    result = run_backtest({"NEW": bars}, s, Decimal(500), NO_COST)
     first = result.decisions[0]
     assert first.session_date == bars[s.min_bars - 1].session_date
     assert first.indicators["bars"] == s.min_bars and result.fills
@@ -152,4 +108,4 @@ def test_dip_saver_young_listing_uses_available_history() -> None:
     # (봇을 만든 첫날의 평행세계가 1년 전부터 시작하던 것. 화면은 "아직 비교할 날이 없어요")
     full = make_bars("OLD", [100 + i % 5 for i in range(s.warmup)])
     with pytest.raises(ValueError, match="봉이 부족"):
-        run_backtest(full, s, Decimal(500), NO_COST)
+        run_backtest({"OLD": full}, s, Decimal(500), NO_COST)

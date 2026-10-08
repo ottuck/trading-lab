@@ -220,8 +220,6 @@ def decision_status(row: DecisionRow, bot: BotRow | None = None) -> DecisionStat
             strategy.get("name", bot.strategy),
             strategy.get("params", bot.params),
             row.indicators,
-            row.target_long,
-            row.holding,
             action=row.action,
             raw=row.reason,
         )

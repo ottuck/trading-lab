@@ -13,6 +13,7 @@ from quant_lab.application.dry_run import Trigger, evaluate_bot
 from quant_lab.application.market import StoredMarket
 from quant_lab.domain.bot import BotState
 from quant_lab.domain.portfolio import CostModel, RiskLimits
+from quant_lab.domain.strategy import DipSaver
 from quant_lab.persistence.bars import upsert_daily_bars
 from quant_lab.persistence.bots import create_bot
 from quant_lab.persistence.db import get_session
@@ -22,6 +23,7 @@ from tests.fakes import WeekdayCalendar, make_bars
 
 CAL = WeekdayCalendar()
 BARS = make_bars("QQQ", [100 + i for i in range(30)])
+RULE = {"deposit": 500, "day": 1, "dip": 10, "hot": 10, "high": 10, "sma": 5}
 
 
 @pytest.fixture
@@ -38,9 +40,9 @@ def bot_id(session: Session) -> int:
         session,
         name="qqq",
         symbol="QQQ",
-        strategy="sma_cross",
-        params={"fast": 3, "slow": 5},
-        initial_cash=Decimal(10_000),
+        strategy="dip_saver",
+        params=DipSaver(**RULE).params,
+        initial_cash=Decimal(500),
         costs=CostModel(),
         limits=RiskLimits(),
         now=datetime(2026, 1, 1, tzinfo=UTC),
@@ -67,8 +69,8 @@ def test_bot_view_shows_position_and_reason(client: TestClient, bot_id: int) -> 
     assert Decimal(body["account"]["equity"]) > 0
     assert body["account"]["last_close_date"] == BARS[-1].session_date.isoformat()
     assert body["last_decision"]["session_date"] == BARS[12].session_date.isoformat()
-    assert "SMA3" in body["last_decision"]["reason"]
-    assert "흐름이에요" in body["last_decision"]["plain_reason"]
+    assert "SMA5" in body["last_decision"]["reason"]
+    assert "적당한 가격" in body["last_decision"]["plain_reason"]
     titles = [a["title"] for a in client.get("/api/activity", params={"bot_id": bot_id}).json()]
     assert any("샀어요" in t for t in titles)
     assert body["last_run"]["status"] == "OK"
@@ -77,7 +79,7 @@ def test_bot_view_shows_position_and_reason(client: TestClient, bot_id: int) -> 
     curve = client.get(f"/api/bots/{bot_id}/equity").json()
     assert curve[0]["date"] == BARS[10].session_date.isoformat()
     assert Decimal(curve[-1]["equity"]) == Decimal(body["account"]["equity"])
-    assert Decimal(curve[-1]["contributed"]) == Decimal(10_000)
+    assert Decimal(curve[-1]["contributed"]) == Decimal(500)
     assert Decimal(curve[-1]["benchmark"]) > 0
 
 
@@ -109,7 +111,7 @@ def test_health_reports_worker_heartbeat(client: TestClient, session: Session) -
 
 
 def test_run_backtest_and_list(client: TestClient, bot_id: int) -> None:
-    body = {"symbol": "qqq", "strategy": "sma_cross", "params": {"fast": 3, "slow": 5}}
+    body = {"symbol": "qqq", "strategy": "dip_saver", "params": RULE}
     created = client.post("/api/backtests", json=body)
     assert created.status_code == 201
     detail = created.json()
@@ -118,30 +120,30 @@ def test_run_backtest_and_list(client: TestClient, bot_id: int) -> None:
     # 같은 조건으로 다시 시험하면 새 결과 하나만 남는다
     again = client.post("/api/backtests", json=body).json()
     assert [b["id"] for b in client.get("/api/backtests").json()] == [again["id"]]
-    bad = client.post("/api/backtests", json={**body, "params": {"fast": 9, "slow": 5}})
+    bad = client.post("/api/backtests", json={**body, "params": {"deposit": 0}})
     assert bad.status_code == 400
 
 
 def test_bot_management(client: TestClient, session: Session, bot_id: int) -> None:
     # 실행 중에도 설정을 바꾸고, 다음 판단부터 적용된다
-    config = {"strategy": "trend_filter", "params": {"sma": 4}, "max_order_value": "5000"}
+    config = {"strategy": "dip_saver", "params": {**RULE, "dip": 15}, "max_order_value": "5000"}
     updated = client.put(f"/api/bots/{bot_id}/config", json=config).json()
     assert updated["state"] == "RUNNING"
-    assert updated["strategy"] == "trend_filter"
+    assert updated["params"]["dip"] == 15
     assert updated["risk"]["max_order_value"] == "5000"
     history = client.get("/api/events", params={"bot_id": bot_id, "kind": "config_change"}).json()
-    assert history[0]["data"]["before"]["strategy"] == "sma_cross"
+    assert history[0]["data"]["before"]["params"]["dip"] == 10
     # 바꾼 기록은 무엇을 바꿨는지 쉬운 말로
     (change,) = client.get(
         "/api/activity", params={"bot_id": bot_id, "kind": "config_change"}
     ).json()
-    assert change["body"] == "전략 느긋한 추세 타기 → 200일선 지킴이"
+    assert change["body"] == "하락장 기준 -10% → -15%"
     # 최대 투자 금액 0(아예 못 삼)과 너무 긴 이름은 막는다
     zero = {**config, "max_position_value": "0"}
     assert client.put(f"/api/bots/{bot_id}/config", json=zero).status_code == 400
     assert client.patch(f"/api/bots/{bot_id}", json={"name": "가" * 21}).status_code == 400
     # 한 자리 더 친 금액은 만들 때 막는다 (시작 금액 $1,000,000·매달 $100,000까지)
-    big = {"name": "큰돈", "symbol": "voo", "strategy": "sma_cross", "initial_cash": "2000000"}
+    big = {"name": "큰돈", "symbol": "voo", "strategy": "dip_saver", "initial_cash": "2000000"}
     assert client.post("/api/bots", json=big).status_code == 400
     deposit = {
         "name": "큰달",
@@ -151,39 +153,30 @@ def test_bot_management(client: TestClient, session: Session, bot_id: int) -> No
     }
     assert client.post("/api/bots", json=deposit).status_code == 400
     # 나 카피 봇·AI 봇은 전략마다 하나만 (같은 전략의 두 번째는 이름이 달라도 막는다)
-    for strategy in ("dip_saver", "ai_judge"):
-        first = {"name": f"{strategy}-1", "symbol": "voo", "strategy": strategy}
-        assert client.post("/api/bots", json=first).status_code == 201
-        second = {**first, "name": f"{strategy}-2"}
-        assert client.post("/api/bots", json=second).status_code == 409
-
-    created = client.post(
-        "/api/bots", json={"name": "voo", "symbol": "voo", "strategy": "sma_cross"}
-    )
+    me = {"name": "나 카피 봇 2", "symbol": "voo", "strategy": "dip_saver"}
+    assert client.post("/api/bots", json=me).status_code == 409  # bot_id가 이미 나 카피 봇
+    ai = {"name": "voo", "symbol": "voo", "strategy": "ai_judge"}
+    created = client.post("/api/bots", json=ai)
     assert created.status_code == 201 and created.json()["state"] == "STOPPED"
-    assert (
-        client.post(
-            "/api/bots", json={"name": "voo", "symbol": "VOO", "strategy": "sma_cross"}
-        ).status_code
-        == 409
-    )
+    assert client.post("/api/bots", json={**ai, "name": "AI 2"}).status_code == 409
+    assert client.post("/api/bots", json=ai).status_code == 409
     assert client.patch(f"/api/bots/{bot_id}", json={"name": "voo"}).status_code == 409
     assert client.patch(f"/api/bots/{bot_id}", json={"name": "나스닥"}).json()["name"] == "나스닥"
 
     # 처음부터 다시 시작: 잔고·기록 초기화, 설정·상태 유지
     reset = client.post(f"/api/bots/{bot_id}/reset").json()
-    assert Decimal(reset["account"]["qty"]) == 0 and reset["account"]["cash"] == "10000"
+    assert Decimal(reset["account"]["qty"]) == 0 and reset["account"]["cash"] == "500"
     assert reset["last_decision"] is None and reset["state"] == "RUNNING"
-    assert reset["strategy"] == "trend_filter"
+    assert reset["params"]["dip"] == 15
     kinds: dict[str, str | int] = {"bot_id": bot_id, "kind": "config_change"}
     assert len(client.get("/api/activity", params=kinds).json()) == 2  # 설정 기록은 남긴다
 
-    voo = created.json()["id"]
-    assert client.delete(f"/api/bots/{voo}").status_code == 204
-    assert client.get(f"/api/bots/{voo}").status_code == 404
+    ai_id = created.json()["id"]
+    assert client.delete(f"/api/bots/{ai_id}").status_code == 204
+    assert client.get(f"/api/bots/{ai_id}").status_code == 404
 
 
-def test_multi_symbol_bot_rules(client: TestClient, bot_id: int) -> None:
+def test_multi_symbol_bot_rules(client: TestClient, session: Session) -> None:
     body = {
         "name": "me",
         "symbol": "VOO",
@@ -195,15 +188,14 @@ def test_multi_symbol_bot_rules(client: TestClient, bot_id: int) -> None:
     created = client.post("/api/bots", json=body).json()
     assert created["symbols"] == [{"symbol": "VOO", "weight": 50}, {"symbol": "QQQ", "weight": 50}]
     assert created["symbol"] == "VOO" and created["account"]["contributed"] == "675"
-    # 비율 합이 100이 아니거나, 사고팔기 전략에 여러 종목이거나, 10개를 넘으면 막는다
+    # 비율 합이 100이 아니거나 10개를 넘으면 막는다
     bad_sum = {
         **body,
         "name": "x",
         "symbols": [{"symbol": "VOO", "weight": 60}, {"symbol": "QQQ", "weight": 60}],
     }
-    classic = {**body, "name": "y", "strategy": "sma_cross", "params": {}}
     many = {**body, "name": "z", "symbols": [{"symbol": f"S{i}", "weight": 9} for i in range(11)]}
-    for bad in (bad_sum, classic, many):
+    for bad in (bad_sum, many):
         assert client.post("/api/bots", json=bad).status_code == 400
 
 
@@ -273,8 +265,9 @@ def test_cloudflare_access_guard(client: TestClient, monkeypatch: pytest.MonkeyP
     assert ok.status_code == 200
 
 
-def test_follow_plan(client: TestClient, session: Session, bot_id: int) -> None:
+def test_follow_plan(client: TestClient, session: Session) -> None:
     # 따라 하기: 다음 입금일·종목별로 살 금액·조건 가격 (지금 가격이 이어진다면)
+    upsert_daily_bars(session, BARS, "test", datetime(2026, 1, 1, tzinfo=UTC))
     params = {"deposit": 500, "day": 1, "dip": 10, "hot": 10, "high": 10, "sma": 5}
     body = {"name": "me", "symbol": "QQQ", "strategy": "dip_saver", "params": params}
     me = client.post("/api/bots", json={**body, "initial_cash": "500"}).json()
@@ -283,7 +276,6 @@ def test_follow_plan(client: TestClient, session: Session, bot_id: int) -> None:
     (qqq,) = plan["symbols"]
     assert Decimal(qqq["dip_price"]) < Decimal(qqq["close"])
     assert Decimal(qqq["buy"]) + Decimal(qqq["save"]) > 0
-    assert client.get(f"/api/bots/{bot_id}/plan").status_code == 400  # 나 카피 봇만
 
     # 첫 판단: 시작 금액으로 다음 장에 살 예정. 그 돈은 이미 쓴 것이라 입금일에는 그달 입금만 산다.
     # 시작 금액이 시작한 달의 입금이라 다음 입금일은 다음 달이다.

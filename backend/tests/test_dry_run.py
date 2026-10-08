@@ -18,7 +18,7 @@ from quant_lab.domain.bars import DailyBar
 from quant_lab.domain.bot import BotState
 from quant_lab.domain.broker import BrokerAccessError, BrokerError
 from quant_lab.domain.portfolio import CostModel, RiskLimits
-from quant_lab.domain.strategy import DipSaver, SmaCross
+from quant_lab.domain.strategy import DipSaver
 from quant_lab.persistence.bars import upsert_daily_bars
 from quant_lab.persistence.bots import create_bot, get_bot, load_account
 from quant_lab.persistence.models import BotDepositRow, DecisionRow, EventRow, SimOrderRow
@@ -26,8 +26,9 @@ from tests.fakes import WeekdayCalendar, make_bars
 
 CAL = WeekdayCalendar()
 COSTS = CostModel()
-# 오르내림이 있어 SMA 3/5 교차가 여러 번 나오는 종가
+# 오르내림이 있어 하락장·고점이 여러 번 나오는 종가
 CLOSES = [100 + (i % 9) * 2 - (i % 4) * 3 for i in range(60)]
+DIP = DipSaver(deposit=500, day=1, dip=5, hot=5, high=10, sma=5)
 
 
 @dataclass
@@ -68,9 +69,9 @@ def bot_id(session: Session, bars: list[DailyBar]) -> int:
         session,
         name="t",
         symbol="QQQ",
-        strategy="sma_cross",
-        params={"fast": 3, "slow": 5},
-        initial_cash=Decimal(10_000),
+        strategy="dip_saver",
+        params=DIP.params,
+        initial_cash=Decimal(500),
         costs=COSTS,
         limits=RiskLimits(),
         now=datetime.now(UTC),
@@ -191,28 +192,17 @@ def test_transient_toss_error_keeps_running(
     assert bot is not None and bot.state == BotState.RUNNING
 
 
-def test_replay_matches_backtest(
+def test_replay_writes_weekly_reports_and_readable_events(
     make_session: Callable[[], Session],
     session: Session,
     bars: list[DailyBar],
     bot_id: int,
 ) -> None:
-    start, end = bars[4].session_date, bars[-1].session_date
+    start, end = bars[DIP.warmup - 1].session_date, bars[-1].session_date
     replay_bot(make_session, bot_id, CAL, start, end)
 
-    filled = list(
-        session.scalars(
-            select(SimOrderRow).where(SimOrderRow.status == "FILLED").order_by(SimOrderRow.id)
-        )
-    )
-    expected = run_backtest(bars, SmaCross(fast=3, slow=5), Decimal(10_000), COSTS).fills
-    assert len(expected) >= 4
-    assert [(o.side, o.signal_date, o.fill_date, o.qty, o.price) for o in filled] == [
-        (f.side, f.signal_date, f.fill_date, f.qty, f.price) for f in expected
-    ]
-    pf = load_account(session, bot_id)
-    last_fill = expected[-1]
-    assert pf.qty("QQQ") == (last_fill.qty if last_fill.side == "BUY" else 0)
+    expected = run_backtest({bars[0].symbol: bars}, DIP, Decimal(500), COSTS).fills
+    assert len(expected) >= 3
 
     # 주간 리포트: 금요일 판단마다 한 번, 그 주 체결 수와 함께
     reports: list[dict[str, Any]] = list(
@@ -247,7 +237,7 @@ def test_dip_saver_replay_matches_backtest(
     """
     voo = make_bars("VOO", [80 + (i % 7) * 3 - (i % 5) * 2 for i in range(len(CLOSES))])
     upsert_daily_bars(session, voo, "test", datetime(2026, 1, 1, tzinfo=UTC))
-    strategy = DipSaver(deposit=500, day=1, dip=5, hot=5, high=10, sma=5)
+    strategy = DIP
     bot = create_bot(
         session,
         name="dip",

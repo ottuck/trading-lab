@@ -83,7 +83,7 @@ class DailyBarRow(Base):
 
 
 class BotRow(Base):
-    """DRY RUN 봇 1개 = 전략 1개 + 종목 1~10개 (여러 종목은 모으기 전략만, 2026-10-02~).
+    """DRY RUN 봇 1개 = 전략 1개 + 종목 1~10개 (2026-10-02~).
 
     symbol은 첫 종목(목록·알림 표시용), symbols는 [{"symbol", "weight"}] (비율 합 100).
 

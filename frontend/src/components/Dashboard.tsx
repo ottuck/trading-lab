@@ -459,9 +459,6 @@ function Overview({ bot }: { bot: Bot }) {
 
 function Facts({ bot }: { bot: Bot }) {
   const a = bot.account
-  const info = useStrategies().byName[bot.strategy]
-  // 전략 목록을 불러오기 전에도 같은 칸을 보여준다 (입금 규칙이 있으면 모으기 봇)
-  const accumulates = info ? info.accumulates : bot.params.deposit != null
   const holding = a.positions.some((p) => Number(p.qty) > 0)
   const run = bot.last_run
   const unrealized = a.live_unrealized_pnl ?? a.unrealized_pnl
@@ -496,26 +493,15 @@ function Facts({ bot }: { bot: Bot }) {
         <div className={`value ${tone(unrealized)}`}>{holding ? signedMoney(unrealized) : '—'}</div>
         <div className="sub">{holding ? '산 가격과 지금 가격의 차이' : '들고 있는 주식 없음'}</div>
       </div>
-      {accumulates ? (
-        // 모으기 봇은 팔지 않으므로 확정 손익 대신 넣은 돈과 입금 일정을 보여준다.
-        <div className="fact">
-          <div className="label">
-            <Term k="넣은 돈" />
-          </div>
-          <div className="value">{money(a.contributed)}</div>
-          <div className="sub">
-            매달 {bot.params.day}일 ${bot.params.deposit?.toLocaleString('en-US')}
-          </div>
+      <div className="fact">
+        <div className="label">
+          <Term k="넣은 돈" />
         </div>
-      ) : (
-        <div className="fact">
-          <div className="label">
-            <Term k="확정 손익">이미 판 주식의 손익</Term>
-          </div>
-          <div className={`value ${tone(a.realized_pnl)}`}>{signedMoney(a.realized_pnl)}</div>
-          <div className="sub">팔아서 확정된 손익</div>
+        <div className="value">{money(a.contributed)}</div>
+        <div className="sub">
+          매달 {bot.params.day}일 ${bot.params.deposit?.toLocaleString('en-US')}
         </div>
-      )}
+      </div>
     </div>
   )
 }
