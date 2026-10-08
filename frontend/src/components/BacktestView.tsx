@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ColorType, createChart, LineSeries, type Time } from 'lightweight-charts'
 import { useEffect, useRef, useState } from 'react'
-import { api, backtestApi, type BacktestDetail, type StrategyInfo, type SymbolWeight } from '../api'
+import { api, backtestApi, type BacktestDetail, type BacktestSummary, type StrategyInfo, type SymbolWeight } from '../api'
 import { useCurrency } from '../currency'
 import { money, percent, roundMoney, setAmount, shares, signedMoney, tone } from '../format'
 import { isAiBot, isMeBot, useStrategies } from '../strategies'
@@ -110,12 +110,21 @@ function StrategyModes({
   )
 }
 
+/** 결과를 만들 때 고른 기간(3·5·10년)을 되찾는다. 어느 것에도 가깝지 않으면 "가능한 처음부터". */
+function periodOf(s: BacktestSummary): number {
+  const days = (new Date(s.created_at).getTime() - new Date(s.metrics.start).getTime()) / 86_400_000
+  const hit = PERIODS.find((p) => p.years && Math.abs(days / 365.25 - p.years) < 0.1)
+  return hit?.years ?? 0
+}
+
 function RunForm({
   choice,
+  seed,
   onChoice,
   onDone,
 }: {
   choice: Choice
+  seed?: BacktestSummary
   onChoice: (c: Choice) => void
   onDone: (id: string) => void
 }) {
@@ -128,16 +137,17 @@ function RunForm({
   const editMe = useDemo() ? undefined : meBot
   const priceWord = usePriceWord()
   // 전략마다 고른 프리셋 값을 기억한다. 고르지 않았으면 기본값.
-  const [picked, setPicked] = useState<Record<string, Record<string, number>>>({})
+  // 아래에 보이는 결과(seed)가 있으면 그 결과의 규칙·기간·처음 금액으로 시작한다.
+  const [picked, setPicked] = useState<Record<string, Record<string, number>>>(() => (seed ? { [seed.strategy]: seed.params } : {}))
   const { symbol, strategy } = choice
   const setSymbol = (s: string) => onChoice({ ...choice, symbol: s, symbols: null })
   // 모으기 전략은 여러 종목(최대 10개)을 비율대로 시험한다.
   const basket = choice.symbols?.length ? choice.symbols : [{ symbol, weight: 100 }]
   const setBasket = (v: SymbolWeight[]) => onChoice({ ...choice, symbol: v[0].symbol, symbols: v })
   const setStrategy = (s: string) => onChoice({ ...choice, strategy: s })
-  const [years, setYears] = useState(10)
+  const [years, setYears] = useState(() => (seed ? periodOf(seed) : 10))
   // 유명 전략은 처음 한 번 넣는 돈으로 시험한다 (직접 정한다)
-  const [cash, setCash] = useState('10000')
+  const [cash, setCash] = useState(() => (seed && Number(seed.metrics.initial_cash) > 0 && !seed.metrics.deposits ? String(Math.round(Number(seed.metrics.initial_cash))) : '10000'))
   const info = byName[strategy]
   const params = picked[strategy] ?? info?.default_params ?? {}
   const multi = !!info?.accumulates && basket.length > 1
@@ -169,7 +179,7 @@ function RunForm({
         {info?.accumulates && (
           <div className="bt-mine">
             <div className="bt-mine-text">
-              <b>{editMe ? '질문으로 내 규칙 다시 정하기' : '내 규칙을 모르겠다면, 나 카피하기'}</b>
+              <b>{editMe ? '내 규칙을 바꾸려면, 다시 카피하기' : '내 규칙을 모르겠다면, 나 카피하기'}</b>
               <span className="muted small">
                 {editMe
                   ? `질문 몇 개에 다시 답하면 ${editMe.name}의 규칙이 바뀌어요. 바꾸기 전에 지난 10년을 먼저 보여줘요.`
@@ -178,7 +188,7 @@ function RunForm({
             </div>
             <div className="bt-mine-actions">
               <button className="accent" onClick={() => (editMe ? startMeEdit(editMe.id) : goTo('me'))}>
-                {editMe ? '질문 다시 하기 →' : '질문으로 내 규칙 정하기 →'}
+                {editMe ? '다시 카피하기 →' : '질문으로 내 규칙 정하기 →'}
               </button>
               {meBot && (
                 <button
@@ -514,7 +524,8 @@ export function BacktestView() {
   return (
     <div className="home bt">
       <div className="home-main">
-        <RunForm choice={choice} onChoice={setPicked} onDone={show} />
+        {/* 양식은 보이는 결과에 맞춘다. 방금 시험한 결과는 목록에 늦게 들어오므로 들어온 뒤 한 번 더 맞춘다. */}
+        <RunForm key={`${current}:${currentInfo ? 1 : 0}`} choice={choice} seed={currentInfo} onChoice={setPicked} onDone={show} />
         {current ? (
           <Result key={current} id={current} info={currentInfo ? byName[currentInfo.strategy] : undefined} />
         ) : (

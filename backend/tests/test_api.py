@@ -115,6 +115,9 @@ def test_run_backtest_and_list(client: TestClient, bot_id: int) -> None:
     detail = created.json()
     assert detail["symbol"] == "QQQ" and detail["equity"]
     assert [b["id"] for b in client.get("/api/backtests").json()] == [detail["id"]]
+    # 같은 조건으로 다시 시험하면 새 결과 하나만 남는다
+    again = client.post("/api/backtests", json=body).json()
+    assert [b["id"] for b in client.get("/api/backtests").json()] == [again["id"]]
     bad = client.post("/api/backtests", json={**body, "params": {"fast": 9, "slow": 5}})
     assert bad.status_code == 400
 
