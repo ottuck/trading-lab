@@ -4,7 +4,8 @@
 판단은 모의와 같은 함수이고, 여기서는 "얼마를, 사람에게 묻고 낼지 바로 낼지"만 정한다.
 """
 
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import ROUND_DOWN, Decimal
 from enum import StrEnum
@@ -132,3 +133,56 @@ def holding_shortfalls(
         for symbol, qty in sorted(bought.items())
         if held.get(symbol, Decimal(0)) + QTY_TOLERANCE < qty
     }
+
+
+@dataclass(frozen=True, slots=True)
+class RealFill:
+    """체결된 실제 주문 1건 (체결 수량·금액 기준). month는 거래일의 달 (YYYY-MM)."""
+
+    bot_id: int | None
+    symbol: str
+    side: str  # BUY | SELL
+    qty: Decimal
+    amount: Decimal
+    month: str
+
+
+@dataclass(frozen=True)
+class RealLedger:
+    """봇이 낸 실제 주문의 장부. 달마다 산·판 금액과 확정 손익, 지금 봇이 들고 있는 수량과 원가."""
+
+    bought: dict[str, Decimal] = field(default_factory=dict)
+    sold: dict[str, Decimal] = field(default_factory=dict)
+    realized: dict[str, Decimal] = field(default_factory=dict)
+    held: dict[str, tuple[Decimal, Decimal]] = field(default_factory=dict)  # 종목 → (수량, 원가)
+
+
+def real_ledger(fills: Sequence[RealFill]) -> RealLedger:
+    """체결 순서대로 평균 단가 방식으로 확정 손익을 계산한다 (봇·종목마다 따로).
+
+    판 금액 - 평균 단가 × 판 수량이 확정 손익이다. 수수료는 넣지 않은 어림값이고,
+    봇이 낸 주문만 센다 (실제 계좌에 직접 산 주식은 모른다).
+    산 것보다 많이 팔았다면 있는 만큼만 센다.
+    """
+    book: dict[tuple[int | None, str], tuple[Decimal, Decimal]] = {}
+    bought: dict[str, Decimal] = {}
+    sold: dict[str, Decimal] = {}
+    realized: dict[str, Decimal] = {}
+    for f in fills:
+        key = (f.bot_id, f.symbol)
+        qty, cost = book.get(key, (Decimal(0), Decimal(0)))
+        if f.side == "SELL":
+            sold[f.month] = sold.get(f.month, Decimal(0)) + f.amount
+            avg = cost / qty if qty > 0 else Decimal(0)
+            take = min(f.qty, qty)
+            realized[f.month] = realized.get(f.month, Decimal(0)) + f.amount - avg * take
+            book[key] = (qty - take, cost - avg * take)
+        else:
+            bought[f.month] = bought.get(f.month, Decimal(0)) + f.amount
+            book[key] = (qty + f.qty, cost + f.amount)
+    held: dict[str, tuple[Decimal, Decimal]] = {}
+    for (_, symbol), (qty, cost) in book.items():
+        if qty > 0:
+            q, c = held.get(symbol, (Decimal(0), Decimal(0)))
+            held[symbol] = (q + qty, c + cost)
+    return RealLedger(bought, sold, realized, held)

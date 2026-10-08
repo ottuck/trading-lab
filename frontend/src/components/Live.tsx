@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, liveApi, type LiveOrder } from '../api'
 import { useDemo } from '../demo'
-import { ago, dollars, shares, won } from '../format'
+import { ago, dollars, percent, shares, signedDollars, tone, won } from '../format'
 import { dayLabel, liveStatus, toggleBalanceHidden, useBalanceHidden, useLive } from '../live'
 import { sourceLabel } from '../source'
 
@@ -95,6 +95,12 @@ export function AccountCard() {
   const hidden = useBalanceHidden()
   if (!account?.fetched_at) return null
   const bought = Number(live?.bought_this_month ?? 0) // 서버가 이번 달 산(체결된) 금액을 모두 더한다
+  const sold = Number(live?.sold_this_month ?? 0)
+  // 봇이 산 주식의 평가 손익, 팔아서 확정된 손익 (봇이 낸 주문만, 수수료 제외 어림값)
+  const heldCost = Number(live?.held_cost ?? 0)
+  const unrealized = Number(live?.held_value ?? 0) - heldCost
+  const realized = Number(live?.realized_total ?? 0)
+  const everSold = Number(live?.sold_total ?? 0) > 0
   const waiting = (live?.orders ?? []).filter((o) => o.state === 'WAITING_APPROVAL').length
   // 가릴 때는 숫자 자리를 같은 높이의 둥근 막대로 바꿔 레이아웃이 흔들리지 않게 한다.
   const amount = (text: string, width: string) =>
@@ -116,7 +122,26 @@ export function AccountCard() {
       {live?.trader && (
         <span className="small muted">
           이번 달 실제로 산 금액 {amount(dollars(String(bought)), '3.4em')}
+          {sold > 0 && <> · 판 금액 {amount(dollars(String(sold)), '3.4em')}</>}
           {waiting > 0 && ` · 승인 기다림 ${waiting}건`}
+        </span>
+      )}
+      {live?.trader && heldCost > 0 && (
+        <span className="small muted">
+          봇이 산 주식 평가 손익{' '}
+          {hidden ? (
+            amount('', '4em')
+          ) : (
+            <b className={tone(String(unrealized))}>
+              {signedDollars(unrealized)} ({percent(String(unrealized / heldCost))})
+            </b>
+          )}
+        </span>
+      )}
+      {live?.trader && everSold && (
+        <span className="small muted">
+          판 주식 확정 손익{' '}
+          {hidden ? amount('', '4em') : <b className={tone(String(realized))}>{signedDollars(realized)}</b>}
         </span>
       )}
       <span className="faint small">{ago(account.fetched_at)}에 읽었어요</span>

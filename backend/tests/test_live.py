@@ -21,7 +21,7 @@ from quant_lab.domain.broker import (
     OrderStatus,
     SellOrder,
 )
-from quant_lab.domain.live import LiveState, partial_sell_qty
+from quant_lab.domain.live import LiveState, RealFill, partial_sell_qty, real_ledger
 from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.persistence.bots import create_bot
 from quant_lab.persistence.broker_account import save_snapshot
@@ -336,3 +336,43 @@ def test_ai_bot_sells_the_same_share_of_what_it_really_bought() -> None:
     assert partial_sell_qty(live, Decimal(2), Decimal(100), Decimal(200)) == Decimal("0.005")
     assert partial_sell_qty(live, Decimal(2), Decimal(1000), Decimal(200)) == live  # 넘치면 모두
     assert partial_sell_qty(live, Decimal(0), Decimal(100), Decimal(200)) == live  # 모르면 모두
+
+
+def test_real_ledger_uses_average_cost_for_realized_profit() -> None:
+    fills = [
+        RealFill(1, "VOO", "BUY", Decimal(1), Decimal(100), "2026-09"),
+        RealFill(1, "VOO", "BUY", Decimal(1), Decimal(120), "2026-10"),  # 평균 단가 $110
+        RealFill(1, "VOO", "SELL", Decimal(1), Decimal(130), "2026-10"),  # 확정 +$20
+    ]
+    ledger = real_ledger(fills)
+    assert ledger.bought == {"2026-09": Decimal(100), "2026-10": Decimal(120)}
+    assert ledger.sold == {"2026-10": Decimal(130)}
+    assert ledger.realized == {"2026-10": Decimal(20)}
+    assert ledger.held == {"VOO": (Decimal(1), Decimal(110))}
+
+
+def test_live_overview_adds_up_bought_sold_and_profit_of_real_orders(session: Session) -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from quant_lab.application.live_admin import overview
+
+    bot = live_bot(session)
+    today = datetime.now(ZoneInfo("Asia/Seoul")).date()
+
+    def fill(key: str, side: str, qty: str, amount: str) -> LiveOrderRow:
+        return LiveOrderRow(
+            bot_id=bot.id, symbol="VOO", side=side, signal_date=today, trade_date=today,
+            amount=Decimal(amount), key=key, state=LiveState.FILLED, filled_qty=Decimal(qty),
+            filled_amount=Decimal(amount), created_at=OPEN, updated_at=OPEN,
+        )  # fmt: skip
+
+    session.add_all([fill("ql-a", "BUY", "1", "100"), fill("ql-b", "SELL", "0.5", "70")])
+    holding = Holding("VOO", "VOO", "USD", Decimal("0.5"), Decimal(100), Decimal(120), Decimal(60))
+    save_snapshot(session, AccountSnapshot("test", Decimal(0), Decimal(0), [holding], []), OPEN)
+    session.commit()
+
+    live = overview(session)
+    assert (live.bought_this_month, live.sold_this_month) == (Decimal(100), Decimal(70))
+    assert (live.realized_this_month, live.realized_total) == (Decimal(20), Decimal(20))
+    assert (live.held_cost, live.held_value) == (Decimal(50), Decimal(60))  # 평가 손익 +$10

@@ -22,6 +22,12 @@ export function roundMoney(value: number): string {
 export const MAX_DEPOSIT = 100_000
 export const MAX_CASH = 1_000_000
 
+/** 실제 계좌의 손익: 늘 달러로, 부호를 붙여서 (+$0.06 / -$1.20). 원화로 바꾸지 않는다. */
+export function signedDollars(value: number): string {
+  const text = usd.format(Math.abs(value))
+  return value < 0 ? `-${text}` : `+${text}`
+}
+
 /** 달러 금액을 군더더기 없이: $1,350 / $13.50 (정수면 소수점 없이). 원화로 바꾸지 않는다. */
 export function plainDollars(value: number): string {
   return Number.isInteger(value) ? `$${value.toLocaleString('en-US')}` : `$${value.toFixed(2)}`

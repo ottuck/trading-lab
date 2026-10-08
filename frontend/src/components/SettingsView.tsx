@@ -4,7 +4,7 @@ import { api, botApi, liveApi, notifyApi, type Bot, type NotifyScope, type Symbo
 import { realKeepNote, useLive } from '../live'
 import { useDemo } from '../demo'
 import { LiveOrderList } from './Live'
-import { ago, dollars, MAX_CASH, money, plainDollars, shares, won } from '../format'
+import { ago, dollars, MAX_CASH, money, percent, plainDollars, shares, signedDollars, tone, won } from '../format'
 import { closeNewBot, openBot, selectBot, startMeEdit, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
 import { isAiBot, isMeBot, sameParams, useStrategies } from '../strategies'
 import { answersOf, describe } from '../me'
@@ -256,7 +256,11 @@ function orderTitle(o: BrokerAccount['orders'][number]) {
 /** 실제 증권사 계좌 (실거래 R1). Worker가 한 시간마다 읽은 값을 보여주기만 하고 주문은 내지 않는다. */
 function BrokerAccountSection() {
   const { data } = useQuery({ queryKey: ['broker-account'], queryFn: api.brokerAccount, refetchInterval: 60_000 })
+  const { data: live } = useLive()
   if (!data) return null
+  const heldCost = Number(live?.held_cost ?? 0)
+  const unrealized = Number(live?.held_value ?? 0) - heldCost
+  const realized = Number(live?.realized_total ?? 0)
   const name = data.source ? sourceLabel(data.source) : '증권사'
   const failing = !!data.error_at && (!data.fetched_at || data.error_at > data.fetched_at)
   return (
@@ -289,6 +293,32 @@ function BrokerAccountSection() {
               <div className="muted">없어요</div>
             )}
           </div>
+          {live?.trader && (
+            <div>
+              <div className="faint small">봇이 낸 실제 주문의 손익</div>
+              <div>
+                이번 달 산 금액 {dollars(live.bought_this_month)}
+                {Number(live.sold_this_month) > 0 && <span className="muted"> · 판 금액 {dollars(live.sold_this_month)}</span>}
+              </div>
+              {heldCost > 0 && (
+                <div>
+                  산 채로 들고 있는 주식 평가 손익{' '}
+                  <b className={tone(String(unrealized))}>
+                    {signedDollars(unrealized)} ({percent(String(unrealized / heldCost))})
+                  </b>
+                </div>
+              )}
+              {Number(live.sold_total) > 0 && (
+                <div>
+                  판 주식 확정 손익 <b className={tone(String(realized))}>{signedDollars(realized)}</b>
+                  <span className="muted"> · 이번 달 {signedDollars(Number(live.realized_this_month))}</span>
+                </div>
+              )}
+              <div className="faint small">
+                봇이 낸 실제 주문만 체결 기준으로 센 어림값이에요. 수수료는 빼지 않았고, 직접 산 주식은 포함하지 않아요.
+              </div>
+            </div>
+          )}
           <div className="set-log">
             <div className="faint small">최근 30일 주문</div>
             {data.orders.length ? (
