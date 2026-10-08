@@ -38,5 +38,15 @@ export const SLIPPAGE_CHOICES = [
 /** 나 카피 봇 (나처럼 투자). 있으면 홈 첫 화면이 "나 vs 매달 그냥 사기"와 평행세계의 나가 된다. */
 export const isMeBot = (b: { strategy: string }) => b.strategy === 'dip_saver'
 
-/** AI 봇 (마일스톤 4): 고른 종목 안에서 AI가 매일 비중을 정한다. */
-export const isAiBot = (b: { strategy: string }) => b.strategy === 'ai_judge'
+/** AI 봇 (마일스톤 4): 고른 종목 안에서 AI가 매일 비중을 정한다 (시장분석·캔들분석). */
+export const isAiBot = (b: { strategy: string }) => b.strategy === 'ai_judge' || b.strategy === 'ai_candle'
+
+/** 캔들분석 AI 봇: 뉴스 없이 종목 이름·날짜를 가린 가격 차트만 보고 판단한다. */
+export const isCandleBot = (b: { strategy: string }) => b.strategy === 'ai_candle'
+
+/** AI 봇 종류 (전략마다 하나씩 만들 수 있다). */
+export const AI_KINDS = {
+  ai_judge: { name: '시장분석 AI 봇', short: '시장분석', desc: '뉴스·금리를 조사해 비중을 정해요', cost: '$0.1' },
+  ai_candle: { name: '캔들분석 AI 봇', short: '캔들분석', desc: '가격 차트만 보고 비중을 정해요', cost: '$0.07' },
+} as const
+export type AiKind = keyof typeof AI_KINDS

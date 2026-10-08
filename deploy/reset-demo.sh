@@ -33,10 +33,10 @@ echo "2/3 데모 DB를 다시 만들고 띄웁니다"
 bash deploy/deploy.sh demo
 
 echo "3/3 예시 시세와 예시 봇을 채우는 중 (처음엔 몇 분 걸려요, 최대 20분)"
-# 시드의 마지막 줄(마지막 예시 봇 "AI 봇")이 나오면 처음 채우기가 끝난 것이다.
+# 시드의 마지막 줄(마지막 예시 봇 "시장분석 AI 봇", cli.py DEMO_BOTS의 마지막)이 나오면 처음 채우기가 끝난 것이다.
 for _ in $(seq 1 120); do
   logs=$($demo logs demo-seeder 2>&1 || true)
-  if grep -q "  AI 봇:" <<< "$logs"; then
+  if grep -q "  시장분석 AI 봇:" <<< "$logs"; then
     echo "채우기 끝. 만든 것:"
     grep -E "예시 시세| 봇: " <<< "$logs" | sed 's/^[^|]*| //'
     exit 0

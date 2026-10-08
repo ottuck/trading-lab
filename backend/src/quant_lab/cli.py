@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
 
 from quant_lab.adapters.claude.advisor import ClaudeAdvisor
+from quant_lab.adapters.claude.candles import ClaudeCandleAdvisor
 from quant_lab.adapters.market_calendar import get_calendar
 from quant_lab.adapters.telegram import TelegramClient
 from quant_lab.adapters.toss.client import TossClient
@@ -21,17 +22,17 @@ from quant_lab.application.ai_judge import AiConfig, judge
 from quant_lab.application.backtesting import backtest_symbol
 from quant_lab.application.bar_sync import sync_daily_bars
 from quant_lab.application.bots import ONE_PER_STRATEGY
-from quant_lab.application.demo_advisor import DemoAdvisor
+from quant_lab.application.demo_advisor import DemoAdvisor, DemoCandleAdvisor
 from quant_lab.application.demo_prices import DEMO_START, DEMO_USD_KRW, LEVERAGE, demo_bars
 from quant_lab.application.dry_run import latest_completed_session
 from quant_lab.application.replay import replay_bot
 from quant_lab.config import get_settings
-from quant_lab.domain.advisor import make_request
+from quant_lab.domain.advisor import Advisor, Unmasking, make_request
 from quant_lab.domain.bars import outlier_limit
 from quant_lab.domain.bot import BotState, CommandKind
 from quant_lab.domain.broker import ExchangeRate, Instrument
 from quant_lab.domain.portfolio import CostModel, RiskLimits
-from quant_lab.domain.strategy import STRATEGIES, AiJudge, is_ai
+from quant_lab.domain.strategy import STRATEGIES, AiCandle, AiJudge, is_ai
 from quant_lab.persistence.ai_judgments import save_judgment
 from quant_lab.persistence.bars import load_daily_bars, upsert_daily_bars
 from quant_lab.persistence.bots import (
@@ -312,6 +313,8 @@ def cmd_seed_demo(args: argparse.Namespace) -> int:
     return 0
 
 
+DEMO_AI_SYMBOLS = ("QQQ", "VOO", "QLD", "TQQQ", "SOXL", "NVDA", "GLD", "MAGS", "EWY", "EWJ")
+
 # 데모 홈에 미리 돌고 있는 예시 봇: (이름, 전략, 파라미터, 종목·비율, 시작 금액)
 DEMO_BOTS: tuple[tuple[str, str, dict[str, int], dict[str, int], Decimal], ...] = (
     (
@@ -326,7 +329,15 @@ DEMO_BOTS: tuple[tuple[str, str, dict[str, int], dict[str, int], Decimal], ...] 
         "시장분석 AI 봇",
         "ai_judge",
         {"deposit": 1000, "day": 25},
-        {s: 10 for s in ("QQQ", "VOO", "QLD", "TQQQ", "SOXL", "NVDA", "GLD", "MAGS", "EWY", "EWJ")},
+        {s: 10 for s in DEMO_AI_SYMBOLS},
+        Decimal(1000),
+    ),
+    # 캔들분석 AI 봇: 익명 캔들 표만 받는 규칙 예시 판단(DemoCandleAdvisor)
+    (
+        "캔들분석 AI 봇",
+        "ai_candle",
+        {"deposit": 1000, "day": 25},
+        {s: 10 for s in DEMO_AI_SYMBOLS},
         Decimal(1000),
     ),
 )
@@ -382,7 +393,9 @@ def _seed_demo_bots(end: date, now: datetime) -> None:
             session.commit()
             bot_id = bot.id
         if first <= end:
-            ai = AiConfig(DemoAdvisor(), Decimal(1_000_000))  # 예시 판단은 비용이 없다
+            # 예시 판단은 비용이 없다
+            free = Decimal(1_000_000)
+            ai = AiConfig(DemoAdvisor(), free, DemoCandleAdvisor(), free)
             outcomes = replay_bot(make_session, bot_id, calendar, first, end, ai=ai)
             print(f"  {name}: {first} ~ {end} 평가 {len(outcomes)}회")
 
@@ -415,7 +428,10 @@ def cmd_notify_test(args: argparse.Namespace) -> int:
 
 
 def cmd_ai_judge(args: argparse.Namespace) -> int:
-    """현금만 든 봇이라 치고 AI 판단을 한 번 받아 기록한다 (마일스톤 4 A1, 비용이 든다)."""
+    """현금만 든 봇이라 치고 AI 판단을 한 번 받아 기록한다 (마일스톤 4 A1, 비용이 든다).
+
+    --candle이면 캔들분석 AI 봇의 판단 (익명 캔들 표, 검색 없음).
+    """
     settings = get_settings()
     make_session = sessionmaker(get_engine())
     with make_session() as session:
@@ -434,16 +450,23 @@ def cmd_ai_judge(args: argparse.Namespace) -> int:
             contributed=args.cash,
             monthly_deposit=args.deposit,
             leverage={s: leverage_of(session, s) for s in args.symbols},
+            candles=args.candle,
         )
         if args.show:
-            print(json.dumps(request.as_dict(), ensure_ascii=False, indent=1))
+            shown = request.candles.as_dict() if request.candles else request.as_dict()
+            print(json.dumps(shown, ensure_ascii=False, indent=1))
             return 0
         key = settings.anthropic_api_key
-        advisor = ClaudeAdvisor(key.get_secret_value()) if key else None
+        advisor: Advisor | None = None
+        if key and args.candle:
+            advisor = Unmasking(ClaudeCandleAdvisor(key.get_secret_value(), effort=args.effort))
+        elif key:
+            advisor = ClaudeAdvisor(key.get_secret_value())
         judgment = judge(advisor, request)
-        save_judgment(session, None, judgment, datetime.now(UTC))
+        strategy = AiCandle.name if args.candle else AiJudge.name
+        save_judgment(session, None, judgment, datetime.now(UTC), strategy)
         session.commit()
-    print(f"{judgment.session_date} 판단: {judgment.status.value}")
+    print(f"{judgment.session_date} 판단: {judgment.status.value} ({judgment.prompt_version})")
     if judgment.usage:
         u = judgment.usage
         print(
@@ -524,6 +547,13 @@ def build_parser() -> argparse.ArgumentParser:
     ai.add_argument("--cash", type=Decimal, default=Decimal(10_000))
     ai.add_argument("--deposit", type=Decimal, default=Decimal(1000), help="매달 넣는 돈")
     ai.add_argument("--show", action="store_true", help="AI에 넘길 입력만 보여 주고 부르지 않음")
+    ai.add_argument("--candle", action="store_true", help="캔들분석 AI 봇의 판단 (검색 없음)")
+    ai.add_argument(
+        "--effort",
+        choices=["low", "medium", "high"],
+        default="high",
+        help="캔들분석의 생각하는 양",
+    )
     ai.set_defaults(func=cmd_ai_judge)
 
     notify = sub.add_parser("notify", help="텔레그램 알림 설정 확인")

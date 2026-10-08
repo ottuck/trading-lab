@@ -4,7 +4,7 @@ import { api, botApi, type AiDay, type Bot, type Order, type World } from '../ap
 import { activeOf } from '../basket'
 import { useDemo } from '../demo'
 import { money, percent } from '../format'
-import { isMeBot } from '../strategies'
+import { isCandleBot, isMeBot } from '../strategies'
 import { Chart } from './Parallel'
 
 /* AI 봇 (마일스톤 4 A3): 오늘의 AI 판단·참고한 것, 세 봇 비교, 판단 기록.
@@ -140,6 +140,7 @@ export function AiToday({ bot }: { bot: Bot }) {
   const demo = useDemo()
   const [all, setAll] = useState(false)
   const day = data?.latest
+  const candle = isCandleBot(bot)
   const rows = day ? rowsOf(day, bot) : []
   const held = rows.filter((r) => r.target > 0 || r.before >= 0.5 || r.order)
   const rest = rows.filter((r) => !held.includes(r))
@@ -156,8 +157,8 @@ export function AiToday({ bot }: { bot: Bot }) {
       ) : !day ? (
         <p className="decision-why">
           {bot.state === 'RUNNING' || bot.pending_command === 'START'
-            ? '곧 첫 판단을 해요. 가장 최근 장 마감 가격과 뉴스로 판단해요.'
-            : '아직 판단이 없어요. [매매 시작]을 누르면 가장 최근 장 마감 가격과 뉴스로 바로 판단해요.'}
+            ? `곧 첫 판단을 해요. 가장 최근 장 마감까지의 ${candle ? '차트' : '가격과 뉴스'}로 판단해요.`
+            : `아직 판단이 없어요. [매매 시작]을 누르면 가장 최근 장 마감까지의 ${candle ? '차트' : '가격과 뉴스'}로 바로 판단해요.`}
         </p>
       ) : day.status !== 'OK' ? (
         <p className="decision-why">{MISSED[day.status]}</p>
@@ -177,6 +178,9 @@ export function AiToday({ bot }: { bot: Bot }) {
           <Sources day={day} />
         </>
       )}
+      {candle && (
+        <div className="strategy-meta">AI는 종목 이름과 날짜를 가린 가격 차트만 보고 판단해요. 뉴스는 보지 않아요.</div>
+      )}
       {data && demo && (
         <div className="strategy-meta">예시 판단이에요. 데모는 실제 AI가 아니라 정해진 규칙으로 판단을 만들어요 (비용 없음).</div>
       )}
@@ -184,14 +188,14 @@ export function AiToday({ bot }: { bot: Bot }) {
         <div className="strategy-meta">
           {day?.model && `${day.model} · `}
           {day?.cost != null && `이 판단 ${money(day.cost)} · `}
-          이번 달 AI 비용 {money(data.spent)} / 상한 {money(data.budget)}
+          이번 달 이 봇 AI 비용 {money(data.spent)} / 상한 {money(data.budget)}
         </div>
       )}
     </section>
   )
 }
 
-/** AI 봇 vs 나 카피 봇 규칙 vs 매달 그냥 사기 (AI 봇이 처음 판단한 날부터, 같은 날 같은 돈). */
+/** 이 AI 봇 vs 먼저 시작한 다른 AI 봇 vs 나 카피 봇 규칙 vs 매달 그냥 사기 (이 봇이 처음 판단한 날부터, 같은 날 같은 돈). */
 export function AiCompare({ bot }: { bot: Bot }) {
   const { data, error } = useQuery({
     queryKey: ['ai-compare', bot.id],
@@ -212,8 +216,9 @@ export function AiCompare({ bot }: { bot: Bot }) {
   // 매달 그냥 사기는 무엇을 샀는지 밝힌다 (위 그래프의 "관심 종목 똑같이 나눠 사기"와 다른 기준이다).
   // 나 카피 봇이 있으면 그 종목·비율, 없으면 AI 봇 종목을 똑같이 나눠 샀다.
   const meSymbols = activeOf(bots?.find(isMeBot)?.symbols ?? []).map((s) => s.symbol)
+  const subOf = (key: string) => (key.startsWith('ai-') ? '이 봇과 같은 날 같은 돈으로 시작했다면 (그 봇의 판단 그대로)' : (sub[key] ?? ''))
   const sub: Record<string, string> = {
-    me: 'AI가 매일 비중을 정해요',
+    me: isCandleBot(bot) ? 'AI가 매일 차트만 보고 비중을 정해요' : 'AI가 매일 시장을 보고 비중을 정해요',
     copy: '지금 나 카피 봇 규칙으로 같은 돈을 넣었다면',
     dca: worlds.some((w) => w.key === 'copy') && meSymbols.length
       ? `나 카피 봇 종목(${meSymbols.join(' · ')})을 넣자마자 그냥 샀다면`
@@ -222,7 +227,9 @@ export function AiCompare({ bot }: { bot: Bot }) {
   return (
     <section className="block pw">
       <div className="block-head">
-        <h2>AI 봇 vs 나 카피 봇</h2>
+        <h2>
+          {bot.name} vs {other?.title ?? '나 카피 봇'}
+        </h2>
         {data?.start && <span className="sub">{md(data.start)}부터 같은 날 같은 돈으로</span>}
       </div>
       {error ? (
@@ -237,7 +244,7 @@ export function AiCompare({ bot }: { bot: Bot }) {
           <div className="pw-legend">
             <span className="legend">
               <i className="pw-mine" />
-              AI 봇
+              {bot.name}
             </span>
             <span className="legend">
               <i className="other" />
@@ -256,7 +263,7 @@ export function AiCompare({ bot }: { bot: Bot }) {
               >
                 <div>
                   <div className="title">{w.title}</div>
-                  <div className="sub">{sub[w.key] ?? ''}</div>
+                  <div className="sub">{subOf(w.key)}</div>
                 </div>
                 <div className="r">
                   <div className="value tnum">{money(w.final_equity)}</div>

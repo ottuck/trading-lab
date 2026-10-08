@@ -12,6 +12,7 @@ import pytest
 from anthropic.types.beta import BetaMessage
 
 from quant_lab.adapters.claude.advisor import ClaudeAdvisor
+from quant_lab.adapters.claude.candles import ClaudeCandleAdvisor
 from quant_lab.application.ai_judge import judge
 from quant_lab.domain.advisor import (
     Advice,
@@ -19,6 +20,7 @@ from quant_lab.domain.advisor import (
     AdviceResult,
     AdviceUsage,
     JudgmentStatus,
+    Unmasking,
     make_request,
 )
 from tests.fakes import make_bars
@@ -138,6 +140,34 @@ def test_claude_advisor_reads_weights_sources_and_cost_across_pause() -> None:
     # 두 번 부른 합: 입력 20만 × $2 + 출력 2만 × $10 (100만 토큰당) + 검색 1번 $0.01
     assert result.usage.cost == Decimal("0.4") + Decimal("0.2") + Decimal("0.01")
     assert result.usage.web_searches == 1
+
+
+def test_claude_candle_advisor_sends_only_masked_table_without_search() -> None:
+    histories = {s: make_bars(s, [100 + i for i in range(260)]) for s in ("QQQ", "GLD")}
+    request = make_request(histories, Decimal(1000), {}, Decimal(1000), Decimal(500), candles=True)
+    assert request.candles is not None
+    a, b = request.candles.request.symbols
+    answer = {
+        "summary": f"종목 {a.label}가 더 강해요.",
+        "allocations": [
+            {"symbol": a.label, "weight": 70, "reason": f"종목 {b.label}보다 꾸준히 올라요."},
+            {"symbol": b.label, "weight": 0, "reason": "쉬어 가요."},
+            {"symbol": "CASH", "weight": 30, "reason": "하락에 대비해요."},
+        ],
+    }
+    client = FakeClient(
+        _message([{"type": "text", "text": json.dumps(answer, ensure_ascii=False)}])
+    )
+    result = Unmasking(ClaudeCandleAdvisor("key", client=cast(Any, client))).advise(request)
+
+    sent = client.calls[0]
+    assert "tools" not in sent  # 검색 없음
+    assert not any(s in sent["messages"][0]["content"] for s in ("QQQ", "GLD", "2026"))
+    first, second = request.candles.key[a.label], request.candles.key[b.label]
+    assert result.advice.weights == {first: 70, second: 0, "CASH": 30}
+    assert result.advice.reasons[first] == f"{second}보다 꾸준히 올라요."
+    assert result.prompt_version.endswith("/high")  # 생각하는 양도 기록한다
+    assert result.usage.cost == Decimal("0.2") + Decimal("0.1")  # 입력 10만·출력 1만 토큰
 
 
 def test_claude_advisor_failure_keeps_cost() -> None:

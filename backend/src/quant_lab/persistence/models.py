@@ -410,6 +410,8 @@ class AiJudgmentRow(Base):
     # 봇을 지워도 기록은 남긴다. 시험 판단(CLI)은 NULL
     bot_id: Mapped[int | None] = mapped_column(ForeignKey("bots.id", ondelete="SET NULL"))
     session_date: Mapped[date] = mapped_column(Date)
+    # 판단한 AI 봇의 전략 (ai_judge | ai_candle). 한 달 비용 상한을 전략마다 따로 센다
+    strategy: Mapped[str] = mapped_column(String(20))
     status: Mapped[str] = mapped_column(String(20))  # OK | FAILED | INVALID | OVER_BUDGET
     source: Mapped[str | None] = mapped_column(String(20))  # AI 공급자 출처 코드
     model: Mapped[str | None] = mapped_column(String(64))

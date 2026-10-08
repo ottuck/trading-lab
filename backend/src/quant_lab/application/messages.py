@@ -23,6 +23,7 @@ from quant_lab.domain.events import (
     RunData,
     SkipReason,
 )
+from quant_lab.domain.korean import has_batchim
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -121,28 +122,29 @@ CATALOG: dict[str, StrategyInfo] = {
         presets=[Preset("base", "월 $1,000", {"deposit": 1000, "day": 25})],
         preset_label="매달 넣는 돈",
     ),
+    "ai_candle": StrategyInfo(
+        name="ai_candle",
+        nickname="AI 차트 읽기",
+        summary=(
+            "매달 돈을 넣고, 고른 종목 안에서 무엇을 얼마나 들고 있을지 AI가 매일 가격 차트만 "
+            "보고 정해요. 뉴스는 보지 않고, 종목 이름도 가린 채 판단해요."
+        ),
+        risk="보통",
+        trades="AI가 정해요 (매일 판단)",
+        presets=[Preset("base", "월 $1,000", {"deposit": 1000, "day": 25})],
+        preset_label="매달 넣는 돈",
+    ),
 }
-
-
-# 영문·숫자를 한국어로 읽었을 때 받침이 있는 끝 글자 (L=엘, M=엠, N=엔, R=알, 0=영, 1=일, 3=삼, 6=육, 7=칠, 8=팔)
-_FINAL_CONSONANT = set("LMNR013678")
-
-
-def _has_batchim(word: str) -> bool:
-    ch = word.strip()[-1:] or "a"
-    if "가" <= ch <= "힣":
-        return (ord(ch) - ord("가")) % 28 != 0
-    return ch.upper() in _FINAL_CONSONANT
 
 
 def obj(word: str) -> str:
     """목적격 조사: QQQ를, VOO를, 봇을."""
-    return f"{word}{'을' if _has_batchim(word) else '를'}"
+    return f"{word}{'을' if has_batchim(word) else '를'}"
 
 
 def subj(word: str) -> str:
     """주격 조사: 봇이, qqq-sma가."""
-    return f"{word}{'이' if _has_batchim(word) else '가'}"
+    return f"{word}{'이' if has_batchim(word) else '가'}"
 
 
 def nickname(strategy: str) -> str:
@@ -214,7 +216,7 @@ def decision_reason(
 ) -> str:
     """전략 지표를 일상어 한두 문장으로 바꾼다. AI 봇은 AI가 쓴 이유(raw)를 그대로 쓴다."""
     p = params
-    if strategy == "ai_judge":
+    if strategy in ("ai_judge", "ai_candle"):
         return raw or "AI가 정한 비중에 맞춰요."
     if strategy == "dip_saver":
         drop = -float(indicators.get("drawdown", 0)) * 100
@@ -464,7 +466,7 @@ def event_message(
         ai = cast(AiJudgmentData, d)
         if ai.get("status") == "OVER_BUDGET":
             body = (
-                f"이번 달 AI 비용이 상한({_usd(ai.get('budget', 0))})에 닿았어요 "
+                f"이 봇의 이번 달 AI 비용이 상한({_usd(ai.get('budget', 0))})에 닿았어요 "
                 f"(쓴 돈 {_usd(ai.get('spent', 0))}). 이번 달 남은 날은 판단하지 않고 지금 그대로 둬요."
             )
             return Message("💸", "AI 비용 상한에 닿았어요", body, level, level == "WARN")

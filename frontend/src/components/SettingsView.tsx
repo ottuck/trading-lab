@@ -6,7 +6,7 @@ import { useDemo } from '../demo'
 import { LiveOrderList } from './Live'
 import { ago, dollars, MAX_CASH, money, percent, plainDollars, shares, signedDollars, tone, won } from '../format'
 import { closeNewBot, openBot, selectBot, startMeEdit, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
-import { isAiBot, isMeBot, sameParams, useStrategies } from '../strategies'
+import { isAiBot, isCandleBot, isMeBot, sameParams, useStrategies } from '../strategies'
 import { answersOf, describe } from '../me'
 import { badLimit, NAME_MAX, toConfig, toDraft, type Draft } from '../botConfig'
 import { useDismiss } from '../useDismiss'
@@ -542,6 +542,8 @@ function sameStrategy(d: Draft, bot: Bot) {
 
 function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
   const qc = useQueryClient()
+  const { byName } = useStrategies()
+  const demo = useDemo()
   const [draft, setDraft] = useState(() => toDraft(bot))
   const save = useMutation({
     mutationFn: () => botApi.updateConfig(bot.id, toConfig(draft, bot)),
@@ -554,17 +556,31 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
   const saved = toDraft(bot)
   const dirty = changing || draft.slippage !== saved.slippage || draft.maxPosition !== saved.maxPosition
   const ai = isAiBot(bot)
+  const candle = isCandleBot(bot)
+  // AI 비용은 봇(전략)마다 따로 센다
+  const { data: aiData } = useQuery({ queryKey: ['ai', bot.id], queryFn: () => botApi.ai(bot.id), enabled: ai, staleTime: 60_000 })
   return (
     <>
       {ai ? (
-        <Section title="AI에게 맡기기" desc="고른 종목 안에서 무엇을 얼마나 들고 있을지 AI가 매일 장이 끝난 뒤 정해요.">
+        <Section
+          title={byName[bot.strategy]?.nickname ?? 'AI에게 맡기기'}
+          desc={
+            candle
+              ? '고른 종목 안에서 무엇을 얼마나 들고 있을지 AI가 매일 장이 끝난 뒤 가격 차트만 보고 정해요.'
+              : '고른 종목 안에서 무엇을 얼마나 들고 있을지 AI가 매일 장이 끝난 뒤 시장을 조사해 정해요.'
+          }
+        >
           <ul className="me-summary">
             <li>
               매달 {bot.params.day}일 ${bot.params.deposit?.toLocaleString('en-US')}를 넣어요
             </li>
             <li>관심 종목 {bot.symbols.length}개({bot.symbols.map((s) => s.symbol).join(' · ')}) 안에서만 사고팔아요</li>
             <li>목표 비중과 지금 비중이 자산의 2%보다 덜 차이 나면 그대로 둬요</li>
-            <li>AI 비용이 한 달 상한을 넘으면 그달은 판단하지 않고 그대로 둬요</li>
+            {candle && <li>AI에게는 종목 이름과 날짜를 가리고 차트만 보여줘요 (뉴스는 보지 않아요)</li>}
+            <li>
+              AI 비용이 이 봇의 한 달 상한을 넘으면 그달은 판단하지 않고 그대로 둬요
+              {aiData && !demo && ` (이번 달 ${money(aiData.spent)} / 상한 ${money(aiData.budget)})`}
+            </li>
           </ul>
         </Section>
       ) : (

@@ -198,15 +198,32 @@ class AiJudge:
         return None
 
 
+@dataclass(frozen=True)
+class AiCandle(AiJudge):
+    """캔들분석 AI 봇: 시장분석 AI 봇(ai_judge)과 같은 뼈대에 입력만 다르다 (project.md 14절).
+
+    AI는 뉴스 대신 익명화한 캔들 표만 보고 비중을 정한다 (domain/candles.py).
+    """
+
+    name: ClassVar[str] = "ai_candle"
+
+
 AI_STRATEGY = AiJudge.name
+CANDLE_STRATEGY = AiCandle.name
 
 
 def is_ai(strategy: object) -> bool:
     """AI가 판단하는 전략인지 (규칙 함수 대신 기록된 AI 판단으로 사고판다)."""
-    return getattr(strategy, "name", strategy) == AI_STRATEGY
+    return getattr(strategy, "name", strategy) in (AI_STRATEGY, CANDLE_STRATEGY)
+
+
+def is_candle(strategy: object) -> bool:
+    """AI에게 익명 캔들 표를 넘기는 전략인지."""
+    return getattr(strategy, "name", strategy) == CANDLE_STRATEGY
 
 
 STRATEGIES: dict[str, Callable[..., Strategy]] = {
     "dip_saver": DipSaver,
     "ai_judge": AiJudge,
+    "ai_candle": AiCandle,
 }

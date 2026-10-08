@@ -196,7 +196,8 @@ npm run dev                                       # http://localhost:5173
 | `TOSS_ACCOUNT_ENABLED` | `false` | 실제 계좌 읽기 (한 시간마다) |
 | `LIVE_TRADING` | `false` | 실거래 스위치. 꺼져 있으면 주문 어댑터를 만들지 않아 실제 주문 경로가 없음 |
 | `ANTHROPIC_API_KEY` | 없음 | AI 봇 판단용 Claude API 키. 없으면 AI 봇은 판단하지 않고 그대로 둠 |
-| `AI_MONTHLY_BUDGET` | `15` | 한 달 AI 비용 상한 (USD) |
+| `AI_MONTHLY_BUDGET` | `15` | 시장분석 AI 봇의 한 달 비용 상한 (USD) |
+| `AI_CANDLE_MONTHLY_BUDGET` | `5` | 캔들분석 AI 봇의 한 달 비용 상한 (USD, 따로 센다) |
 
 비밀값(토스 키, Claude 키, 텔레그램 토큰 등)은 저장소 안 `.secrets/`(Git 제외)에 둡니다.
 
