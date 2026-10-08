@@ -242,9 +242,10 @@ cd infra/lightsail && terraform apply   # (서버를 옮길 때) 서울 VM·고�
 sudo bash deploy/bootstrap.sh           # 새 서버에서 한 번
 bash deploy/deploy.sh                   # 운영 (main 기준, 마이그레이션 성공해야 api·worker가 뜸)
 bash deploy/deploy.sh demo              # 데모 (수동)
+bash deploy/reset-demo.sh               # 데모 DB를 비우고 예시 시세·예시 봇을 처음부터 다시 채움 (수동)
 ```
 
-**운영은 자동 배포**입니다. `main`의 CI가 통과하면 [deploy 워크플로](.github/workflows/deploy.yml)가 운영 서버에 설치한 GitHub Actions 러너(라벨 `quant-lab`)에서 `deploy.sh`를 실행합니다. 러너가 밖으로만 연결하므로 공개 포트는 0개 그대로이고, 장 마감 판단 시간(뉴욕 17:45~19:30)이면 끝날 때까지 기다렸다 배포합니다. 데모는 자동으로 배포하지 않습니다. `deploy.sh`는 `origin/main`을 `.deploy/src`에 꺼내 빌드하므로 작업 폴더의 브랜치를 바꾸지 않습니다.
+**운영은 자동 배포**입니다. `main`의 CI가 통과하면 [deploy 워크플로](.github/workflows/deploy.yml)가 운영 서버에 설치한 GitHub Actions 러너(라벨 `quant-lab`)에서 `deploy.sh`를 실행합니다. 러너가 밖으로만 연결하므로 공개 포트는 0개 그대로이고, 장 마감 판단 시간(뉴욕 17:45~19:30)이면 끝날 때까지 기다렸다 배포합니다. 데모는 자동으로 배포하지 않습니다. 예시 봇의 값(`DEMO_BOTS`)을 바꾸면 시드가 이름이 같은 봇을 이어서 채우기만 해서 새 값이 보이지 않으므로, `deploy/reset-demo.sh`로 데모 DB를 비우고 다시 채웁니다(운영에는 영향 없음, **Git Bash에서** 실행). `deploy.sh`는 `origin/main`을 `.deploy/src`에 꺼내 빌드하므로 작업 폴더의 브랜치를 바꾸지 않습니다.
 
 러너는 `C:\actions-runner`에 있고, 로그인하면 시작 프로그램의 바로가기가 **창 없이**(`conhost.exe --headless run.cmd`) 켭니다. 창으로 띄우면 창을 클릭했을 때(선택 모드) 출력이 막혀 배포가 멈추고, Windows 서비스로 두면 다른 계정이라 Docker를 못 씁니다. 켜져 있는지는 GitHub 설정 → Actions → Runners에서 `home-pc`가 Idle인지로, 로그는 Actions 탭과 `C:\actions-runner\_diag`에서 봅니다.
 
