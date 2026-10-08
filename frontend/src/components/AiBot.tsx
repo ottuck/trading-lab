@@ -195,7 +195,7 @@ export function AiToday({ bot }: { bot: Bot }) {
   )
 }
 
-/** AI 봇 vs 나 카피 봇 규칙 vs 매달 그냥 사기 (AI 봇이 처음 판단한 날부터, 같은 날 같은 돈). */
+/** 이 AI 봇 vs 먼저 시작한 다른 AI 봇 vs 나 카피 봇 규칙 vs 매달 그냥 사기 (이 봇이 처음 판단한 날부터, 같은 날 같은 돈). */
 export function AiCompare({ bot }: { bot: Bot }) {
   const { data, error } = useQuery({
     queryKey: ['ai-compare', bot.id],
@@ -216,6 +216,7 @@ export function AiCompare({ bot }: { bot: Bot }) {
   // 매달 그냥 사기는 무엇을 샀는지 밝힌다 (위 그래프의 "관심 종목 똑같이 나눠 사기"와 다른 기준이다).
   // 나 카피 봇이 있으면 그 종목·비율, 없으면 AI 봇 종목을 똑같이 나눠 샀다.
   const meSymbols = activeOf(bots?.find(isMeBot)?.symbols ?? []).map((s) => s.symbol)
+  const subOf = (key: string) => (key.startsWith('ai-') ? '이 봇과 같은 날 같은 돈으로 시작했다면 (그 봇의 판단 그대로)' : (sub[key] ?? ''))
   const sub: Record<string, string> = {
     me: isCandleBot(bot) ? 'AI가 매일 차트만 보고 비중을 정해요' : 'AI가 매일 시장을 보고 비중을 정해요',
     copy: '지금 나 카피 봇 규칙으로 같은 돈을 넣었다면',
@@ -226,7 +227,9 @@ export function AiCompare({ bot }: { bot: Bot }) {
   return (
     <section className="block pw">
       <div className="block-head">
-        <h2>{bot.name} vs 나 카피 봇</h2>
+        <h2>
+          {bot.name} vs {other?.title ?? '나 카피 봇'}
+        </h2>
         {data?.start && <span className="sub">{md(data.start)}부터 같은 날 같은 돈으로</span>}
       </div>
       {error ? (
@@ -260,7 +263,7 @@ export function AiCompare({ bot }: { bot: Bot }) {
               >
                 <div>
                   <div className="title">{w.title}</div>
-                  <div className="sub">{sub[w.key] ?? ''}</div>
+                  <div className="sub">{subOf(w.key)}</div>
                 </div>
                 <div className="r">
                   <div className="value tnum">{money(w.final_equity)}</div>
