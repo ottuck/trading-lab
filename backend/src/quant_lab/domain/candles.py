@@ -129,14 +129,15 @@ def mask(
     return MaskedCandles(CandleRequest(tuple(briefs), cash_weight, shown), key)
 
 
-# AI가 다른 종목을 부를 때 쓰는 꼴 ("종목 C는"). 뒤 조사는 종목 이름의 받침에 맞춰 다시 붙인다
-_MENTION = re.compile(r"종목 ([A-Z])(?![A-Za-z])(은|는|이|가|을|를|과|와)?")
+# AI가 종목을 부르는 꼴: "종목 C는", 목록으로 이어 쓴 "B와 C". 앞뒤에 영문·숫자가 붙은 글자("AI",
+# "S&P 500")는 종목이 아니다. 뒤 조사는 종목 이름의 받침에 맞춰 다시 붙인다
+_MENTION = re.compile(r"(?:종목 )?(?<![A-Za-z0-9])([A-Z])(?![A-Za-z0-9])(은|는|이|가|을|를|과|와)?")
 _PARTICLES = {"은": "은는", "는": "은는", "이": "이가", "가": "이가", "을": "을를", "를": "을를"}
 _PARTICLES |= {"과": "과와", "와": "과와"}
 
 
 def unmask_text(text: str, key: Mapping[str, str]) -> str:
-    """문장 안의 "종목 X"를 종목 이름으로 바꾼다. 다른 꼴로 쓴 글자는 그대로 둔다."""
+    """문장 안의 종목 글자("종목 X", 목록의 "X")를 종목 이름으로 바꾼다. 모르는 글자는 그대로."""
 
     def name(m: re.Match[str]) -> str:
         symbol = key.get(m.group(1))

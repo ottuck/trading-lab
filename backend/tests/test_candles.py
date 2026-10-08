@@ -51,7 +51,7 @@ def test_masked_candles_hide_names_dates_and_prices() -> None:
 
 def test_unmask_text_fixes_particles() -> None:
     key = {"A": "SOXL", "B": "QQQ"}
-    text = "종목 A는 종목 B보다 강하고 종목 B는 약해요. 종목 Z는 그대로, 종목 AB도 그대로."
+    text = "종목 A는 종목 B보다 강해요. 종목 B와 A는 비슷해요. 종목 Z, 종목 AB, AI는 그대로."
     assert unmask_text(text, key) == (
-        "SOXL은 QQQ보다 강하고 QQQ는 약해요. 종목 Z는 그대로, 종목 AB도 그대로."
+        "SOXL은 QQQ보다 강해요. QQQ와 SOXL은 비슷해요. 종목 Z, 종목 AB, AI는 그대로."
     )

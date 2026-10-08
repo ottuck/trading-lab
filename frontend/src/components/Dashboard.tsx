@@ -21,7 +21,7 @@ import { useDemo } from '../demo'
 import { FxNote } from './Currency'
 import { AccountCard, LiveApprovals } from './Live'
 import { Term } from './Help'
-import { goTo, openBot, selectBot, startMeEdit, startMeQuestions, startNewBot, useSelectedBot } from '../selectedBot'
+import { goTo, openBot, selectBot, startMeEdit, startMeQuestions, useSelectedBot } from '../selectedBot'
 import { PriceChart } from './PriceChart'
 import { useDismiss } from '../useDismiss'
 import { activeOf, basketLabel, evenSplit } from '../basket'
@@ -919,15 +919,13 @@ function BotSide({ bots, current, onPick }: { bots: Bot[]; current?: Bot; onPick
             </button>
           </div>
         ))}
-        <div className="bot-list-head sub">
-          다른 봇
-          {!demo && (
-            <button className="link" onClick={() => startNewBot()}>
-              + 새 봇
-            </button>
-          )}
-        </div>
-        {others.length ? others.map(row) : <div className="bot-list-empty">유명한 투자법을 따라 하는 봇이에요</div>}
+        {/* 유명 전략 4종을 없앤 뒤(2026-10-08) 새로 만들 다른 봇은 없다. 예전에 만든 봇이 있을 때만 보인다 */}
+        {others.length > 0 && (
+          <>
+            <div className="bot-list-head sub">다른 봇</div>
+            {others.map(row)}
+          </>
+        )}
       </div>
       <AccountCard />
       <div className="side-note">10초마다 새로 불러와요.</div>

@@ -466,7 +466,7 @@ def event_message(
         ai = cast(AiJudgmentData, d)
         if ai.get("status") == "OVER_BUDGET":
             body = (
-                f"이번 달 AI 비용이 상한({_usd(ai.get('budget', 0))})에 닿았어요 "
+                f"이 봇의 이번 달 AI 비용이 상한({_usd(ai.get('budget', 0))})에 닿았어요 "
                 f"(쓴 돈 {_usd(ai.get('spent', 0))}). 이번 달 남은 날은 판단하지 않고 지금 그대로 둬요."
             )
             return Message("💸", "AI 비용 상한에 닿았어요", body, level, level == "WARN")

@@ -240,3 +240,27 @@ def test_candle_bot_sees_only_masked_candles_and_replays(engine: Engine, session
     assert got and got == [
         (f.symbol, f.side, f.signal_date, f.qty, f.price) for f in expected.fills
     ]
+
+    # 나중에 시작한 시장분석 AI 봇의 비교에는 캔들 봇이 그날 같은 돈으로 시작했다면이 함께 나온다.
+    # 먼저 시작한 캔들 봇의 비교에는 (그 앞 날 판단이 없는) 시장분석 AI 봇이 나오지 않는다
+    market = create_bot(
+        session,
+        name="market",
+        symbol="QQQ",
+        strategy="ai_judge",
+        params=AiJudge(deposit=500, day=1).params,
+        initial_cash=Decimal(1000),
+        costs=COSTS,
+        limits=RiskLimits(),
+        now=datetime.now(UTC),
+        weights=weights,
+    )
+    market.state = BotState.RUNNING
+    session.commit()
+    later = QQQ[strategy.warmup + 4].session_date
+    ai = AiConfig(CyclingAdvisor(), Decimal(15))
+    replay_bot(sessionmaker(engine), market.id, WeekdayCalendar(), later, end, ai=ai)
+    seen = ai_compare(session, market.id)
+    assert [w.key for w in seen.worlds] == ["me", f"ai-{bot.id}", "dca"]
+    assert seen.worlds[1].title == "candle" and seen.worlds[1].start == seen.worlds[0].start
+    assert [w.key for w in ai_compare(session, bot.id).worlds] == ["me", "dca"]
