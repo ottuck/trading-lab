@@ -3,30 +3,6 @@ import { evenSplit, MAX_SYMBOLS } from '../basket'
 import { FALLBACK, leverageOf, useInstruments } from '../instruments'
 import { Term } from './Help'
 
-/** 관심 종목 버튼. 레버리지 ETF는 "3배" 표시와 주의 문구를 함께 보여준다. */
-export function SymbolPicker({ label, value, onChange }: { label: string; value: string; onChange: (s: string) => void }) {
-  const { data } = useInstruments()
-  const symbols = data?.map((i) => i.symbol) ?? FALLBACK
-  const lev = leverageOf(data, value)
-  return (
-    <>
-      <div className="controls">
-        <span className="label">{label}</span>
-        {symbols.map((s) => {
-          const x = leverageOf(data, s)
-          return (
-            <button key={s} className={`seg ${s === value ? 'active' : ''}`} onClick={() => onChange(s)}>
-              {s}
-              {x > 1 && <span className="lev">{x}배</span>}
-            </button>
-          )
-        })}
-      </div>
-      {lev > 1 && <LeverageNotice symbol={value} factor={lev} />}
-    </>
-  )
-}
-
 /** 여러 종목과 비율 고르기 (모으기 전략). 최대 10개, 비율 합 100. 고르거나 빼면 똑같이 다시 나눈다. */
 export function BasketPicker({ value, onChange }: { value: SymbolWeight[]; onChange: (v: SymbolWeight[]) => void }) {
   const { data } = useInstruments()

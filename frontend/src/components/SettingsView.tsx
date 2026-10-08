@@ -14,7 +14,7 @@ import { AmountInput } from './AmountInput'
 import { StrategyFields, TradeFields } from './BotConfigFields'
 import { activeOf, basketLabel, suggestName } from '../basket'
 import { sourceLabel } from '../source'
-import { BasketPicker, SymbolPicker } from './SymbolPicker'
+import { BasketPicker } from './SymbolPicker'
 
 /* Vercel식 설정: 왼쪽에 섹션 제목·설명, 오른쪽에 입력. 섹션은 가는 선으로 나누고 저장은 맨 아래 하나,
    되돌릴 수 없는 동작은 맨 아래 빨간 테두리 영역에 따로 둔다. */
@@ -111,11 +111,9 @@ function History({ botId }: { botId: number }) {
   )
 }
 
-/** 만든 뒤 종목·비율 바꾸기. 모으기 전략에서 뺀 종목을 들고 있으면 팔지 않고 들고만 있는다. */
+/** 만든 뒤 종목·비율 바꾸기. 뺀 종목을 들고 있으면 팔지 않고 들고만 있는다. */
 function SymbolsField({ bot }: { bot: Bot }) {
   const qc = useQueryClient()
-  const { byName } = useStrategies()
-  const accumulates = !!byName[bot.strategy]?.accumulates
   const [basket, setBasket] = useState(() => activeOf(bot.symbols))
   const save = useMutation({
     mutationFn: () => botApi.updateSymbols(bot.id, basket),
@@ -131,26 +129,14 @@ function SymbolsField({ bot }: { bot: Bot }) {
   const total = basket.reduce((sum, b) => sum + b.weight, 0)
   const now = activeOf(bot.symbols)
   const changed = basket.length !== now.length || basket.some((b, i) => b.symbol !== now[i]?.symbol || b.weight !== now[i]?.weight)
-  const locked = !accumulates && dropped.length > 0
   return (
-    <Section
-      title={accumulates ? '종목과 비율' : '종목'}
-      desc={accumulates ? '다음 입금부터 이 비율대로 나눠 사요. 바꾼 기록은 아래에 남아요.' : '사고팔 종목을 바꿔요. 들고 있는 동안에는 바꿀 수 없어요.'}
-    >
-      {accumulates ? (
-        <BasketPicker value={basket} onChange={setBasket} />
-      ) : (
-        <SymbolPicker label="" value={basket[0]?.symbol ?? bot.symbol} onChange={(symbol) => setBasket([{ symbol, weight: 100 }])} />
-      )}
+    <Section title="종목과 비율" desc="다음 입금부터 이 비율대로 나눠 사요. 바꾼 기록은 아래에 남아요.">
+      <BasketPicker value={basket} onChange={setBasket} />
       {changed && dropped.length > 0 && (
-        <div className="notice">
-          {locked
-            ? `지금 ${dropped.join(', ')}를 들고 있어요. 이 전략은 판 뒤에 종목을 바꿀 수 있어요.`
-            : `${dropped.join(', ')}는 팔지 않아요. 지금 들고 있는 만큼 그대로 두고 더 사지 않아요.`}
-        </div>
+        <div className="notice">{`${dropped.join(', ')}는 팔지 않아요. 지금 들고 있는 만큼 그대로 두고 더 사지 않아요.`}</div>
       )}
       <div className="controls">
-        <button disabled={!changed || locked || total !== 100 || save.isPending} onClick={() => save.mutate()}>
+        <button disabled={!changed || total !== 100 || save.isPending} onClick={() => save.mutate()}>
           종목 저장
         </button>
         {save.isSuccess && !changed && <span className="ok small">바꿨어요. 다음 판단부터 적용돼요.</span>}
@@ -368,7 +354,6 @@ const RATIO_OF: Record<string, string> = { '0.01': '1/100' }
 function LiveSection({ bot }: { bot: Bot }) {
   const qc = useQueryClient()
   const { data: live } = useLive()
-  const { byName } = useStrategies()
   const setRatio = useMutation({
     mutationFn: (ratio: string | null) => botApi.setLive(bot.id, ratio),
     onSuccess: () => {
@@ -378,25 +363,18 @@ function LiveSection({ bot }: { bot: Bot }) {
     },
   })
   if (!live) return null
-  // 모으기 봇은 매달 사기만, 사고팔기 봇은 사고팔기를 따라 한다. AI 봇은 사기(모으기 한도)와 일부 팔기
+  // 나 카피 봇은 매달 사기만, AI 봇은 사기(같은 한도)와 일부 팔기
   const ai = isAiBot(bot)
-  const trading = !byName[bot.strategy]?.accumulates
   const current = bot.live_ratio == null ? null : (RATIO_OF[String(Number(bot.live_ratio))] ?? bot.live_ratio)
-  const limits = trading
-    ? `한도: 사는 주문 1건 ${dollars(live.per_trade)}.`
-    : `한도: 주문 1건 ${dollars(live.per_order)}, 한 달 ${dollars(live.per_month)}.`
+  const limits = `한도: 주문 1건 ${dollars(live.per_order)}, 한 달 ${dollars(live.per_month)}.`
   // 지금 설정으로 실제로 얼마가 나가는지 (이 봇의 금액으로 계산한다)
   const deposit = Number(bot.params.deposit ?? 0)
-  const rough = trading
-    ? `지금 봇 현금 ${plainDollars(Math.round(Number(bot.account.cash)))}의 1/100이면 사는 한 번에 약 ${plainDollars(Math.round(Number(bot.account.cash)) / 100)}이에요.`
-    : `매달 넣는 돈 ${plainDollars(deposit)}의 1/100이라, 한 달 약 ${plainDollars(deposit / 100)}이 실제로 나가요.`
+  const rough = `매달 넣는 돈 ${plainDollars(deposit)}의 1/100이라, 한 달 약 ${plainDollars(deposit / 100)}이 실제로 나가요.`
   const pick = (ratio: string | null) => {
     if (ratio === current) return
     const what = ai
       ? `AI 봇이 모의로 살 때 그 금액의 ${ratio}만큼 사고, 모의로 팔 때 실제로 산 수량에서 같은 비율만큼 팔아요.`
-      : trading
-        ? `모의로 살 때 봇 현금의 ${ratio}만큼 사고, 모의로 팔 때 이 봇이 실제로 산 만큼 모두 팔아요.`
-        : `모의 매수의 ${ratio} 금액을 같은 날 같은 종목으로 사요.`
+      : `모의 매수의 ${ratio} 금액을 같은 날 같은 종목으로 사요.`
     const ok =
       !ratio ||
       window.confirm(
@@ -408,12 +386,10 @@ function LiveSection({ bot }: { bot: Bot }) {
   const mine = live.orders.filter((o) => o.bot_id === bot.id)
   return (
     <Section
-      title={trading || ai ? '실제로 따라 하기' : '실제로 따라 사기'}
+      title={ai ? '실제로 따라 하기' : '실제로 따라 사기'}
       desc={
         ai
           ? `AI 봇의 모의 사고팔기를 1/100 금액으로 실제 계좌에서 따라 해요. 살 때는 모의 매수 금액의 1/100($1보다 작으면 모아 두었다가 함께), 팔 때는 이 봇이 실제로 산 수량에서 모의로 판 비율만큼 팔아요(판 금액이 $1보다 작으면 넘겨요). 레버리지는 QLD·TQQQ만 해요. ${limits}`
-          : trading
-          ? `모의로 살 때 봇 현금의 1/100만큼 실제 계좌에서 사고, 모의로 팔 때 이 봇이 실제로 산 만큼 모두 팔아요. 레버리지는 QLD·TQQQ만 해요. ${limits}`
           : `모의 매수를 1/100 금액으로 실제 계좌에서 같은 날 같은 종목을 사요. 파는 주문은 내지 않아요. ${limits}`
       }
     >
@@ -578,7 +554,6 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
   const saved = toDraft(bot)
   const dirty = changing || draft.slippage !== saved.slippage || draft.maxPosition !== saved.maxPosition
   const ai = isAiBot(bot)
-  const accumulates = !!useStrategies().byName[bot.strategy]?.accumulates
   return (
     <>
       {ai ? (
@@ -592,7 +567,7 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
             <li>AI 비용이 한 달 상한을 넘으면 그달은 판단하지 않고 그대로 둬요</li>
           </ul>
         </Section>
-      ) : isMeBot(bot) ? (
+      ) : (
         <Section title="내 규칙" desc="나 카피하기로 정한 규칙이에요. 바꾸면 다음 판단부터 적용되고, 지금까지의 기록은 그대로예요.">
           <ul className="me-summary">
             {describe(answersOf(bot)).map((line) => (
@@ -611,28 +586,18 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
             </div>
           )}
         </Section>
-      ) : (
-      <Section title="전략" desc="언제 사고팔지 정해요. 돌아가는 중에도 바꿀 수 있고, 다음 판단부터 적용돼요.">
-        <StrategyFields draft={draft} onChange={setDraft} />
-        {changing && Number(bot.account.qty) > 0 && (
-          <div className="notice">
-            지금 {bot.symbol} {shares(bot.account.qty)}주를 들고 있어요. 저장하면 다음 판단부터 새 전략으로 봐요. 새 전략이 &quot;팔
-            때&quot;라고 보면 그다음 장이 열릴 때 바로 팔아요.
-          </div>
-        )}
-      </Section>
       )}
       <Section
         title="체결과 투자 금액"
-        desc={accumulates ? '모의 체결을 얼마나 보수적으로 볼지 정해요.' : '모의 체결을 얼마나 보수적으로 볼지, 한 번에 얼마까지 넣을지 정해요.'}
+        desc="모의 체결을 얼마나 보수적으로 볼지 정해요."
       >
-        <TradeFields draft={draft} onChange={setDraft} accumulates={accumulates} />
+        <TradeFields draft={draft} onChange={setDraft} />
         {/* 저장은 이 섹션(과 위의 전략·규칙)에 속한다: 섹션 밖에 혼자 두지 않는다 */}
         <div className="set-actions">
           <button className="primary" disabled={!dirty || badLimit(draft) || save.isPending} onClick={() => save.mutate()}>
             저장
           </button>
-          {changing && !ai && <span className="faint small">위의 {isMeBot(bot) ? '내 규칙' : '전략'}도 함께 저장돼요.</span>}
+          {changing && !ai && <span className="faint small">위의 내 규칙도 함께 저장돼요.</span>}
           {!dirty && save.isSuccess && <span className="ok small">저장했어요. 다음 판단부터 적용돼요.</span>}
           {save.error && <span className="bad small">{save.error.message}</span>}
         </div>
@@ -648,25 +613,23 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
 
 function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
   const qc = useQueryClient()
-  // 종목과 비율. 모으기 전략은 여러 종목(최대 10개), 그 밖의 전략은 첫 종목 하나만 쓴다.
+  // 종목과 비율 (최대 10개)
   const [basket, setBasket] = useState<SymbolWeight[]>(seed.symbols ?? [{ symbol: seed.symbol ?? 'QQQ', weight: 100 }])
   const [draft, setDraft] = useState(() =>
     toDraft(seed.strategy ? { strategy: seed.strategy, params: seed.params ?? {} } : undefined),
   )
   const { byName } = useStrategies()
-  const accumulates = !!byName[draft.strategy]?.accumulates
-  const chosen = accumulates ? basket : basket.slice(0, 1)
-  const total = chosen.reduce((sum, b) => sum + b.weight, 0)
-  // 이름은 직접 고치기 전까지 종목·전략에 맞춰 자동으로 제안한다.
+  const total = basket.reduce((sum, b) => sum + b.weight, 0)
+  // 이름은 직접 고치기 전까지 자동으로 제안한다.
   const [customName, setCustomName] = useState<string | null>(null)
-  const name = customName ?? suggestName(chosen.map((b) => b.symbol), draft.strategy, taken)
-  // 시작 금액은 직접 고치기 전까지 전략에 맞춘다 (모으기 전략은 한 달 입금액).
+  const name = customName ?? suggestName(taken)
+  // 시작 금액은 직접 고치기 전까지 한 달 입금액이다.
   const [customCash, setCustomCash] = useState<string | null>(seed.cash ?? null)
-  const cash = customCash ?? (accumulates ? String(draft.params.deposit ?? 1000) : '10000')
+  const cash = customCash ?? String(draft.params.deposit ?? 1000)
   const [startNow, setStartNow] = useState(true)
   const create = useMutation({
     mutationFn: async () => {
-      const what = `${byName[draft.strategy]?.nickname ?? draft.strategy} · ${chosen.map((b) => b.symbol).join(' · ')} · 시작 금액 $${Number(cash).toLocaleString('en-US')}`
+      const what = `${byName[draft.strategy]?.nickname ?? draft.strategy} · ${basket.map((b) => b.symbol).join(' · ')} · 시작 금액 $${Number(cash).toLocaleString('en-US')}`
       const ok = window.confirm(
         `${name}을(를) 만들${startNow ? '고 바로 모의 투자를 시작할' : ''}까요?\n${what}\n` +
           '실제 계좌와는 상관없어요. 지우려면 봇 화면의 [⋯] → 봇 삭제를 누르면 돼요.',
@@ -675,8 +638,8 @@ function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
       const bot = await botApi.create({
         ...toConfig(draft),
         name,
-        symbol: chosen[0].symbol,
-        symbols: chosen.length > 1 ? chosen : undefined,
+        symbol: basket[0].symbol,
+        symbols: basket.length > 1 ? basket : undefined,
         initial_cash: cash,
       })
       if (startNow) await api.command(bot.id, 'START')
@@ -698,17 +661,11 @@ function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
       <Section title="전략" desc="언제 사고팔지 정해요. 나중에 설정에서 바꿀 수 있어요.">
         <StrategyFields draft={draft} onChange={setDraft} />
       </Section>
-      {accumulates ? (
-        <Section title="종목과 비율" desc="매달 넣는 돈을 이 비율대로 나눠 사요. 현금은 함께 써요.">
-          <BasketPicker value={basket} onChange={setBasket} />
-        </Section>
-      ) : (
-        <Section title="종목" desc="이 봇이 사고팔 미국 주식이나 ETF예요.">
-          <SymbolPicker label="" value={basket[0].symbol} onChange={(symbol) => setBasket([{ symbol, weight: 100 }])} />
-        </Section>
-      )}
-      <Section title="체결과 투자 금액" desc="모의 체결을 얼마나 보수적으로 볼지, 한 번에 얼마까지 넣을지 정해요.">
-        <TradeFields draft={draft} onChange={setDraft} accumulates={accumulates} />
+      <Section title="종목과 비율" desc="매달 넣는 돈을 이 비율대로 나눠 사요. 현금은 함께 써요.">
+        <BasketPicker value={basket} onChange={setBasket} />
+      </Section>
+      <Section title="체결과 투자 금액" desc="모의 체결을 얼마나 보수적으로 볼지 정해요.">
+        <TradeFields draft={draft} onChange={setDraft} />
       </Section>
       <Section title="이름과 시작 금액" desc="모의 투자는 실제 계좌와 무관해요. 시작 금액은 나중에 바꿀 수 없어요.">
         <div className="form" style={{ margin: 0 }}>
@@ -731,7 +688,7 @@ function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
         </label>
         <button
           className="primary"
-          disabled={create.isPending || !name.trim() || !Number(cash) || Number(cash) > MAX_CASH || badLimit(draft) || (chosen.length > 1 && total !== 100)}
+          disabled={create.isPending || !name.trim() || !Number(cash) || Number(cash) > MAX_CASH || badLimit(draft) || (basket.length > 1 && total !== 100)}
           onClick={() => create.mutate()}
         >
           {startNow ? '만들고 시작하기' : '만들기'}

@@ -55,7 +55,6 @@ from quant_lab.domain.live import (
 from quant_lab.persistence.bots import add_event
 from quant_lab.persistence.market_info import leverage_of
 from quant_lab.persistence.models import (
-    BotAccountRow,
     BotPositionRow,
     BotRow,
     BrokerAccountRow,
@@ -190,7 +189,6 @@ class LiveDesk:
         assert bot.live_ratio is not None
         sell = sim.side == "SELL"
         side = "SELL" if sell else "BUY"
-        trading = sim.budget is None  # 현금 전부로 사고 전부 파는 봇 (모으기 봇은 예산이 있다)
         order = LiveOrderRow(
             bot_id=bot.id,
             sim_order_id=sim.id,
@@ -207,7 +205,7 @@ class LiveDesk:
         partial = sell and sim.budget is not None  # AI 봇: 판 금액이 정해진 일부 팔기
         if sell:
             # 이 봇이 실제로 산 만큼만 판다 (켜기 전부터 있던 모의 보유는 실제로 없다).
-            # 사고팔기 봇은 모두, AI 봇은 모의 보유 중 판 비율만큼
+            # 모의로 전부 판 것은 모두, AI 봇의 일부 팔기는 모의 보유 중 판 비율만큼
             close = last_close(session, sim.symbol)
             order.quantity = live_position(session, bot.id, sim.symbol)
             if partial:
@@ -218,8 +216,8 @@ class LiveDesk:
                 )
             order.amount = (order.quantity * close).quantize(CENT)
         else:
-            budget = sim.budget if sim.budget is not None else bot_cash(session, bot.id)
-            order.amount = scaled_amount(budget, bot.live_ratio)
+            # 사는 모의 주문에는 항상 쓸 돈(budget)이 있다
+            order.amount = scaled_amount(sim.budget or Decimal(0), bot.live_ratio)
         if not live_allowed(sim.symbol, leverage_of(session, sim.symbol)):
             order.state, order.reason = LiveState.SKIPPED, SkipReason.LEVERAGED
             return order, False
@@ -250,7 +248,7 @@ class LiveDesk:
         # 파는 주문은 한도를 보지 않는다.
         month = Decimal(0) if sell else self._month_total(session, bot.id, order.trade_date)
         amount = Decimal(0) if sell else order.amount
-        if needs_approval(amount, month, self.limits, trading=trading, blocked=shortfall):
+        if needs_approval(amount, month, self.limits, blocked=shortfall):
             order.state = LiveState.WAITING_APPROVAL
             return order, False
         return order, True
@@ -557,9 +555,3 @@ def last_close(session: Session, symbol: str) -> Decimal:
         .limit(1)
     )
     return Decimal(close) if close is not None else Decimal(0)
-
-
-def bot_cash(session: Session, bot_id: int) -> Decimal:
-    """사고팔기 봇은 현금 전부로 산다. 실제 주문은 그 현금 × 비율."""
-    account = session.get(BotAccountRow, bot_id)
-    return account.cash if account is not None else Decimal(0)

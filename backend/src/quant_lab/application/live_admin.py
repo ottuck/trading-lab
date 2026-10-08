@@ -63,7 +63,6 @@ class LiveOverview:
     halted: bool
     per_order: Decimal
     per_month: Decimal
-    per_trade: Decimal  # 사고팔기 봇 한 건 한도
     ratios: list[str]  # 고를 수 있는 비율 이름 (1/100)
     # 봇이 낸 실제 주문의 장부 (체결 기준, 수수료 제외 어림값). 최근 주문 목록과 별개로 모두 더한다
     bought_this_month: Decimal  # 이번 달 산 금액
@@ -133,7 +132,6 @@ def overview(session: Session) -> LiveOverview:
         halted=bool(row and row.halted),
         per_order=limits.per_order,
         per_month=limits.per_month,
-        per_trade=limits.per_trade,
         ratios=list(RATIOS),
         bought_this_month=ledger.bought.get(month, Decimal(0)),
         sold_this_month=ledger.sold.get(month, Decimal(0)),
@@ -171,7 +169,7 @@ def overview(session: Session) -> LiveOverview:
 def set_bot_ratio(session: Session, bot_id: int, ratio: str | None, now: datetime) -> BotRow:
     """따라 하기 비율을 켜고(1/100) 끈다(None). 켜면 그때부터의 새 모의 주문만 따라 한다.
 
-    모으기 봇은 매달 사기만, 사고팔기 봇은 사고팔기를 따라 한다 (실거래 R3, 2026-10-06).
+    나 카피 봇은 매달 사기만, AI 봇은 사기와 일부 팔기를 따라 한다.
     """
     bot = require_bot(session, bot_id, for_update=True)
     if ratio is not None and ratio not in RATIOS:

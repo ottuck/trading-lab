@@ -201,7 +201,6 @@ class LiveView(BaseModel):
     halted: bool
     per_order: Decimal
     per_month: Decimal
-    per_trade: Decimal = Decimal("150")  # 사고팔기 봇 한 건 한도
     ratios: list[str]
     # 봇이 낸 실제 주문의 장부 (체결 기준, 수수료 제외 어림값)
     bought_this_month: Decimal = Decimal(0)  # 이번 달 산 금액
@@ -341,7 +340,6 @@ class StrategyInfo(BaseModel):
     trades: str
     presets: list[PresetView]
     default_params: dict[str, int]
-    accumulates: bool = False  # 매달 입금하고 사 모으는 전략 (팔지 않음)
     ai: bool = False  # AI가 판단하는 전략 (시험해 보기·전략 고르기에는 나오지 않는다)
     preset_label: str = "반응 속도"
     choices: list[ChoiceView] = []
@@ -360,12 +358,12 @@ class ActivityItem(BaseModel):
 
 class BacktestRequest(BaseModel):
     symbol: str
-    symbols: list[SymbolWeight] | None = None  # 여러 종목(모으기 전략만, 비율 합 100)
+    symbols: list[SymbolWeight] | None = None  # 여러 종목(최대 10개, 비율 합 100)
     strategy: str
     params: dict[str, int] = {}
     start: date | None = None
     end: date | None = None
-    initial_cash: Decimal | None = None  # 없으면 $10,000 (모으기 전략은 한 달 입금액)
+    initial_cash: Decimal | None = None  # 없으면 한 달 입금액
     commission_rate: Decimal = Decimal("0.001")
     slippage_bps: Decimal = Decimal(5)
 
@@ -492,5 +490,5 @@ class BotRename(BaseModel):
 class BotCreate(BotConfig):
     name: str
     symbol: str  # 종목 하나. symbols가 있으면 그 첫 종목과 같아야 한다
-    symbols: list[SymbolWeight] | None = None  # 여러 종목(최대 10개, 비율 합 100, 모으기 전략만)
+    symbols: list[SymbolWeight] | None = None  # 여러 종목(최대 10개, 비율 합 100)
     initial_cash: Decimal = Decimal(10_000)

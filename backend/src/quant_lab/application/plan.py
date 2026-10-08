@@ -131,12 +131,12 @@ def follow_plan(session: Session, bot: BotRow, calendar: TradingCalendar) -> Pla
     }
     symbols = []
     for s, w in weights.items():
-        signal = strategy.signal(histories[s], pf.qty(s) > 0)
+        signal = strategy.signal(histories[s])
         if signal is None:
             continue
         ind = signal.indicators
         top, avg = ind[f"high{strategy.high}"], ind[f"sma{strategy.sma}"]
-        state = {Spend.ALL: "dip", Spend.DEPOSIT: "normal"}.get(signal.spend or Spend.NONE, "")
+        state = {Spend.ALL: "dip", Spend.DEPOSIT: "normal"}.get(signal.spend, "")
         if signal.spend is Spend.NONE:
             state = "wait" if not strategy.regular else "hot"
         record = records.get(s)

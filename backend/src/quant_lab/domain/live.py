@@ -27,9 +27,8 @@ SEND_DELAY_MINUTES = 5  # 주문 접수 시간이 열리고 이만큼 뒤에 낸
 class LiveLimits:
     """실제 주문 안전망. 넘는 주문은 자동으로 내지 않고 사람에게 묻는다."""
 
-    per_order: Decimal = Decimal("20")  # 모으기 봇 (매달 나눠 사기)
+    per_order: Decimal = Decimal("20")  # 매달 나눠 사기
     per_month: Decimal = Decimal("50")
-    per_trade: Decimal = Decimal("150")  # 사고팔기 봇: 현금 전부로 사서 1/100이면 $100 안팎
 
 
 class LiveState(StrEnum):
@@ -59,7 +58,7 @@ class SkipReason(StrEnum):
     TOO_SMALL = "too_small"
     CARRIED = "carried"  # 금액이 작아 모아 둠. 같은 종목 다음 주문에 더해 함께 산다
     NO_FUNDS = "no_funds"  # 보내기 직전 달러가 모자라 넘김 (다음 달에 더하지 않는다)
-    NOTHING_HELD = "nothing_held"  # 팔 신호지만 이 봇이 실제로 산 주식이 없음 (켜기 전 모의 보유)
+    NOTHING_HELD = "nothing_held"  # 팔지만 이 봇이 실제로 산 주식이 없음 (켜기 전 모의 보유)
 
 
 def scaled_amount(budget: Decimal, ratio: Decimal) -> Decimal:
@@ -72,19 +71,14 @@ def needs_approval(
     month_total: Decimal,
     limits: LiveLimits,
     *,
-    trading: bool = False,
     blocked: bool = False,
 ) -> bool:
     """한도를 넘는 사기 주문과, 실제 계좌가 봇 기록과 맞지 않는 동안(blocked)의 주문만 묻는다.
 
     한도 안의 주문은 묻지 않고 바로 낸다 (처음 몇 번 승인받는 단계는 2026-10-08에 없앴다).
     month_total은 이번 달에 이미 내기로 한(승인·보냄·체결) 사기 금액이다.
-    trading이면 사고팔기 봇: 드물게 현금 전부로 사므로 한 건 한도(per_trade)만 본다.
     """
-    if trading:
-        over = amount > limits.per_trade
-    else:
-        over = amount > limits.per_order or month_total + amount > limits.per_month
+    over = amount > limits.per_order or month_total + amount > limits.per_month
     return blocked or over
 
 
