@@ -2452,12 +2452,6 @@ button.account-card:hover:not(:disabled) {
   height: 0.75em;
   vertical-align: 0;
 }
-/* 지원하지 않는 선택지 (누르면 이유를 보여준다) */
-button.seg.unsupported {
-  color: var(--faint);
-  border-style: dashed;
-}
-
 /* ---------- AI 봇 (마일스톤 4) ---------- */
 .ai-rows {
   border-top: 1px solid var(--border);

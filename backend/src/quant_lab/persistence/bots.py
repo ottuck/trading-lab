@@ -274,7 +274,7 @@ def reset_bot_history(session: Session, bot: BotRow, now: datetime) -> None:
         session.execute(delete(model).where(model.bot_id == bot.id))
     save_account(session, bot.id, Portfolio(cash=bot.initial_cash), now)
     drop_unsent_live_orders(session, bot.id, now)
-    if bot.live_ratio is not None:  # 따라 사기는 새 기록부터, 처음 몇 번은 다시 묻는다
-        bot.live_since, bot.live_streak = now, 0
+    if bot.live_ratio is not None:  # 따라 사기는 새 기록부터
+        bot.live_since = now
     bot.next_evaluation_at = None
     bot.updated_at = now

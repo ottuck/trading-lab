@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { api, backtestApi, botApi, type Bot } from '../api'
-import { money, percent } from '../format'
+import { MAX_DEPOSIT, money, percent } from '../format'
 import { DAYS, DEPOSITS, DIP, HOT, START, STYLES, answersOf, describe, stepsOf, toParams, withCurrent, type Answers, type Option } from '../me'
 import { suggestName } from '../basket'
 import { clearMeSkipIntro, endMeEdit, goTo, meSkipIntro, selectBot, useMeEdit } from '../selectedBot'
@@ -373,9 +373,10 @@ export function MeView({ bots }: { bots: Bot[] }) {
                 placeholder="직접 입력 (예: 800)"
                 label="한 달 평균 직접 입력"
                 size={14}
+                max={MAX_DEPOSIT}
                 onChange={(v) => {
                   setCustomDeposit(v)
-                  if (Number(v) > 0) set({ deposit: Number(v) })
+                  if (Number(v) > 0 && Number(v) <= MAX_DEPOSIT) set({ deposit: Number(v) })
                 }}
               />
             </div>

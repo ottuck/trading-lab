@@ -140,6 +140,16 @@ def test_bot_management(client: TestClient, session: Session, bot_id: int) -> No
     zero = {**config, "max_position_value": "0"}
     assert client.put(f"/api/bots/{bot_id}/config", json=zero).status_code == 400
     assert client.patch(f"/api/bots/{bot_id}", json={"name": "가" * 21}).status_code == 400
+    # 한 자리 더 친 금액은 만들 때 막는다 (시작 금액 $1,000,000·매달 $100,000까지)
+    big = {"name": "큰돈", "symbol": "voo", "strategy": "sma_cross", "initial_cash": "2000000"}
+    assert client.post("/api/bots", json=big).status_code == 400
+    deposit = {
+        "name": "큰달",
+        "symbol": "voo",
+        "strategy": "dip_saver",
+        "params": {"deposit": 500000},
+    }
+    assert client.post("/api/bots", json=deposit).status_code == 400
 
     created = client.post(
         "/api/bots", json={"name": "voo", "symbol": "voo", "strategy": "sma_cross"}

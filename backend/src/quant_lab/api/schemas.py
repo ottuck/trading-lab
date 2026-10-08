@@ -172,7 +172,7 @@ class BotView(BaseModel):
     data_fetched_at: datetime | None
     data_source: str | None
     live_ratio: Decimal | None = None  # 실제로 따라 사기 비율 (꺼짐이면 null)
-    live_streak: int = 0
+    has_real_fills: bool = False  # 실제 계좌에서 산(판) 기록이 있다 (삭제·다시 시작 때 알린다)
 
 
 class LiveOrderView(BaseModel):
@@ -199,18 +199,18 @@ class LiveOrderView(BaseModel):
 class LiveView(BaseModel):
     trader: str | None  # 실거래 스위치가 켜졌으면 증권사 출처 코드, 꺼졌으면 null
     halted: bool
-    auto_after: int
     per_order: Decimal
     per_month: Decimal
     per_trade: Decimal = Decimal("150")  # 사고팔기 봇 한 건 한도
     ratios: list[str]
+    bought_this_month: Decimal = Decimal(0)  # 이번 달 실제로 산(체결된) 금액
     shortfall: list[dict[str, str]] = []  # 실제 계좌 대조 [{symbol, held, bought}]
     checked_at: datetime | None = None
     orders: list[LiveOrderView]
 
 
 class LiveRatioUpdate(BaseModel):
-    ratio: str | None  # "1/100" | "1/10" | null(끄기)
+    ratio: str | None  # "1/100" | null(끄기)
 
 
 class NotifyView(BaseModel):

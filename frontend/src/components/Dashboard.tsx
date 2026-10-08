@@ -15,6 +15,7 @@ import {
 import { ago, isPast, kstTime, money, percent, roundMoney, shares, signedMoney, tone } from '../format'
 import { FALLBACK, leverageOf, useInstruments } from '../instruments'
 import { sourceLabel } from '../source'
+import { realKeepNote } from '../live'
 import { isAiBot, isMeBot, useStrategies } from '../strategies'
 import { useDemo } from '../demo'
 import { FxNote } from './Currency'
@@ -171,7 +172,8 @@ function Controls({ bot, onSent }: { bot: Bot; onSent: (msg: string) => void }) 
               setMenu(false)
               const ok = window.confirm(
                 `${bot.name}의 모의 잔고를 ${money(bot.account.initial_cash)}로 되돌리고 판단·거래 기록을 모두 지울까요?\n` +
-                  '설정과 실행 상태는 그대로예요. 되돌릴 수 없어요.',
+                  '설정과 실행 상태는 그대로예요. 되돌릴 수 없어요.' +
+                  realKeepNote(bot, 'reset'),
               )
               if (ok) reset.mutate()
             }}
@@ -185,7 +187,8 @@ function Controls({ bot, onSent }: { bot: Bot; onSent: (msg: string) => void }) 
             disabled={remove.isPending}
             onClick={() => {
               setMenu(false)
-              if (window.confirm(`${bot.name}을(를) 지울까요? 이 봇의 모든 기록도 함께 지워져요. 되돌릴 수 없어요.`)) remove.mutate()
+              if (window.confirm(`${bot.name}을(를) 지울까요? 이 봇의 모든 기록도 함께 지워져요. 되돌릴 수 없어요.${realKeepNote(bot, 'delete')}`))
+                remove.mutate()
             }}
           >
             봇 삭제

@@ -24,6 +24,7 @@ from quant_lab.persistence.models import (
     DailyBarRow,
     DecisionRow,
     LiveBarRow,
+    LiveOrderRow,
     QuoteRow,
     RunRow,
     SimOrderRow,
@@ -108,7 +109,7 @@ class BotStatus:
     data_fetched_at: datetime | None
     data_source: str | None
     live_ratio: Decimal | None = None  # 실제로 따라 사기 비율 (꺼짐이면 None)
-    live_streak: int = 0  # 연속으로 문제없이 체결된 실제 주문
+    has_real_fills: bool = False  # 이 봇이 실제 계좌에서 산(판) 기록이 있다 (끈 뒤에도 남는다)
     pending_command: str | None = None  # Worker가 아직 처리하지 않은 명령 (START 등)
 
 
@@ -286,6 +287,11 @@ def bot_status(session: Session, bot: BotRow) -> BotStatus:
         .order_by(CommandRow.created_at.desc())
         .limit(1)
     ).first()
+    real_fills = session.scalar(
+        select(func.count())
+        .select_from(LiveOrderRow)
+        .where(LiveOrderRow.bot_id == bot.id, LiveOrderRow.filled_qty > 0)
+    )
     return BotStatus(
         id=bot.id,
         name=bot.name,
@@ -309,7 +315,7 @@ def bot_status(session: Session, bot: BotRow) -> BotStatus:
         data_fetched_at=data_fetched,
         data_source=last_bar.source if last_bar else None,
         live_ratio=bot.live_ratio,
-        live_streak=bot.live_streak,
+        has_real_fills=bool(real_fills),
         pending_command=command,
     )
 
