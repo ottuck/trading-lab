@@ -1,6 +1,6 @@
-# Lightsail 서울 서버 1대 (project.md 6절). 비용이 드는 리소스이므로 apply 전에 plan을 확인한다.
+# Lightsail 시드니 서버 1대 (project.md 6절. 계정 제약으로 서울 대신 시드니, 2026-10-08). 비용이 드는 리소스이므로 apply 전에 plan을 확인한다.
 #   cd infra/lightsail && terraform init && terraform plan && terraform apply
-# AWS 자격 증명은 aws configure(프로필) 또는 환경변수로 제공하고 저장소에 넣지 않는다.
+# AWS 자격 증명은 aws login(임시 자격 증명)·프로필·환경변수 중 하나로 제공하고 저장소에 넣지 않는다.
 
 terraform {
   required_version = ">= 1.6"
@@ -18,18 +18,18 @@ provider "aws" {
 
 variable "region" {
   type    = string
-  default = "ap-northeast-2"
+  default = "ap-southeast-2"
 }
 
 variable "availability_zone" {
   type    = string
-  default = "ap-northeast-2a"
+  default = "ap-southeast-2a"
 }
 
 variable "bundle_id" {
   type        = string
-  default     = "small_3_0"
-  description = "2GB RAM 플랜. 확인: aws lightsail get-bundles --region ap-northeast-2"
+  default     = "small_3_2"
+  description = "2GB RAM 플랜. 확인: aws lightsail get-bundles --region ap-southeast-2"
 }
 
 variable "blueprint_id" {
@@ -39,7 +39,7 @@ variable "blueprint_id" {
 
 variable "name" {
   type    = string
-  default = "quant-lab"
+  default = "quant-lab-02"
 }
 
 resource "aws_lightsail_instance" "server" {

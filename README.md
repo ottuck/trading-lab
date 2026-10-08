@@ -151,7 +151,7 @@ flowchart LR
 
 - 공개 인바운드 포트가 없습니다. 화면은 Cloudflare Tunnel(밖으로만 연결)과 Access(본인 이메일만)로 엽니다. 데모는 별도 DB·네트워크라 운영 DB와 Worker에 닿지 않습니다.
 - API와 Worker는 **DB를 통해서만** 대화합니다. 화면의 명령과 승인은 DB에 쌓이고 Worker가 15초 안에 처리합니다. 토스·텔레그램·Claude는 Worker만 부릅니다.
-- 지금은 개발 PC에서 돌리고, 서울 리전 VM(Lightsail, Terraform 준비됨)이나 홈서버로 옮길 수 있게 VM 한 대 구성으로 만들었습니다.
+- 지금은 개발 PC에서 돌리고, 시드니 리전 VM(Lightsail, Terraform 준비됨)이나 홈서버로 옮길 수 있게 VM 한 대 구성으로 만들었습니다.
 
 ```text
 Worker 15초마다
@@ -239,7 +239,7 @@ npm run lint && npm run build
 서버 한 대에서 Docker Compose로 운영(api·worker·db·cloudflared)과 데모를 함께 띄웁니다. 단계별 절차는 [project.md 6절](docs/project.md).
 
 ```bash
-cd infra/lightsail && terraform apply   # (서버를 옮길 때) 서울 VM·고정 IP·자동 스냅샷
+cd infra/lightsail && terraform apply   # (서버를 옮길 때) 시드니 VM·고정 IP·자동 스냅샷
 sudo bash deploy/bootstrap.sh           # 새 서버에서 한 번
 bash deploy/deploy.sh                   # 운영 (main 기준, 마이그레이션 성공해야 api·worker가 뜸)
 bash deploy/deploy.sh demo              # 데모 (수동)
