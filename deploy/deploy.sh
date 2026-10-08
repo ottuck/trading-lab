@@ -39,6 +39,8 @@ case "$target" in
   prod)
     $prod up -d --remove-orphans
     $prod ps
+    # 안 쓰는 옛 이미지를 지운다 (하루 안에 받은 것은 남김). 롤백은 GHCR에서 다시 받으면 된다.
+    docker image prune -af --filter "until=24h" > /dev/null || true
     ;;
   demo)
     # 운영과 같은 이미지를 데모 모드로 띄운다. 데모 전용 비밀값이 있어야 한다.
