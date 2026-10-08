@@ -82,7 +82,7 @@ function Switcher({ bots, current, creating }: { bots: Bot[]; current?: Bot; cre
               else location.hash = 'me'
             }}
           >
-            {me ? '나 카피 봇 질문 다시 하기' : '나 카피하기'}
+            {me ? '나 다시 카피하기' : '나 카피하기'}
           </button>
         </div>
       )}
@@ -560,7 +560,7 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
             ))}
           </ul>
           <div className="controls">
-            <button onClick={() => startMeEdit(bot.id)}>질문 다시 하기</button>
+            <button onClick={() => startMeEdit(bot.id)}>다시 카피하기</button>
             <span className="faint small">또는 아래에서 바로 고칠 수 있어요</span>
           </div>
           <StrategyFields draft={draft} onChange={setDraft} />

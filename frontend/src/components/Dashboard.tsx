@@ -488,10 +488,10 @@ function Facts({ bot }: { bot: Bot }) {
       </div>
       <div className="fact">
         <div className="label">
-          <Term k="평가 손익" />
+          <Term k="평가 손익">아직 안 판 주식의 손익</Term>
         </div>
         <div className={`value ${tone(unrealized)}`}>{holding ? signedMoney(unrealized) : '—'}</div>
-        <div className="sub">{holding ? '팔기 전 손익' : '들고 있는 주식 없음'}</div>
+        <div className="sub">{holding ? '산 가격과 지금 가격의 차이' : '들고 있는 주식 없음'}</div>
       </div>
       {accumulates ? (
         // 모으기 봇은 팔지 않으므로 확정 손익 대신 넣은 돈과 입금 일정을 보여준다.
@@ -507,10 +507,10 @@ function Facts({ bot }: { bot: Bot }) {
       ) : (
         <div className="fact">
           <div className="label">
-            <Term k="확정 손익" />
+            <Term k="확정 손익">이미 판 주식의 손익</Term>
           </div>
           <div className={`value ${tone(a.realized_pnl)}`}>{signedMoney(a.realized_pnl)}</div>
-          <div className="sub">판 주식에서</div>
+          <div className="sub">팔아서 확정된 손익</div>
         </div>
       )}
     </div>
@@ -905,7 +905,7 @@ function BotSide({ bots, current, onPick }: { bots: Bot[]; current?: Bot; onPick
         <div className="bot-list-head">
           나 카피 봇
           <button className="link" onClick={() => (mine.length && !demo ? startMeEdit(mine[0].id) : goTo('me'))}>
-            {mine.length && !demo ? '질문 다시 하기' : '나 카피하기'}
+            {mine.length && !demo ? '다시 카피하기' : '나 카피하기'}
           </button>
         </div>
         {mine.length ? mine.map(row) : <div className="bot-list-empty">아직 없어요</div>}
@@ -1017,7 +1017,7 @@ function MeHero({ bot }: { bot: Bot }) {
   )
 }
 
-/** 월간 정리: "9월에 나 카피 봇은 사지 않고 모아 뒀어요. 고점에도 안 쉬는 나는 $1,350어치 샀어요." */
+/** 월간 정리: "9월에 나 카피 봇은 사지 않고 모아 뒀어요. 고점에도 안 쉬는 나는 $1,000어치 샀어요." */
 function MonthDigest({ bot }: { bot: Bot }) {
   const { data } = useQuery({ queryKey: parallelKey(bot), queryFn: () => botApi.parallel(bot.id), staleTime: 10 * 60_000, retry: false })
   const worlds = data?.worlds ?? []
@@ -1116,7 +1116,7 @@ function MePreview() {
             <div className="small rise">넣은 돈보다 +12.1%</div>
           </div>
         </div>
-        <p className="me-preview-digest">9월에 나 카피 봇은 사지 않고 모아 뒀어요. 고점에도 안 쉬는 나는 $1,350어치 샀어요.</p>
+        <p className="me-preview-digest">9월에 나 카피 봇은 사지 않고 모아 뒀어요. 고점에도 안 쉬는 나는 $1,000어치 샀어요.</p>
         <svg className="me-preview-chart" viewBox="0 0 600 120" preserveAspectRatio="none">
           <path d="M0 112 C80 104 140 92 200 84 S300 76 340 58 S440 40 480 30 S560 14 600 8" fill="none" stroke="var(--accent)" strokeWidth="2" />
           <path d="M0 114 C80 106 140 96 200 88 S300 82 340 66 S440 48 480 36 S560 22 600 16" fill="none" stroke="var(--text)" strokeWidth="2" />

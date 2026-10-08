@@ -136,7 +136,7 @@ function Result({
       goTo('dashboard')
     },
   })
-  // 질문 다시 하기: 같은 나 카피 봇의 규칙(과 종목)을 바꾼다. 다음 판단부터 적용된다.
+  // 다시 카피하기: 같은 나 카피 봇의 규칙(과 종목)을 바꾼다. 다음 판단부터 적용된다.
   const change = useMutation({
     mutationFn: async (bot: Bot) => {
       await botApi.updateConfig(bot.id, { ...toConfig(toDraft(bot), bot), params })

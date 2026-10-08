@@ -213,7 +213,7 @@ uv run python -m quant_lab.cli sync-bars QQQ VOO                                
 uv run python -m quant_lab.cli backtest QQQ --params fast=50,slow=200 --save    # 백테스트
 uv run python -m quant_lab.cli bot create qqq-sma QQQ --params fast=50,slow=200 # DRY RUN 봇
 uv run python -m quant_lab.cli bot cmd <봇 ID> START                            # START·PAUSE·STOP·RUN_ONCE
-uv run python -m quant_lab.cli bot create-ai "AI 봇"                            # AI 봇 (관심 10종목, 월 $675·25일)
+uv run python -m quant_lab.cli bot create-ai "AI 봇"                            # AI 봇 (관심 10종목, 월 $1,000·25일)
 uv run python -m quant_lab.cli ai-judge QQQ VOO GLD --show                      # AI에 넘길 입력 보기 (--show 빼면 실제로 1번 판단, 비용 듦)
 uv run python -m quant_lab.cli replay QQQ --start 2024-01-02 --end 2026-09-30   # 정기 평가 재생 vs 백테스트
 uv run python -m quant_lab.cli notify chat-id                                   # 텔레그램 채팅 ID 확인 (봇에게 먼저 메시지)
