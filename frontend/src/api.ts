@@ -171,7 +171,14 @@ export type Live = {
   per_month: Money
   per_trade: Money // 사고팔기 봇 한 건 한도
   ratios: string[]
-  bought_this_month: Money // 이번 달 실제로 산(체결된) 금액
+  // 봇이 낸 실제 주문의 장부 (체결 기준, 수수료 제외 어림값)
+  bought_this_month: Money // 이번 달 산 금액
+  sold_this_month: Money // 이번 달 판 금액
+  sold_total: Money // 지금까지 판 금액 (0이면 팔아 본 적 없음)
+  realized_this_month: Money // 이번 달 팔아서 확정된 손익
+  realized_total: Money // 지금까지 확정 손익
+  held_cost: Money // 봇이 산 채로 들고 있는 주식의 원가
+  held_value: Money // 그 주식의 지금 값
   shortfall: { symbol: string; held: Money; bought: Money }[] // 실제 계좌 대조: 봇이 산 것보다 적은 종목
   checked_at: string | null
   orders: LiveOrder[]
