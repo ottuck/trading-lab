@@ -55,12 +55,12 @@
 
 ## 4. 아키텍처
 
-서울 리전 VM 한 대에서 Docker Compose로 DB·API·Worker를 실행한다. 공개 인바운드 포트는 없고, 화면과 SSH 접근은 모두 Tailscale로만 한다.
+시드니 리전 VM 한 대에서 Docker Compose로 DB·API·Worker를 실행한다. 공개 인바운드 포트는 없고, 화면과 SSH 접근은 모두 Tailscale로만 한다.
 
 ```mermaid
 flowchart LR
     ME[본인 브라우저·폰] -->|Tailscale · HTTPS| TS[tailscale serve]
-    subgraph VM[Lightsail 서울 · 고정 IP]
+    subgraph VM[Lightsail 시드니 · 고정 IP]
         TS --> API[api: FastAPI + React 정적 파일]
         API <--> DB[(db: PostgreSQL)]
         WORKER[worker: 수집·평가·모의체결] <--> DB
@@ -191,8 +191,8 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 
 | 항목 | 선택 |
 | --- | --- |
-| 서버 | AWS Lightsail **서울(ap-northeast-2), 2GB RAM / 2 vCPU**, Ubuntu 24.04 LTS |
-| 비용 | 약 $12/월 (공인 IPv4 포함 번들. 생성 시 서울 리전 가격 확인). Tailscale·GitHub 비공개 저장소는 무료 |
+| 서버 | AWS Lightsail **시드니(ap-southeast-2), 2GB RAM / 2 vCPU**, Ubuntu 24.04 LTS. **리전 결정 (2026-10-08, 사용자):** 서울이 아니라 시드니로 간다. 사용자의 AWS 계정은 기존 방식(루트·IAM 사용자 로그인)이 안 돼 새 가입 방식 "Sign up for AWS (new)"(2026-09 출시, 콘솔에 `assumed-role/AccountFullAccessRole`로 보임, CLI는 `aws login`)만 쓴다. 이 방식은 프로젝트 하나가 AWS 계정 하나이고, **연락처 주소의 국가로 리전이 정해진다: 한국·일본 등 아시아 태평양은 시드니(`ap-southeast-2`), 미국은 오하이오, 유럽은 스톡홀름만** 되며 주소를 바꿔도 리전은 안 바뀐다 ([AWS Regions for your projects](https://docs.aws.amazon.com/accounts/latest/reference/project-regions.html)). 서울 등 다른 리전은 "고급 기능 활성화"(무료, 되돌릴 수 없음, 유료 플랜 필요)나 기존 방식 가입으로만 쓸 수 있고, 시드니의 리소스는 자동으로 옮겨지지 않는다 ([Activate advanced AWS features](https://docs.aws.amazon.com/accounts/latest/reference/activate-advanced-features.html)). Lightsail·EC2·IAM·CloudFormation은 새 방식에서 지원된다 ([지원 서비스](https://docs.aws.amazon.com/accounts/latest/reference/supported-services-sign-up-new.html)). 토스까지 지연이 늘지만(서울 약 5ms → 시드니 약 150ms) 하루 한 번 판단하는 구조라 동작에는 영향이 없다. **무료 플랜 주의:** 무료 플랜은 가입 후 최대 6개월 또는 크레딧($100~200)이 다 닳을 때까지만이고, 끝나면 유예(약 90일) 뒤 계정이 닫혀 자원이 지워진다. 24시간 도는 Worker가 있으므로 **유료 플랜으로 올려 두어야 한다.** 과거 AWS 계정이 있으면 무료 크레딧 대상이 아닐 수 있다 (가입 화면에서 확인). 유료 플랜의 프로젝트별 월 지출 한도(최소 월 $20)는 넘으면 **프로젝트를 멈춘다(Worker도 멈춤)**. 한도는 예상 비용(Lightsail 약 $12 + 스냅샷)보다 넉넉히($30 이상) 잡는다. 고급 기능을 활성화하면 이 지출 한도는 사라진다 |
+| 비용 | 약 $12/월 (공인 IPv4 포함 번들. 시드니 가격은 서울과 조금 다를 수 있어 생성 시 확인). Tailscale·GitHub 비공개 저장소는 무료 |
 | 고정 IP | Lightsail Static IP를 붙이고 그 IP를 토스 허용 IP에 등록 |
 | 방화벽 | 처음엔 Lightsail 콘솔 브라우저 SSH(22번, 콘솔 대역만)만 허용. Tailscale SSH가 동작하면 인바운드 전부 차단 |
 | 비밀값 | **저장소 안 `.secrets/`** (`.gitignore`·`.dockerignore`로 제외, 로컬·서버 같은 위치): `env`(DB 비밀번호·`DATABASE_URL`, 부트스트랩이 생성)와 `worker.env`(토스 키·`TOSS_ACCOUNT_ENABLED`·`LIVE_TRADING`·Claude 키 `ANTHROPIC_API_KEY`·텔레그램·`HEARTBEAT_PING_URL`, **worker 컨테이너에만** 주입). 둘 다 권한 600. 개발용 실행은 루트 `.env`를 쓴다. **토스 키 만료 2027-09-28** (발급 2026-09-28, 1년). 만료 전 WTS에서 재발급하고 `worker.env` 교체 |
@@ -218,8 +218,8 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 
 | 단계 | 누가 | 작업 |
 | --- | --- | --- |
-| 1. AWS 자격 증명 | 사용자 | IAM 사용자(Lightsail 권한만)의 액세스 키를 만들고 개발 PC에서 `aws configure`로 입력 (키는 Claude·저장소에 넘기지 않음) |
-| 2. 서버 생성 | 사용자 실행 | `cd infra/lightsail && terraform init && terraform plan && terraform apply` → 인스턴스(서울 2GB, Ubuntu 24.04), Static IP, 자동 스냅샷, 방화벽(브라우저 SSH만). 출력된 `static_ip`를 메모 |
+| 1. AWS 자격 증명 | 사용자 | 개발 PC에서 `aws login`(AWS CLI 2.32 이상, 브라우저 로그인으로 12시간짜리 임시 자격 증명, 액세스 키를 만들지 않는다)을 실행하고 리전은 `ap-southeast-2`로 둔다. 키·토큰은 Claude·저장소에 넘기지 않는다. Terraform이 이 자격 증명을 읽는지는 `terraform plan`으로 확인하고, 안 되면 `aws configure export-credentials --format env`로 환경변수를 내보낸다 |
+| 2. 서버 생성 | 사용자 실행 | `cd infra/lightsail && terraform init && terraform plan && terraform apply` → 인스턴스(시드니 2GB, Ubuntu 24.04), Static IP, 자동 스냅샷, 방화벽(브라우저 SSH만). 출력된 `static_ip`를 메모 |
 | 3. 토스 허용 IP | 사용자 | WTS > 설정 > Open API > 허용 IP에 `static_ip` 추가 |
 | 4. Tailscale 먼저 | 사용자 | Lightsail 콘솔의 브라우저 SSH에서 `curl -fsSL https://tailscale.com/install.sh \| sh && sudo tailscale up --ssh --hostname quant-lab` → 링크로 로그인. 개발 PC에도 Tailscale 설치·로그인 |
 | 5. 원격 작업 | Claude (개발 PC → `tailscale ssh ubuntu@quant-lab`) | deploy key 생성 → `gh repo deploy-key add`(읽기 전용) → `git clone` → `sudo bash deploy/bootstrap.sh` → `sudo tailscale serve --bg 8000` |
@@ -285,6 +285,8 @@ npm --prefix frontend run dev
 (구현 후 사용할 명령이다. 현재 코드는 없다.)
 
 ### 이전 계획 (Lightsail → OCI / 홈서버)
+
+- **서울로 옮기고 싶어지면** (계정 제약이 풀렸을 때) 같은 절차로 `region`·`availability_zone`·`bundle_id`만 바꿔 새로 만든다. 송신 IP가 바뀌므로 아래 순서를 따른다.
 
 - 서버에 의존하는 것은 Compose 파일, env 파일, DB 덤프뿐이므로 새 서버에서 `pg_restore` 후 같은 Compose를 실행하면 된다.
 - **송신 IP가 바뀐다.** 허용 IP는 여러 개 등록할 수 있으므로 새 IP를 먼저 추가하고, 구 서버 Worker를 멈춘 뒤 새 Worker를 시작하고, 마지막에 구 IP를 지운다. Worker를 두 곳에서 동시에 돌리지 않는다 (토큰 경합).

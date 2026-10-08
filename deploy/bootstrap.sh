@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 새 Ubuntu 24.04 서버(Lightsail 서울 2GB 기준)를 Quant Lab 운영용으로 준비한다. 한 번만 실행한다.
+# 새 Ubuntu 24.04 서버(Lightsail 시드니 2GB 기준)를 Quant Lab 운영용으로 준비한다. 한 번만 실행한다.
 #   sudo bash deploy/bootstrap.sh
 # 끝나면 화면에 남은 수동 단계(Tailscale 로그인, 토스 키 입력, 허용 IP 등록)를 출력한다.
 set -euo pipefail
