@@ -10,7 +10,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from quant_lab.application.backtesting import backtest_symbol
-from quant_lab.application.bots import check_strategy, check_weights, require_bot
+from quant_lab.application.bots import check_cash, check_strategy, check_weights, require_bot
 from quant_lab.application.errors import Invalid
 from quant_lab.application.parallel import World, parallel_worlds
 from quant_lab.application.plan import Plan, follow_plan
@@ -39,6 +39,7 @@ def run_backtest(
 ) -> uuid.UUID:
     """일봉 백테스트를 계산해 저장하고 id를 돌려준다. keep_latest면 최근 것만 남긴다 (공개 데모)."""
     chosen = check_strategy(strategy, params)
+    check_cash(initial_cash)
     weights = check_weights(symbol, symbols, chosen)
     plan = deposit_plan(chosen)
     # 모으기 전략은 첫 달 입금액으로 시작한다 ("월급부터 모았다면").

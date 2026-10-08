@@ -102,7 +102,9 @@ def run(stop: threading.Event) -> None:
                 "LIVE_TRADING=true 인데 토스 연결(WORKER_MARKET_SOURCE=toss)이 없습니다"
             )
         trader = TossTrader(market.broker)
-        log.warning("실거래 스위치 켜짐: 승인했거나 자동인 실제 주문을 냅니다")
+        log.warning(
+            "실거래 스위치 켜짐: 한도 안의 실제 주문은 자동으로, 넘는 주문은 승인 뒤에 냅니다"
+        )
     desk = LiveDesk(make_session, trader, get_calendar())
     desk.announce(datetime.now(UTC))
     worker = Worker(

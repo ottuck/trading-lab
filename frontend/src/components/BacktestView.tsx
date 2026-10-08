@@ -3,7 +3,7 @@ import { ColorType, createChart, LineSeries, type Time } from 'lightweight-chart
 import { useEffect, useRef, useState } from 'react'
 import { api, backtestApi, type BacktestDetail, type BacktestSummary, type StrategyInfo, type SymbolWeight } from '../api'
 import { useCurrency } from '../currency'
-import { money, percent, roundMoney, setAmount, shares, signedMoney, tone } from '../format'
+import { MAX_CASH, money, percent, roundMoney, setAmount, shares, signedMoney, tone } from '../format'
 import { isAiBot, isMeBot, useStrategies } from '../strategies'
 import { useDemo, usePriceWord } from '../demo'
 import { cssVar, useTheme } from '../theme'
@@ -220,13 +220,13 @@ function RunForm({
         {info && !info.accumulates && (
           <div className="controls">
             <span className="label">처음 넣는 돈</span>
-            <AmountInput value={cash} onChange={setCash} placeholder="예: 10000" label="처음 넣는 돈" />
+            <AmountInput value={cash} onChange={setCash} placeholder="예: 10000" label="처음 넣는 돈" max={MAX_CASH} />
           </div>
         )}
         <div className="controls">
           <button
             className="primary"
-            disabled={run.isPending || !list.length || (multi && total !== 100) || (!info?.accumulates && !Number(cash))}
+            disabled={run.isPending || !list.length || (multi && total !== 100) || (!info?.accumulates && (!Number(cash) || Number(cash) > MAX_CASH))}
             onClick={() => run.mutate()}
           >
             {run.isPending

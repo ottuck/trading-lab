@@ -110,7 +110,6 @@ class BotRow(Base):
     # 실제로 따라 사기 (실거래 R2). 비율이 없으면 꺼짐. 켠 시각 이후의 모의 매수만 따라 산다.
     live_ratio: Mapped[Decimal | None] = mapped_column(PRICE)
     live_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    live_streak: Mapped[int] = mapped_column(Integer, server_default="0")  # 연속 문제없는 체결
 
 
 class BotAccountRow(Base):

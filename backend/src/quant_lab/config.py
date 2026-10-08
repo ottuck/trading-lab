@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     toss_account_enabled: bool = False
 
     # 실거래 스위치 (실거래 R2). 켜야만 Worker가 주문 어댑터를 만들고 실제 주문을 낸다.
-    # 봇마다 "실제로 따라 사기"도 켜야 하고, 처음 몇 번은 화면에서 승인해야 나간다.
+    # 봇마다 "실제로 따라 사기"도 켜야 하고, 한도를 넘는 주문은 화면에서 승인해야 나간다.
     live_trading: bool = False
 
     # AI 봇 (마일스톤 4). Claude API 키는 Worker만 쓴다. 없으면 AI 봇은 판단하지 않는다.

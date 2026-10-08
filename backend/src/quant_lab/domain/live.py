@@ -12,13 +12,12 @@ from enum import StrEnum
 CENT = Decimal("0.01")
 
 # 화면에서 고르는 비율 (프리셋). 값은 실제 주문 금액 = 모의 매수 금액 × 비율.
-# 1/10은 지원하지 않는다 (2026-10-06 사용자 결정: 1/100로만 운영). 화면은 이유를 보여준다.
+# 비율은 1/100 하나만 쓴다 (2026-10-06 사용자 결정). 1/10 버튼은 2026-10-08에 없앴다.
 RATIOS: dict[str, Decimal] = {"1/100": Decimal("0.01")}
 
 # 실제로 사고팔 수 있는 레버리지 ETF (2026-10-06 사용자 결정). 그 밖의 레버리지 상품은 넘긴다.
 LEVERAGED_ALLOWED = frozenset({"QLD", "TQQQ"})
 
-AUTO_AFTER = 3  # 승인한 주문이 이만큼 연속으로 문제없이 체결되면 그다음부터 자동으로 낸다
 MIN_AMOUNT = Decimal("1")  # 이보다 작은 몫은 모아 두었다가 넘으면 함께 산다 (소수점 금액 주문 최소)
 SEND_DELAY_MINUTES = 5  # 주문 접수 시간이 열리고 이만큼 뒤에 낸다 (장 시작 직후 가격 흔들림 피하기)
 
@@ -70,13 +69,14 @@ def scaled_amount(budget: Decimal, ratio: Decimal) -> Decimal:
 def needs_approval(
     amount: Decimal,
     month_total: Decimal,
-    streak: int,
     limits: LiveLimits,
     *,
     trading: bool = False,
+    blocked: bool = False,
 ) -> bool:
-    """처음 AUTO_AFTER번은 늘 묻고, 한도를 넘는 사기 주문은 자동 단계에서도 묻는다.
+    """한도를 넘는 사기 주문과, 실제 계좌가 봇 기록과 맞지 않는 동안(blocked)의 주문만 묻는다.
 
+    한도 안의 주문은 묻지 않고 바로 낸다 (처음 몇 번 승인받는 단계는 2026-10-08에 없앴다).
     month_total은 이번 달에 이미 내기로 한(승인·보냄·체결) 사기 금액이다.
     trading이면 사고팔기 봇: 드물게 현금 전부로 사므로 한 건 한도(per_trade)만 본다.
     """
@@ -84,7 +84,7 @@ def needs_approval(
         over = amount > limits.per_trade
     else:
         over = amount > limits.per_order or month_total + amount > limits.per_month
-    return streak < AUTO_AFTER or over
+    return blocked or over
 
 
 QTY = Decimal("0.000001")  # 소수점 수량 최소 단위 (6자리)

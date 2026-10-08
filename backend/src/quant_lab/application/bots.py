@@ -67,6 +67,14 @@ def check_name(name: str) -> str:
     return name
 
 
+MAX_CASH = Decimal(1_000_000)  # 시작 금액 상한 (달러)
+
+
+def check_cash(initial_cash: Decimal | None) -> None:
+    if initial_cash is not None and not 0 < initial_cash <= MAX_CASH:
+        raise Invalid(f"시작 금액은 $1~${MAX_CASH:,.0f} 사이로 정해 주세요")
+
+
 def check_limits(settings: BotSettings) -> None:
     """최대 투자 금액이 0 이하면 봇이 아예 사지 못한다. 없애려면 비워 둔다 (가진 현금 전부)."""
     for value in (settings.max_position_value, settings.max_order_value):
@@ -156,6 +164,7 @@ def create(
     """request는 만든 기록에 남길 원래 요청 (설정 변경 이력의 '처음 값')."""
     strategy = check_strategy(settings.strategy, settings.params)
     check_limits(settings)
+    check_cash(initial_cash)
     name = check_name(name)
     if _name_taken(session, name):
         raise Conflict(f"같은 이름의 봇이 있습니다: {name}")

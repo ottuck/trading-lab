@@ -7,7 +7,7 @@ import { sourceLabel } from '../source'
 
 /* 실제로 따라 사기 (실거래 R2). 실제 계좌 금액은 원화로 바꿔 보지 않고 늘 달러로 보여준다. */
 
-/** 홈 맨 위: 승인을 기다리는 실제 주문. 처음 몇 번과 한도를 넘는 주문은 사람이 눌러야 나간다. */
+/** 홈 맨 위: 승인을 기다리는 실제 주문. 한도를 넘는 주문은 사람이 눌러야 나간다. */
 export function LiveApprovals() {
   const qc = useQueryClient()
   const { data } = useLive()
@@ -94,10 +94,7 @@ export function AccountCard() {
   const { data: live } = useLive()
   const hidden = useBalanceHidden()
   if (!account?.fetched_at) return null
-  const month = account.fetched_at.slice(0, 7) // 마지막으로 읽은 달 (렌더 중 Date를 부르지 않는다)
-  const bought = (live?.orders ?? [])
-    .filter((o) => o.state === 'FILLED' && o.updated_at.slice(0, 7) === month)
-    .reduce((sum, o) => sum + Number(o.filled_amount ?? o.amount), 0)
+  const bought = Number(live?.bought_this_month ?? 0) // 서버가 이번 달 산(체결된) 금액을 모두 더한다
   const waiting = (live?.orders ?? []).filter((o) => o.state === 'WAITING_APPROVAL').length
   // 가릴 때는 숫자 자리를 같은 높이의 둥근 막대로 바꿔 레이아웃이 흔들리지 않게 한다.
   const amount = (text: string, width: string) =>

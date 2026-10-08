@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useSyncExternalStore } from 'react'
-import { liveApi, type LiveOrder } from './api'
+import { liveApi, type Bot, type LiveOrder } from './api'
 import { useDemo } from './demo'
 
 /* 실제로 따라 사기 (실거래 R2) 조회와 표시 문구. 데모에는 실거래가 없어 묻지 않는다. */
@@ -8,6 +8,19 @@ import { useDemo } from './demo'
 export function useLive() {
   const demo = useDemo()
   return useQuery({ queryKey: ['live'], queryFn: liveApi.get, refetchInterval: 30_000, enabled: !demo })
+}
+
+/** 봇을 지우거나 다시 시작해도 실제 계좌의 주식은 그대로다. 실제로 산 기록이 있는 봇에만 알린다. */
+export function realKeepNote(bot: Bot, action: 'reset' | 'delete'): string {
+  if (bot.live_ratio == null && !bot.has_real_fills) return ''
+  if (action === 'delete') {
+    const live = bot.live_ratio != null ? ' 실제로 따라 하기도 함께 끝나요.' : ''
+    return `\n\n이 봇이 이미 실제 계좌에서 산 주식은 지워도 그대로 남아요 (자동으로 팔리지 않아요). 팔려면 증권사 앱에서 직접 팔아야 해요.${live}`
+  }
+  // 다시 시작하면 첫 판단의 매수도 새 모의 주문이라, 따라 하는 중이면 실제로도 새로 산다
+  const again =
+    bot.live_ratio != null ? '\n실제로 따라 하는 중이라, 다시 시작한 뒤 첫 판단의 매수도 실제 계좌에서 새로 사요 (시작 금액의 1/100 안팎).' : ''
+  return `\n\n이 봇이 이미 실제 계좌에서 산 주식은 그대로 남아요.${again}`
 }
 
 const STATE: Record<LiveOrder['state'], string> = {

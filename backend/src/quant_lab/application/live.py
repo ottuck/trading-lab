@@ -28,7 +28,6 @@ from quant_lab.domain.broker import (
     BrokerError,
     OrderRejected,
     OrderStatus,
-    RejectReason,
     SellOrder,
     Trader,
 )
@@ -247,11 +246,11 @@ class LiveDesk:
             session.flush()
             for c in carried:
                 c.carried_into, c.updated_at = order.id, now
-        # 실제 계좌가 봇 기록과 맞지 않는 동안은 늘 승인을 받는다. 파는 주문은 한도를 보지 않는다.
-        streak = 0 if shortfall else bot.live_streak
+        # 한도를 넘거나 실제 계좌가 봇 기록과 맞지 않는 동안은 사람에게 묻는다.
+        # 파는 주문은 한도를 보지 않는다.
         month = Decimal(0) if sell else self._month_total(session, bot.id, order.trade_date)
         amount = Decimal(0) if sell else order.amount
-        if needs_approval(amount, month, streak, self.limits, trading=trading):
+        if needs_approval(amount, month, self.limits, trading=trading, blocked=shortfall):
             order.state = LiveState.WAITING_APPROVAL
             return order, False
         return order, True
@@ -409,8 +408,6 @@ class LiveDesk:
                 broker_id = self.trader.place_amount_buy(buy)
         except OrderRejected as exc:
             order.state, order.reason, order.note = LiveState.REJECTED, exc.reason, str(exc)
-            if exc.reason != RejectReason.INSUFFICIENT_FUNDS:  # 돈 부족은 고장이 아니다
-                self._reset_streak(session, order)
             order.updated_at = now
             live_event(session, now, order, "WARN")
             session.commit()
@@ -450,7 +447,6 @@ class LiveDesk:
         else:
             order.state = LiveState.UNKNOWN
             order.note = f"주문 조회로 {len(matches)}건을 찾음"
-            self._reset_streak(session, order)
             live_event(session, now, order, "WARN")
         order.updated_at = now
         session.commit()
@@ -461,13 +457,6 @@ class LiveDesk:
         level = "WARN" if reason in warn else "INFO"
         live_event(session, now, order, level)
         session.commit()
-
-    @staticmethod
-    def _reset_streak(session: Session, order: LiveOrderRow) -> None:
-        """문제가 생기면 그 봇은 다시 승인부터 (자동 끄기)."""
-        bot = session.get(BotRow, order.bot_id) if order.bot_id else None
-        if bot is not None:
-            bot.live_streak = 0
 
     # --- 3) 체결 확인 ---
 
@@ -496,9 +485,6 @@ class LiveDesk:
                 order.updated_at = now
                 if found.status == OrderStatus.FILLED:
                     order.state = LiveState.FILLED
-                    bot = session.get(BotRow, order.bot_id) if order.bot_id else None
-                    if bot is not None:
-                        bot.live_streak += 1
                     live_event(session, now, order)
                 else:
                     order.state = (
@@ -506,7 +492,6 @@ class LiveDesk:
                         if found.status == OrderStatus.CANCELED
                         else LiveState.REJECTED
                     )
-                    self._reset_streak(session, order)
                     live_event(session, now, order, "WARN")
                 session.commit()
                 self._checked_at.pop(order_id, None)
@@ -518,8 +503,8 @@ SETTLE = timedelta(minutes=10)  # 체결 직후 계좌 보유에 아직 안 보�
 def check_holdings(session: Session, snap: AccountSnapshot, now: datetime) -> None:
     """실제 계좌 대조: 종목마다 계좌 보유 ≥ 봇이 실제로 산(체결된) 수량 합계인지 본다.
 
-    Worker가 계좌를 읽을 때마다(한 시간마다) 부른다. 결과가 바뀔 때만 알리고, 부족이 생기면
-    따라 사기를 하는 모든 봇을 다시 승인 단계로 돌린다 (부족이 풀릴 때까지 자동으로 내지 않는다).
+    Worker가 계좌를 읽을 때마다(한 시간마다) 부른다. 결과가 바뀔 때만 알린다. 부족이 있는 동안에는
+    새 실제 주문을 모두 승인을 받고 낸다 (LiveDesk.plan이 이 기록을 본다).
     """
     rows = session.execute(
         select(LiveOrderRow.symbol, func.sum(SIGNED_QTY))
@@ -539,9 +524,6 @@ def check_holdings(session: Session, snap: AccountSnapshot, now: datetime) -> No
     row = control(session, now)
     before = [i["symbol"] for i in row.shortfall or []]
     if [i["symbol"] for i in items] != before:
-        if items:
-            for bot in session.scalars(select(BotRow).where(BotRow.live_ratio.is_not(None))):
-                bot.live_streak = 0
         add_event(
             session,
             now,

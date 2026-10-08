@@ -7,8 +7,9 @@
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from quant_lab.application.bots import require_bot
@@ -20,11 +21,12 @@ from quant_lab.domain.events import (
     EventKind,
     LiveControlData,
 )
-from quant_lab.domain.live import AUTO_AFTER, RATIOS, LiveLimits, LiveState, SkipReason
+from quant_lab.domain.live import RATIOS, LiveLimits, LiveState, SkipReason
 from quant_lab.persistence.bots import add_event, drop_unsent_live_orders
 from quant_lab.persistence.models import BotRow, LiveControlRow, LiveOrderRow
 
 RECENT = 20
+KST = ZoneInfo("Asia/Seoul")
 
 
 @dataclass(frozen=True)
@@ -51,11 +53,13 @@ class LiveOrderInfo:
 class LiveOverview:
     trader: str | None  # 실거래 스위치가 켜졌으면 증권사 출처 코드
     halted: bool
-    auto_after: int
     per_order: Decimal
     per_month: Decimal
     per_trade: Decimal  # 사고팔기 봇 한 건 한도
-    ratios: list[str]  # 고를 수 있는 비율 이름 (1/100, 1/10)
+    ratios: list[str]  # 고를 수 있는 비율 이름 (1/100)
+    bought_this_month: (
+        Decimal  # 이번 달 실제로 산(체결된) 금액. 최근 주문 목록과 별개로 모두 더한다
+    )
     shortfall: list[dict[str, str]]  # 실제 계좌 대조: 보유가 봇이 산 수량보다 적은 종목
     checked_at: datetime | None  # 마지막 대조 시각
     orders: list[LiveOrderInfo]  # 최근 실제 주문 (승인 기다림이 먼저)
@@ -69,14 +73,23 @@ def overview(session: Session) -> LiveOverview:
     )
     rows.sort(key=lambda o: o.state != LiveState.WAITING_APPROVAL)  # 승인 기다림을 맨 앞에
     limits = LiveLimits()
+    month_start = datetime.now(KST).date().replace(day=1)
+    paid = func.coalesce(LiveOrderRow.filled_amount, LiveOrderRow.amount)
+    bought = session.scalar(
+        select(func.coalesce(func.sum(paid), 0)).where(
+            LiveOrderRow.side == "BUY",
+            LiveOrderRow.state == LiveState.FILLED,
+            LiveOrderRow.trade_date >= month_start,
+        )
+    )
     return LiveOverview(
         trader=row.trader if row else None,
         halted=bool(row and row.halted),
-        auto_after=AUTO_AFTER,
         per_order=limits.per_order,
         per_month=limits.per_month,
         per_trade=limits.per_trade,
         ratios=list(RATIOS),
+        bought_this_month=Decimal(bought or 0),
         shortfall=list(row.shortfall or []) if row else [],
         checked_at=row.checked_at if row else None,
         orders=[
@@ -104,16 +117,13 @@ def overview(session: Session) -> LiveOverview:
 
 
 def set_bot_ratio(session: Session, bot_id: int, ratio: str | None, now: datetime) -> BotRow:
-    """따라 하기 비율을 켜고(1/100) 끈다(None). 켜면 처음 몇 번은 다시 승인을 받는다.
+    """따라 하기 비율을 켜고(1/100) 끈다(None). 켜면 그때부터의 새 모의 주문만 따라 한다.
 
     모으기 봇은 매달 사기만, 사고팔기 봇은 사고팔기를 따라 한다 (실거래 R3, 2026-10-06).
     """
     bot = require_bot(session, bot_id, for_update=True)
     if ratio is not None and ratio not in RATIOS:
-        raise Invalid(
-            "1/10은 아직 지원하지 않아요. 실제 돈은 1/100로만 따라 해요 "
-            "(한 달 약 $7, 사고팔기 봇은 한 번에 $100 안팎)."
-        )
+        raise Invalid("실제 돈은 1/100로만 따라 해요.")
     value = RATIOS[ratio] if ratio else None
     if value == bot.live_ratio:
         return bot
@@ -121,7 +131,7 @@ def set_bot_ratio(session: Session, bot_id: int, ratio: str | None, now: datetim
     if value is None:
         drop_unsent_live_orders(session, bot.id, now)
     else:
-        bot.live_since, bot.live_streak = now, 0
+        bot.live_since = now
     bot.live_ratio, bot.updated_at = value, now
     add_event(
         session,

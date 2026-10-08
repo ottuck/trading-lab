@@ -48,6 +48,9 @@ def month_key(d: date) -> str:
     return f"{d.year:04d}-{d.month:02d}"
 
 
+MAX_DEPOSIT = 100_000  # 매달 넣는 돈 상한 (달러). 한 자리 더 친 오타를 입력 단계에서 막는다
+
+
 def deposit_plan(strategy: object) -> DepositPlan | None:
     """정기 입금을 하는 전략이면 그 계획, 아니면 None."""
     plan = getattr(strategy, "deposit_plan", None)
@@ -284,8 +287,8 @@ class DipSaver:
     name: ClassVar[str] = "dip_saver"
 
     def __post_init__(self) -> None:
-        if self.deposit <= 0 or not 1 <= self.day <= 28:
-            raise ValueError("deposit은 양수, day는 1~28이어야 합니다")
+        if not 0 < self.deposit <= MAX_DEPOSIT or not 1 <= self.day <= 28:
+            raise ValueError(f"deposit은 1~{MAX_DEPOSIT:,}달러, day는 1~28이어야 합니다")
         if self.dip <= 0 or self.hot < 0 or self.high <= 1 or self.sma <= 1:
             raise ValueError("dip은 양수, hot은 0 이상, high, sma는 2 이상이어야 합니다")
         if self.regular not in (0, 1) or self.rebalance not in (0, 1):
@@ -354,8 +357,8 @@ class AiJudge:
     name: ClassVar[str] = "ai_judge"
 
     def __post_init__(self) -> None:
-        if self.deposit <= 0 or not 1 <= self.day <= 28:
-            raise ValueError("deposit은 양수, day는 1~28이어야 합니다")
+        if not 0 < self.deposit <= MAX_DEPOSIT or not 1 <= self.day <= 28:
+            raise ValueError(f"deposit은 1~{MAX_DEPOSIT:,}달러, day는 1~28이어야 합니다")
 
     @property
     def params(self) -> dict[str, int]:
