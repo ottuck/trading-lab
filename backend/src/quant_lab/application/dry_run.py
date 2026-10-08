@@ -46,7 +46,6 @@ from quant_lab.domain.portfolio import Portfolio, money
 from quant_lab.domain.strategy import (
     STRATEGIES,
     Strategy,
-    deposit_plan,
     is_ai,
     min_bars,
     month_key,
@@ -384,33 +383,32 @@ def _evaluate(
     # 5) 정기 입금(모으기 전략): 이번 달 입금이 아직 없고 입금일이 지났으면 오늘 넣는다.
     #    백테스트와 같은 규칙이다 (domain/strategy.py DepositPlan). 한 달 한 번은 DB PK가 보장한다.
     deposit = Decimal(0)
-    plan = deposit_plan(strategy)
-    if plan is not None:
-        last_month = deposited_month(session, bot.id, target)
-        if plan.due(target, last_month):
-            deposit = plan.amount
-            pf.deposit(deposit)
-            session.add(
-                BotDepositRow(
-                    bot_id=bot.id,
-                    month=month_key(target),
-                    session_date=target,
-                    amount=deposit,
-                    created_at=now,
-                )
-            )
-            add_event(
-                session,
-                now,
-                "INFO",
-                EventKind.DEPOSIT,
-                f"{target} 입금 ${deposit}",
+    plan = strategy.deposit_plan
+    last_month = deposited_month(session, bot.id, target)
+    if plan.due(target, last_month):
+        deposit = plan.amount
+        pf.deposit(deposit)
+        session.add(
+            BotDepositRow(
                 bot_id=bot.id,
-                run_id=run_id,
-                data=DepositData(
-                    symbol=bot.symbol, amount=str(deposit), contributed=str(pf.contributed)
-                ),
+                month=month_key(target),
+                session_date=target,
+                amount=deposit,
+                created_at=now,
             )
+        )
+        add_event(
+            session,
+            now,
+            "INFO",
+            EventKind.DEPOSIT,
+            f"{target} 입금 ${deposit}",
+            bot_id=bot.id,
+            run_id=run_id,
+            data=DepositData(
+                symbol=bot.symbol, amount=str(deposit), contributed=str(pf.contributed)
+            ),
+        )
 
     # 6) 전략 판단·위험 검사·모의 주문 (종목별, 비율 순서대로)
     # 첫 판단(시작·처음부터 다시 시작)은 시작 금액도 새로 들어온 돈으로 본다 (백테스트와 같음).
@@ -500,14 +498,14 @@ def _ai_decisions(
     row = judgment_for(session, bot.id, target)
     if row is None:
         prev = last_ok(session, bot.id, target)
-        plan = deposit_plan(strategy)
+        plan = strategy.deposit_plan
         raise _NeedJudgment(
             make_request(
                 series,
                 cash=pf.cash,
                 qtys={s: pf.qty(s) for s in series},
                 contributed=pf.contributed or bot.initial_cash,
-                monthly_deposit=plan.amount if plan else Decimal(0),
+                monthly_deposit=plan.amount,
                 leverage={s: leverage_of(session, s) for s in series},
                 previous=prev.weights if prev else None,
                 previous_date=prev.session_date if prev else None,

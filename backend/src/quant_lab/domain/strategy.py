@@ -1,7 +1,7 @@
-"""규칙 전략. 완료된 봉의 이력만 받아 '보유할지'를 판단한다.
+"""규칙 전략. 완료된 봉의 이력만 받아 '이번에 얼마만큼 살지'를 판단한다.
 
 전략은 주문 수량·가격을 정하지 않는다. 수량은 위험 규칙, 체결은 모의 브로커가 정한다.
-모으기 전략(매달 입금하고 사 모으는 전략)은 '얼마만큼 살지'를 Spend로 알려 준다.
+전략은 모두 매달 입금하고 사 모으는 모으기 전략이며, 얼마만큼 살지는 Spend로 알려 준다.
 """
 
 from collections.abc import Callable, Sequence
@@ -15,7 +15,7 @@ from quant_lab.domain.bars import DailyBar
 
 
 class Spend(StrEnum):
-    """모으기 전략이 이번 판단에 쓸 돈. 보통 전략(전부 사거나 전부 팔기)은 None을 쓴다."""
+    """모으기 전략이 이번 판단에 쓸 돈."""
 
     DEPOSIT = "DEPOSIT"  # 입금일에 모아 둔 돈(reserve)을 뺀 현금으로 산다 (그달 입금 + 잔돈)
     ALL = "ALL"  # 모아 둔 돈까지 현금을 모두 산다
@@ -28,8 +28,8 @@ class Signal:
 
     long: bool
     reason: str
+    spend: Spend
     indicators: dict[str, Decimal] = field(default_factory=dict)
-    spend: Spend | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,12 +48,6 @@ def month_key(d: date) -> str:
 
 
 MAX_DEPOSIT = 100_000  # 매달 넣는 돈 상한 (달러). 한 자리 더 친 오타를 입력 단계에서 막는다
-
-
-def deposit_plan(strategy: object) -> DepositPlan | None:
-    """정기 입금을 하는 전략이면 그 계획, 아니면 None."""
-    plan = getattr(strategy, "deposit_plan", None)
-    return plan if isinstance(plan, DepositPlan) else None
 
 
 def min_bars(strategy: Strategy) -> int:
@@ -76,7 +70,12 @@ class Strategy(Protocol):
         """판단에 필요한 최소 봉 수."""
         ...
 
-    def signal(self, history: Sequence[DailyBar], holding: bool) -> Signal | None:
+    @property
+    def deposit_plan(self) -> DepositPlan:
+        """매달 넣는 돈과 입금일."""
+        ...
+
+    def signal(self, history: Sequence[DailyBar]) -> Signal | None:
         """history의 마지막 봉까지 보고 판단한다. 봉이 부족하면 None."""
         ...
 
@@ -142,7 +141,7 @@ class DipSaver:
         """상장 1년 미만 종목은 한 달(21거래일) 이력부터 판단한다."""
         return min(21, self.warmup)
 
-    def signal(self, history: Sequence[DailyBar], holding: bool) -> Signal | None:
+    def signal(self, history: Sequence[DailyBar]) -> Signal | None:
         if len(history) < self.min_bars:
             return None
         close = history[-1].close
@@ -159,12 +158,12 @@ class DipSaver:
             indicators["bars"] = Decimal(len(history))  # 이력이 짧아 있는 만큼으로 봤다
         state = f"최고 대비 {drawdown:.1%}, SMA{self.sma} 대비 {premium:+.1%}"
         if drawdown <= -Decimal(self.dip) / 100:
-            return Signal(True, f"하락장 ({state}): 모은 현금 모두 매수", indicators, Spend.ALL)
+            return Signal(True, f"하락장 ({state}): 모은 현금 모두 매수", Spend.ALL, indicators)
         if not self.regular:
-            return Signal(True, f"평소 ({state}): 떨어질 때까지 모아 둠", indicators, Spend.NONE)
+            return Signal(True, f"평소 ({state}): 떨어질 때까지 모아 둠", Spend.NONE, indicators)
         if self.hot and premium >= Decimal(self.hot) / 100:
-            return Signal(True, f"고점 ({state}): 현금으로 모아 둠", indicators, Spend.NONE)
-        return Signal(True, f"보통 ({state}): 입금액만큼 매수", indicators, Spend.DEPOSIT)
+            return Signal(True, f"고점 ({state}): 현금으로 모아 둠", Spend.NONE, indicators)
+        return Signal(True, f"보통 ({state}): 입금액만큼 매수", Spend.DEPOSIT, indicators)
 
 
 @dataclass(frozen=True)
@@ -195,7 +194,7 @@ class AiJudge:
     def deposit_plan(self) -> DepositPlan:
         return DepositPlan(Decimal(self.deposit), self.day)
 
-    def signal(self, history: Sequence[DailyBar], holding: bool) -> Signal | None:
+    def signal(self, history: Sequence[DailyBar]) -> Signal | None:
         return None
 
 

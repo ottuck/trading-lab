@@ -13,11 +13,11 @@ export function StrategyFields({ draft, onChange }: Props) {
   return info ? <PresetFields info={info} params={draft.params} onChange={(params) => onChange({ ...draft, params })} custom /> : null
 }
 
-/** 체결 가격 가정과 최대 투자 금액. 모으기 봇은 최대 금액에 닿으면 매달 사기가 멈추므로 칸을 숨긴다
+/** 체결 가격 가정과 최대 투자 금액. 최대 금액에 닿으면 매달 사기가 멈추므로 칸을 숨긴다
     (예전에 정해 둔 값이 있으면 지울 수 있게 보여준다). */
-export function TradeFields({ draft, onChange, accumulates }: Props & { accumulates?: boolean }) {
+export function TradeFields({ draft, onChange }: Props) {
   const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch })
-  const showLimit = !accumulates || draft.maxPosition !== ''
+  const showLimit = draft.maxPosition !== ''
   return (
     <div className="stack">
       <div className="controls">
@@ -40,7 +40,7 @@ export function TradeFields({ draft, onChange, accumulates }: Props & { accumula
           </button>
           <AmountInput value={draft.maxPosition} onChange={(maxPosition) => set({ maxPosition })} label="최대 투자 금액 직접 입력" />
           {badLimit(draft) && <span className="bad small">$1 이상으로 정해 주세요. 없애려면 [가진 현금 전부]</span>}
-          {accumulates && <span className="faint small">이 금액에 닿으면 매달 사기를 멈춰요</span>}
+          <span className="faint small">이 금액에 닿으면 매달 사기를 멈춰요</span>
         </div>
       )}
       <div className="faint small">

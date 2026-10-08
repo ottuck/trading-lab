@@ -17,7 +17,7 @@ from quant_lab.application.errors import Conflict, Invalid, NotFound
 from quant_lab.domain.bot import CommandKind
 from quant_lab.domain.events import BotDeletedData, ConfigChange, ConfigChangeData, EventKind
 from quant_lab.domain.portfolio import CostModel, RiskLimits
-from quant_lab.domain.strategy import STRATEGIES, Strategy, deposit_plan
+from quant_lab.domain.strategy import STRATEGIES, Strategy
 from quant_lab.domain.trading import MAX_SYMBOLS
 from quant_lab.persistence.backtests import to_jsonable
 from quant_lab.persistence.bots import (
@@ -121,10 +121,8 @@ def check_strategy(name: str, params: dict[str, int]) -> Strategy:
         raise Invalid(f"파라미터 오류: {exc}") from exc
 
 
-def check_weights(
-    symbol: str, symbols: Sequence[tuple[str, int]] | None, strategy: Strategy
-) -> dict[str, int]:
-    """종목과 비율을 검증한다: 최대 10개, 비율 합 100, 여러 종목은 모으기 전략만."""
+def check_weights(symbol: str, symbols: Sequence[tuple[str, int]] | None) -> dict[str, int]:
+    """종목과 비율을 검증한다: 최대 10개, 비율 합 100."""
     if not symbols:
         if not symbol.strip():
             raise Invalid("종목을 골라 주세요")
@@ -139,8 +137,6 @@ def check_weights(
         raise Invalid(f"종목은 {MAX_SYMBOLS}개까지 고를 수 있어요")
     if sum(weights.values()) != 100:
         raise Invalid("종목 비율의 합은 100이어야 해요")
-    if len(weights) > 1 and deposit_plan(strategy) is None:
-        raise Invalid("여러 종목은 매달 넣고 사 모으는 전략에서만 쓸 수 있어요")
     return weights
 
 
@@ -190,7 +186,7 @@ def create(
     name = check_name(name)
     if _name_taken(session, name):
         raise Conflict(f"같은 이름의 봇이 있습니다: {name}")
-    weights = check_weights(symbol, symbols, strategy)
+    weights = check_weights(symbol, symbols)
     check_single(session, strategy.name)
     bot = create_bot(
         session,
@@ -224,8 +220,6 @@ def update_settings(session: Session, bot_id: int, settings: BotSettings, now: d
     check_limits(settings)
     if strategy.name != bot.strategy:
         check_single(session, strategy.name, except_bot_id=bot.id)
-    if len(bot.symbols) > 1 and deposit_plan(strategy) is None:
-        raise Invalid("여러 종목 봇은 매달 넣고 사 모으는 전략만 쓸 수 있어요")
     limits = to_jsonable(settings.limits())
     before = {
         "strategy": bot.strategy,
@@ -263,12 +257,10 @@ def update_symbols(
 ) -> BotRow:
     """만든 뒤 종목·비율을 바꾼다. 다음 판단부터 적용된다.
 
-    모으기 전략에서 뺀 종목을 들고 있으면(또는 주문 예정이면) 비율 0으로 남겨 더 사지 않고
-    들고만 있는다. 팔고 사는 전략은 들고 있는 종목을 뺄 수 없다 (팔 기회를 잃으므로).
+    뺀 종목을 들고 있으면(또는 주문 예정이면) 비율 0으로 남겨 더 사지 않고 들고만 있는다.
     """
     bot = require_bot(session, bot_id, for_update=True)
-    strategy = STRATEGIES[bot.strategy](**bot.params)
-    weights = check_weights("", symbols, strategy)
+    weights = check_weights("", symbols)
     before = bot_weights(bot)
     held = {
         p.symbol
@@ -276,10 +268,6 @@ def update_symbols(
         if p.qty > 0
     } | {o.symbol for o in pending_orders(session, bot.id)}
     dropped = [s for s in before if s in held and s not in weights]
-    if dropped and deposit_plan(strategy) is None:
-        raise Conflict(
-            f"들고 있는 {', '.join(dropped)}는 이 전략에서 뺄 수 없어요. 판 뒤에 바꿔 주세요"
-        )
     after = weights | {s: 0 for s in dropped}
     if after == before:
         return bot

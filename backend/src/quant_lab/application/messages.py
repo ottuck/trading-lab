@@ -570,7 +570,7 @@ def _live_order_message(d: LiveOrderData) -> Message | None:
 
 
 def _live_sell_message(d: LiveOrderData) -> Message | None:
-    """파는 실제 주문 (사고팔기 봇은 이 봇이 실제로 산 만큼 모두, AI 봇은 그중 일부)."""
+    """파는 실제 주문 (AI 봇: 이 봇이 실제로 산 수량 중 모의로 판 비율만큼, 모두 팔 때는 전부)."""
     sym, state = d.get("symbol", ""), d.get("state")
     qty = f"{_shares(d.get('quantity'))}주"
     about = f"{qty}(약 {_usd(d.get('amount', 0))})"

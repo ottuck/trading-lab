@@ -1,8 +1,8 @@
 """판단과 모의 체결 규칙. 백테스트와 정기 DRY RUN이 이 함수들을 그대로 쓴다 (project.md 3절 원칙 3).
 
-T일 종가로 판단(decide) → T+1일 시가로 체결(execute). 매수 수량은 체결 시점의 현금으로 정한다.
-모으기 전략은 여러 종목(최대 10개)을 한 계좌로 다루며(decide_basket), 매수는 budget(쓸 돈) 안에서
-정하고 이미 들고 있어도 더 산다.
+T일 종가로 판단(decide_basket, AI 봇은 rebalance) → T+1일 시가로 체결(execute).
+여러 종목(최대 10개)을 한 계좌로 다루며, 매수는 budget(쓸 돈) 안에서 정하고
+이미 들고 있어도 더 산다.
 """
 
 from collections.abc import Mapping, Sequence
@@ -40,7 +40,7 @@ class DecisionRecord:
     reason: str
     indicators: dict[str, Decimal]
     blocked: str | None = None
-    # 매수: 쓸 돈 (None이면 가진 현금 전부, 보통 전략). 매도: 팔 금액 (None이면 전부)
+    # 매수: 쓸 돈. 매도: 팔 금액 (None이면 전부, AI 봇)
     budget: Decimal | None = None
     symbol: str = ""
 
@@ -57,49 +57,6 @@ class Fill:
     symbol: str = ""
 
 
-def decide(
-    strategy: Strategy,
-    history: Sequence[DailyBar],
-    pf: Portfolio,
-    costs: CostModel,
-    limits: RiskLimits,
-    deposit: Decimal = Decimal(0),
-) -> DecisionRecord | None:
-    """종목 하나의 판단. history의 마지막 봉(완료된 T일)까지 본다. 봉이 부족하면 None.
-
-    모으기 전략은 종목이 하나인 decide_basket과 같다.
-    """
-    symbol = history[-1].symbol
-    holding = pf.qty(symbol) > 0
-    signal = strategy.signal(history, holding)
-    if signal is None:
-        return None
-    if signal.spend is not None:
-        one = {symbol: (history, signal)}
-        return _basket(strategy, one, {symbol: 100}, pf, costs, limits, deposit)[0]
-    today = history[-1]
-    action = Action.HOLD
-    blocked = None
-    if signal.long and not holding:
-        est = costs.buy_price(today.close)
-        if affordable_qty(pf.cash, est, costs, limits, Decimal(0)) > 0:
-            action = Action.BUY
-        else:
-            blocked = "현금 또는 위험 한도 부족으로 매수 불가"
-    elif not signal.long and holding:
-        action = Action.SELL
-    return DecisionRecord(
-        session_date=today.session_date,
-        action=action,
-        target_long=signal.long,
-        holding=holding,
-        reason=signal.reason,
-        indicators=signal.indicators,
-        blocked=blocked,
-        symbol=symbol,
-    )
-
-
 def decide_basket(
     strategy: Strategy,
     histories: Mapping[str, Sequence[DailyBar]],
@@ -111,17 +68,12 @@ def decide_basket(
 ) -> list[DecisionRecord]:
     """여러 종목을 한 계좌로 판단한다. 판단할 수 있는(봉이 충분한) 종목만 돌려준다.
 
-    종목이 하나이고 보통 전략이면 decide와 같다. 여러 종목은 모으기 전략만 된다.
     deposit은 오늘 새로 들어온 돈이다: 정기 입금, 그리고 첫 판단일의 시작 금액.
     현금은 종목들이 함께 쓴다. weights(합 100)는 종목별 비율이다.
     """
-    if len(histories) == 1:
-        history = next(iter(histories.values()))
-        record = decide(strategy, history, pf, costs, limits, deposit)
-        return [record] if record is not None else []
     signals = {}
     for symbol, history in histories.items():
-        signal = strategy.signal(history, pf.qty(symbol) > 0)
+        signal = strategy.signal(history)
         if signal is not None:
             signals[symbol] = (history, signal)
     if not signals:
@@ -149,8 +101,6 @@ def _basket(
     """
     by_spend: dict[Spend, list[str]] = {spend: [] for spend in Spend}
     for symbol, (_, signal) in signals.items():
-        if signal.spend is None:
-            raise ValueError(f"{strategy.name}은 여러 종목을 다룰 수 없는 전략입니다")
         by_spend[signal.spend].append(symbol)
 
     rebalance = bool(getattr(strategy, "rebalance", 0))
@@ -214,8 +164,9 @@ def execute(
     """order를 bar(T+1일)의 시가로 체결하고 pf를 갱신한다. 살 수 있는 수량이 없으면 None."""
     symbol = order.symbol or bar.symbol
     if order.action is Action.BUY:
+        assert order.budget is not None, "사는 모의 주문에는 쓸 돈(budget)이 있어야 한다"
         price = costs.buy_price(bar.open)
-        cash = pf.cash if order.budget is None else min(pf.cash, order.budget)
+        cash = min(pf.cash, order.budget)
         qty = affordable_qty(cash, price, costs, limits, pf.qty(symbol) * price)
         if qty == 0:
             return None

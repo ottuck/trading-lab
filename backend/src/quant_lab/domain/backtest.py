@@ -1,7 +1,7 @@
 """일봉 백테스트. 정기 DRY RUN과 같은 규칙을 쓴다 (project.md 7절).
 
 판단·체결 규칙은 domain/trading.py를 그대로 쓴다.
-정기 입금이 있는 전략은 입금일마다 전략과 비교 기준 계좌에 같은 돈을 넣는다.
+입금일마다 전략과 비교 기준 계좌에 같은 돈을 넣는다.
 비교 기준은 넣은 돈을 다음 날 시가에 바로 사는 "매달 그냥 사기"다.
 수익률 지표는 입금 효과를 뺀 시간가중 수익률로 계산한다.
 """
@@ -16,7 +16,7 @@ from itertools import pairwise
 
 from quant_lab.domain.bars import DailyBar
 from quant_lab.domain.portfolio import CostModel, Portfolio, RiskLimits, affordable_qty
-from quant_lab.domain.strategy import Strategy, deposit_plan, is_ai, min_bars, month_key
+from quant_lab.domain.strategy import Strategy, is_ai, min_bars, month_key
 from quant_lab.domain.trading import (
     Action,
     DecisionRecord,
@@ -55,8 +55,6 @@ class Metrics:
     cagr: Decimal
     max_drawdown: Decimal
     exposure: Decimal
-    round_trips: int
-    win_rate: Decimal | None
     benchmark_final_equity: Decimal
     benchmark_total_return: Decimal
     benchmark_cagr: Decimal
@@ -80,7 +78,7 @@ class BacktestResult:
 
 
 def run_backtest(
-    bars: Sequence[DailyBar] | Mapping[str, Sequence[DailyBar]],
+    bars: Mapping[str, Sequence[DailyBar]],
     strategy: Strategy,
     initial_cash: Decimal,
     costs: CostModel,
@@ -88,7 +86,7 @@ def run_backtest(
     weights: Mapping[str, int] | None = None,
     judgments: Mapping[date, Mapping[str, int] | None] | None = None,
 ) -> BacktestResult:
-    """bars는 한 종목의 일봉, 또는 종목별 일봉(여러 종목은 모으기 전략만, weights 합 100).
+    """bars는 종목별 일봉(weights 합 100, 없으면 한 종목 100).
 
     여러 종목은 모든 종목에 봉이 있는 거래일만 진행하고, 모든 종목이 warmup을 채운 날부터 판단한다.
     이력 전체가 warmup보다 짧은 종목(상장 1년 미만)은 전략의 min_bars를 채운 날부터 본다.
@@ -98,7 +96,7 @@ def run_backtest(
     if is_ai(strategy) and judgments is None:
         raise ValueError("AI 봇은 과거 백테스트를 하지 않아요 (기록된 판단으로만 다시 돌려요)")
     limits = limits or RiskLimits()
-    series = dict(bars) if isinstance(bars, Mapping) else {bars[0].symbol: list(bars)}
+    series = dict(bars)
     symbols = list(series)
     weights = dict(weights) if weights else {s: 100 for s in symbols}
     if len(symbols) > 1 and sum(weights[s] for s in symbols) != 100:
@@ -118,7 +116,7 @@ def run_backtest(
             f"봉이 부족합니다: 공통 거래일 {len(days)}일 ({max(need.values())}일 필요)"
         )
 
-    plan = deposit_plan(strategy)
+    plan = strategy.deposit_plan
     pf = Portfolio(cash=initial_cash)
     bench = Portfolio(cash=initial_cash)
     decisions: list[DecisionRecord] = []
@@ -152,7 +150,7 @@ def run_backtest(
         # 2) 오늘 종가까지 보고 판단한다. 각 종목의 오늘 봉 밖의 데이터는 전략에 넘기지 않는다.
         if k >= start:
             deposit = Decimal(0)
-            if plan is not None and plan.due(day, last_month):
+            if plan.due(day, last_month):
                 deposit = plan.amount
                 pf.deposit(deposit)
                 bench.deposit(deposit)
@@ -186,7 +184,7 @@ def run_backtest(
         decisions=decisions,
         fills=fills,
         equity=equity,
-        metrics=_metrics(equity, fills, initial_cash),
+        metrics=_metrics(equity, initial_cash),
         pending=list(pending.values()),
     )
 
@@ -277,15 +275,13 @@ def _annual_returns(
     return out
 
 
-def _metrics(equity: list[EquityPoint], fills: list[Fill], initial_cash: Decimal) -> Metrics:
+def _metrics(equity: list[EquityPoint], initial_cash: Decimal) -> Metrics:
     first, last = equity[0], equity[-1]
     deposits = [p.deposit for p in equity]
     idx = _index([p.equity for p in equity], deposits)
     b_idx = _index([p.benchmark for p in equity], deposits)
     vol, sharpe = _vol_sharpe(idx)
     b_vol, b_sharpe = _vol_sharpe(b_idx)
-    sells = [f for f in fills if f.realized_pnl is not None]
-    wins = sum(1 for f in sells if f.realized_pnl is not None and f.realized_pnl > 0)
     contributed = last.contributed
     cagr = _cagr(idx, first.session_date, last.session_date)
     b_cagr = _cagr(b_idx, first.session_date, last.session_date)
@@ -305,8 +301,6 @@ def _metrics(equity: list[EquityPoint], fills: list[Fill], initial_cash: Decimal
         cagr=cagr,
         max_drawdown=_max_drawdown(idx),
         exposure=_ratio(sum(1 for p in equity if p.invested > 0) / len(equity)),
-        round_trips=len(sells),
-        win_rate=_ratio(wins / len(sells)) if sells else None,
         benchmark_final_equity=last.benchmark,
         benchmark_total_return=_ratio(float(last.benchmark / contributed - 1)),
         benchmark_cagr=b_cagr,

@@ -169,7 +169,6 @@ export type Live = {
   halted: boolean
   per_order: Money
   per_month: Money
-  per_trade: Money // 사고팔기 봇 한 건 한도
   ratios: string[]
   // 봇이 낸 실제 주문의 장부 (체결 기준, 수수료 제외 어림값)
   bought_this_month: Money // 이번 달 산 금액
@@ -247,7 +246,6 @@ export type StrategyInfo = {
   trades: string
   presets: { key: string; label: string; params: Record<string, number> }[]
   default_params: Record<string, number>
-  accumulates: boolean // 매달 입금하고 사 모으는 전략 (팔지 않음)
   ai: boolean // AI가 판단하는 전략 (시험해 보기·전략 고르기에는 나오지 않는다)
   preset_label: string
   // 프리셋과 따로 고르는 규칙 (예: 고점에 쉬기). 프리셋을 바꿔도 유지된다.
@@ -323,8 +321,6 @@ export type BacktestMetrics = {
   cagr: Money
   max_drawdown: Money
   exposure: Money
-  round_trips: number
-  win_rate: Money | null
   benchmark_final_equity: Money
   benchmark_total_return: Money
   benchmark_cagr: Money

@@ -21,7 +21,7 @@ from quant_lab.api.schemas import (
 from quant_lab.application import queries
 from quant_lab.application.messages import CATALOG
 from quant_lab.config import get_settings
-from quant_lab.domain.strategy import STRATEGIES, deposit_plan, is_ai
+from quant_lab.domain.strategy import STRATEGIES, is_ai
 from quant_lab.persistence.models import BrokerAccountRow
 
 router = APIRouter()
@@ -80,7 +80,6 @@ def strategies() -> list[StrategyInfo]:
                     PresetView(key=p.key, label=p.label, params=p.params) for p in info.presets
                 ],
                 default_params=factory().params,
-                accumulates=deposit_plan(factory()) is not None,
                 ai=is_ai(name),
                 preset_label=info.preset_label,
                 choices=[

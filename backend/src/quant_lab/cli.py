@@ -119,7 +119,7 @@ def cmd_backtest(args: argparse.Namespace) -> int:
     print(f"  {'총 수익률':12}{_pct(m.total_return):>12}{_pct(m.benchmark_total_return):>14}")
     print(f"  {'CAGR':12}{_pct(m.cagr):>12}{_pct(m.benchmark_cagr):>14}")
     print(f"  {'최대 낙폭':12}{_pct(m.max_drawdown):>12}{_pct(m.benchmark_max_drawdown):>14}")
-    print(f"  보유 비중 {_pct(m.exposure)}, 왕복 거래 {m.round_trips}회, 승률 {_pct(m.win_rate)}")
+    print(f"  보유 비중 {_pct(m.exposure)}")
     for p in run.result.pending:
         print(f"  다음 시가 체결 대기: {p.symbol} {p.action} ({p.session_date} 판단: {p.reason})")
     if run.saved_id:

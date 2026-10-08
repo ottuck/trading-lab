@@ -16,7 +16,7 @@ from quant_lab.application.parallel import World, parallel_worlds
 from quant_lab.application.plan import Plan, follow_plan
 from quant_lab.domain.bars import TradingCalendar
 from quant_lab.domain.portfolio import CostModel, RiskLimits
-from quant_lab.domain.strategy import DipSaver, deposit_plan
+from quant_lab.domain.strategy import DipSaver
 from quant_lab.persistence.bots import active_weights, bot_costs
 from quant_lab.persistence.models import BacktestRow, BotRow, DecisionRow
 
@@ -40,10 +40,9 @@ def run_backtest(
     """일봉 백테스트를 계산해 저장하고 id를 돌려준다. keep_latest면 최근 것만 남긴다 (공개 데모)."""
     chosen = check_strategy(strategy, params)
     check_cash(initial_cash)
-    weights = check_weights(symbol, symbols, chosen)
-    plan = deposit_plan(chosen)
-    # 모으기 전략은 첫 달 입금액으로 시작한다 ("월급부터 모았다면").
-    initial = initial_cash or (plan.amount if plan else Decimal(10_000))
+    weights = check_weights(symbol, symbols)
+    # 첫 달 입금액으로 시작한다 ("월급부터 모았다면").
+    initial = initial_cash or chosen.deposit_plan.amount
     try:
         run = backtest_symbol(
             session,
@@ -83,7 +82,7 @@ def parallel_request(
         strategy = DipSaver(**params)
     except (TypeError, ValueError) as exc:
         raise Invalid(str(exc)) from exc
-    weights = check_weights(symbol, symbols, strategy)
+    weights = check_weights(symbol, symbols)
     try:
         return parallel_worlds(
             session,

@@ -201,7 +201,7 @@ def test_replay_writes_weekly_reports_and_readable_events(
     start, end = bars[DIP.warmup - 1].session_date, bars[-1].session_date
     replay_bot(make_session, bot_id, CAL, start, end)
 
-    expected = run_backtest(bars, DIP, Decimal(500), COSTS).fills
+    expected = run_backtest({bars[0].symbol: bars}, DIP, Decimal(500), COSTS).fills
     assert len(expected) >= 3
 
     # 주간 리포트: 금요일 판단마다 한 번, 그 주 체결 수와 함께
