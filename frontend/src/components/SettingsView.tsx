@@ -563,7 +563,7 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
     <>
       {ai ? (
         <Section
-          title={byName[bot.strategy]?.nickname ?? 'AI에게 맡기기'}
+          title={byName[bot.strategy]?.nickname ?? 'AI 판단'}
           desc={
             candle
               ? '고른 종목 안에서 무엇을 얼마나 들고 있을지 AI가 매일 장이 끝난 뒤 가격 차트만 보고 정해요.'
