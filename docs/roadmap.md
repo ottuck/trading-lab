@@ -173,10 +173,13 @@
 
 고정 IP 서버로 옮긴다 (리전 결정과 이유는 project.md 6절). 서버에 의존하는 것은 Compose 파일, env 파일, DB 덤프뿐이다.
 
-- [ ] **(사용자)** `aws login`, `terraform apply`, Tailscale 계정, deploy key 공개키 전달 (project.md 6절 "서버 준비 절차")
-- [ ] 서버 준비, 서버 IP를 토스 허용 IP에 등록, 첫 배포, 서버에서 봇 시작과 대시보드 접속 확인, 첫 정기 평가와 백업 1회 확인
+- [x] **(사용자)** `aws login`, Tailscale 계정, 토스 허용 IP 등록 (2026-10-08)
+- [x] 서버 생성(Terraform, `quant-lab-02`, 고정 IP 54.79.210.198), 서버 준비, 첫 배포, 대시보드 접속 확인 (2026-10-08)
+- [ ] 서버에서 첫 정기 평가와 백업 1회 확인, 계좌 읽기 한 시간 주기 확인
+- [ ] 22번 포트 닫기 (`aws_lightsail_instance_public_ports` 삭제 뒤 `terraform apply`)
+- [ ] 개발 PC의 운영 정리 (PC DB·데모 컨테이너 삭제, 백업 파일은 `.secrets/backups/`에 보관)
 - [ ] 운영 자동 배포 러너를 새 서버에 다시 등록 (지금 러너는 개발 PC의 `C:\actions-runner`)
-- [ ] 로컬 Worker 정지 → `pg_dump` → 서버에서 `pg_restore` → 서버 Worker 시작 (Worker를 두 곳에서 동시에 돌리지 않는다)
+- [x] 로컬 Worker 정지 → `pg_dump` → 서버에서 `pg_restore` → 서버 Worker 시작 (Worker를 두 곳에서 동시에 돌리지 않는다)
 
 ## 이미 끝낸 운영 항목
 
