@@ -284,8 +284,8 @@ def test_trading_bot_buys_a_hundredth_of_cash_and_sells_only_what_it_bought(
     make_session: Callable[[], Session], session: Session
 ) -> None:
     bot = create_bot(
-        session, name="TQQQ 봇", symbol="TQQQ", strategy="sma_cross",
-        params={"fast": 50, "slow": 200}, initial_cash=Decimal(10_000), costs=CostModel(),
+        session, name="TQQQ 봇", symbol="TQQQ", strategy="dip_saver",
+        params={}, initial_cash=Decimal(10_000), costs=CostModel(),
         limits=RiskLimits(), now=OPEN - timedelta(days=3),
     )  # fmt: skip
     bot.live_ratio, bot.live_since = Decimal("0.01"), OPEN - timedelta(days=2)

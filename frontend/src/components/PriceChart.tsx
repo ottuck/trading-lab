@@ -5,7 +5,6 @@ import {
   createChart,
   createSeriesMarkers,
   HistogramSeries,
-  LineSeries,
   type IChartApi,
   type ISeriesApi,
   type SeriesMarker,
@@ -16,17 +15,6 @@ import { api, type Bar, type Bot } from '../api'
 import { shares } from '../format'
 import { sourceLabel } from '../source'
 import { cssVar, useTheme } from '../theme'
-
-function sma(bars: Bar[], n: number) {
-  const out: { time: Time; value: number }[] = []
-  let sum = 0
-  bars.forEach((b, i) => {
-    sum += Number(b.close)
-    if (i >= n) sum -= Number(bars[i - n].close)
-    if (i >= n - 1) out.push({ time: b.date as Time, value: sum / n })
-  })
-  return out
-}
 
 type Series = { candles: ISeriesApi<'Candlestick'>; volume: ISeriesApi<'Histogram'>; up: string; down: string }
 
@@ -149,14 +137,6 @@ export function PriceChart({ bot }: { bot: Bot }) {
         color: Number(b.close) >= Number(b.open) ? `${up}40` : `${down}40`,
       })),
     )
-    if (bot.strategy === 'sma_cross') {
-      const colors = [cssVar('--line-fast'), cssVar('--dry')]
-      ;[bot.params.fast, bot.params.slow].forEach((n, i) => {
-        const line = chart.addSeries(LineSeries, { color: colors[i], lineWidth: 2, priceLineVisible: false })
-        line.setData(sma(all, n).filter((p) => String(p.time) >= from))
-      })
-    }
-
     // 판단(BUY/SELL 신호)과 모의 체결을 표시한다.
     const markers: SeriesMarker<Time>[] = []
     for (const d of decisions.data ?? []) {
@@ -227,13 +207,6 @@ export function PriceChart({ bot }: { bot: Bot }) {
           ))}
         </div>
       </div>
-      {bot.strategy === 'sma_cross' && (
-        <div className="small muted">
-          <span style={{ color: 'var(--line-fast)' }}>━ 최근 {bot.params.fast}일 평균</span>{'  '}
-          <span style={{ color: 'var(--dry)' }}>━ {bot.params.slow}일 평균</span> · ▲ 산 날 · ▼ 판 날
-          {liveBar && ' · 흐린 봉: 오늘 진행 중'}
-        </div>
-      )}
       <div ref={el} className="chart" />
       <div className="chart-foot">
         마지막 장 마감 {last?.date ?? '—'} · {last ? `$${Number(last.close).toFixed(2)}` : '—'} · 가격 출처{' '}

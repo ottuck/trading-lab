@@ -9,7 +9,7 @@ import pytest
 from quant_lab.domain.backtest import run_backtest
 from quant_lab.domain.bars import DailyBar
 from quant_lab.domain.portfolio import QTY_STEP, CostModel, RiskLimits
-from quant_lab.domain.strategy import DipSaver, Signal, SmaCross
+from quant_lab.domain.strategy import DipSaver, Signal
 from quant_lab.domain.trading import Action
 from tests.fakes import make_bars
 
@@ -74,9 +74,9 @@ def test_strategy_never_sees_future_bars() -> None:
 def test_truncated_data_gives_same_decisions_as_full_data() -> None:
     closes = [100 + (i % 17) * 3 - (i % 5) * 4 for i in range(300)]
     bars = make_bars("X", closes)
-    s = SmaCross(fast=5, slow=20)
-    full = run_backtest(bars, s, CASH, CostModel())
-    cut = run_backtest(bars[:200], s, CASH, CostModel())
+    s = DipSaver(deposit=500, day=1, dip=5, hot=5, high=20, sma=10)
+    full = run_backtest(bars, s, Decimal(500), CostModel())
+    cut = run_backtest(bars[:200], s, Decimal(500), CostModel())
 
     cutoff = bars[199].session_date
     assert [d for d in full.decisions if d.session_date <= cutoff] == cut.decisions
@@ -92,7 +92,9 @@ def test_risk_limit_caps_position() -> None:
 
 def test_risk_metrics_and_annual_returns() -> None:
     bars = make_bars("X", [100 * (1.001**i) * (1 + 0.01 * (i % 3 - 1)) for i in range(400)])
-    m = run_backtest(bars, SmaCross(fast=5, slow=20), CASH, NO_COST).metrics
+    m = run_backtest(
+        bars, DipSaver(deposit=500, day=1, high=20, sma=10), Decimal(500), NO_COST
+    ).metrics
     years = [y.year for y in m.annual_returns]
     assert years == sorted(set(years)) and len(years) >= 2
     assert m.benchmark_volatility > 0

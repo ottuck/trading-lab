@@ -51,9 +51,9 @@ def decision(action: str, holding: bool) -> DecisionData:
         action=action,
         target_long=True,
         holding=holding,
-        strategy="sma_cross",
-        params={"fast": 50, "slow": 200},
-        indicators={"sma50": "714.93", "sma200": "667.27"},
+        strategy="dip_saver",
+        params={"deposit": 1000, "day": 25, "dip": 10, "hot": 10, "high": 252, "sma": 200},
+        indicators={"drawdown": "-0.02", "premium": "0.03"},
     )
 
 
@@ -170,7 +170,7 @@ def test_events_become_plain_messages_sent_once(engine: Engine, session: Session
         "✅ QQQ 13주를 샀어요",
         "⏳ 오늘 판단을 잠시 미뤘어요",
     ]
-    assert "상승 흐름이에요" in parts[0] and "내일 장이 열리면 QQQ를 사요" in parts[0]
+    assert "적당한 가격이에요" in parts[0] and "내일 장이 열리면 QQQ를 사요" in parts[0]
     assert "아직 최신 시세가 도착하지 않았어요" in parts[2]
 
     # "실제 주문만"을 고르면 모의 투자 소식은 보내지 않는다

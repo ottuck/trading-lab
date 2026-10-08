@@ -128,8 +128,8 @@ def cmd_backtest(args: argparse.Namespace) -> int:
 
 
 def _add_cost_args(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--strategy", choices=sorted(STRATEGIES), default="sma_cross")
-    p.add_argument("--params", default="", help="예: fast=50,slow=200 / entry=55,exit=20")
+    p.add_argument("--strategy", choices=sorted(STRATEGIES), default="dip_saver")
+    p.add_argument("--params", default="", help="예: deposit=1000,dip=15")
     p.add_argument("--cash", type=Decimal, default=Decimal(10_000))
     p.add_argument("--commission", type=Decimal, default=Decimal("0.001"))
     p.add_argument("--slippage-bps", type=Decimal, default=Decimal(5))
@@ -321,8 +321,6 @@ DEMO_BOTS: tuple[tuple[str, str, dict[str, int], dict[str, int], Decimal], ...] 
         {"QQQ": 50, "VOO": 50},
         Decimal(1000),
     ),
-    ("QQQ 봇", "sma_cross", {}, {"QQQ": 100}, Decimal(10_000)),
-    ("TQQQ 봇", "trend_filter", {}, {"TQQQ": 100}, Decimal(10_000)),
     # AI 봇 (마일스톤 4): 데모에는 AI 키가 없어 규칙으로 만든 예시 판단(DemoAdvisor)을 쓴다
     (
         "시장분석 AI 봇",
@@ -341,6 +339,12 @@ def _seed_demo_bots(end: date, now: datetime) -> None:
     """
     make_session = sessionmaker(get_engine())
     calendar = get_calendar()
+    with make_session() as session:  # 없어진 전략(유명 전략 4종)의 예시 봇은 지운다
+        for old in list_bots(session):
+            if old.strategy not in STRATEGIES:
+                delete_bot(session, old.id)
+                print(f"  {old.name}: 없어진 전략({old.strategy})이라 지움")
+        session.commit()
     for name, strategy_name, params, weights, cash in DEMO_BOTS:
         years = 1 if is_ai(strategy_name) else 2
         start = calendar.sessions(date(end.year - years, end.month, 1), end)[0]
@@ -469,8 +473,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     bt = sub.add_parser("backtest", help="DB 일봉으로 백테스트 (T 종가 판단 → T+1 시가 체결)")
     bt.add_argument("symbol", type=str.upper)
-    bt.add_argument("--strategy", choices=sorted(STRATEGIES), default="sma_cross")
-    bt.add_argument("--params", default="", help="예: fast=50,slow=200 / entry=55,exit=20")
+    bt.add_argument("--strategy", choices=sorted(STRATEGIES), default="dip_saver")
+    bt.add_argument("--params", default="", help="예: deposit=1000,dip=15")
     bt.add_argument("--start", type=date.fromisoformat, help="첫 판단일 (warmup은 자동 포함)")
     bt.add_argument("--end", type=date.fromisoformat)
     bt.add_argument("--cash", type=Decimal, default=Decimal(10_000))
