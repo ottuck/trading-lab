@@ -216,8 +216,8 @@ class LiveDesk:
                 )
             order.amount = (order.quantity * close).quantize(CENT)
         else:
-            # 사는 모의 주문에는 항상 쓸 돈(budget)이 있다
-            order.amount = scaled_amount(sim.budget or Decimal(0), bot.live_ratio)
+            assert sim.budget is not None, "사는 모의 주문에는 쓸 돈(budget)이 있어야 한다"
+            order.amount = scaled_amount(sim.budget, bot.live_ratio)
         if not live_allowed(sim.symbol, leverage_of(session, sim.symbol)):
             order.state, order.reason = LiveState.SKIPPED, SkipReason.LEVERAGED
             return order, False

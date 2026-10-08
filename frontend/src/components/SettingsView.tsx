@@ -588,7 +588,7 @@ function BotSettings({ bot, others }: { bot: Bot; others: Bot[] }) {
         </Section>
       )}
       <Section
-        title="체결과 투자 금액"
+        title="체결 가격"
         desc="모의 체결을 얼마나 보수적으로 볼지 정해요."
       >
         <TradeFields draft={draft} onChange={setDraft} />
@@ -658,13 +658,13 @@ function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
   })
   return (
     <>
-      <Section title="전략" desc="언제 사고팔지 정해요. 나중에 설정에서 바꿀 수 있어요.">
+      <Section title="내 규칙" desc="매달 얼마를 넣고 언제 쉬거나 몰아 살지 정해요. 나중에 설정에서 바꿀 수 있어요.">
         <StrategyFields draft={draft} onChange={setDraft} />
       </Section>
       <Section title="종목과 비율" desc="매달 넣는 돈을 이 비율대로 나눠 사요. 현금은 함께 써요.">
         <BasketPicker value={basket} onChange={setBasket} />
       </Section>
-      <Section title="체결과 투자 금액" desc="모의 체결을 얼마나 보수적으로 볼지 정해요.">
+      <Section title="체결 가격" desc="모의 체결을 얼마나 보수적으로 볼지 정해요.">
         <TradeFields draft={draft} onChange={setDraft} />
       </Section>
       <Section title="이름과 시작 금액" desc="모의 투자는 실제 계좌와 무관해요. 시작 금액은 나중에 바꿀 수 없어요.">

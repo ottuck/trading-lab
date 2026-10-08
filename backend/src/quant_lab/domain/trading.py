@@ -164,8 +164,9 @@ def execute(
     """order를 bar(T+1일)의 시가로 체결하고 pf를 갱신한다. 살 수 있는 수량이 없으면 None."""
     symbol = order.symbol or bar.symbol
     if order.action is Action.BUY:
+        assert order.budget is not None, "사는 모의 주문에는 쓸 돈(budget)이 있어야 한다"
         price = costs.buy_price(bar.open)
-        cash = min(pf.cash, order.budget or Decimal(0))  # 쓸 돈이 없는 매수는 체결하지 않는다
+        cash = min(pf.cash, order.budget)
         qty = affordable_qty(cash, price, costs, limits, pf.qty(symbol) * price)
         if qty == 0:
             return None

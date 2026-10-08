@@ -61,7 +61,7 @@ def test_dip_saver_deposits_monthly_buys_dips_and_never_sells() -> None:
     closes += [145 - 3 * i for i in range(1, 16)] + [100] * 40
     bars = make_bars("VOO", closes)
     s = DipSaver(deposit=500, day=1, dip=10, hot=10, high=20, sma=10)
-    result = run_backtest({"X": bars}, s, Decimal(500), NO_COST)
+    result = run_backtest({"VOO": bars}, s, Decimal(500), NO_COST)
     m = result.metrics
 
     # 시작 금액이 시작한 달의 입금이라 그달에는 또 넣지 않는다 (한 달에 한 번)
@@ -85,11 +85,11 @@ def test_dip_saver_deposits_monthly_buys_dips_and_never_sells() -> None:
     assert result.equity[-1].contributed == m.contributed
 
     # 고점에 쉬지 않기(hot=0): 고점이어도 입금일에 산다
-    eager = run_backtest({"X": bars}, replace(s, hot=0), Decimal(500), NO_COST)
+    eager = run_backtest({"VOO": bars}, replace(s, hot=0), Decimal(500), NO_COST)
     assert {d.session_date for d in hot} & {f.signal_date for f in eager.fills}
 
     # 떨어졌을 때만 사기(regular=0): 평소엔 모아 두고 하락장에만 산다
-    saver = run_backtest({"X": bars}, replace(s, regular=0), Decimal(500), NO_COST)
+    saver = run_backtest({"VOO": bars}, replace(s, regular=0), Decimal(500), NO_COST)
     days = {d.session_date: d for d in saver.decisions}
     assert saver.fills
     assert all(days[f.signal_date].indicators["drawdown"] <= Decimal("-0.1") for f in saver.fills)
@@ -99,7 +99,7 @@ def test_dip_saver_young_listing_uses_available_history() -> None:
     # 상장 석 달(63일) 종목: 1년이 안 돼도 한 달 이력부터 있는 만큼으로 판단한다
     bars = make_bars("NEW", [100 + i % 5 for i in range(63)])
     s = DipSaver(deposit=500, day=1)
-    result = run_backtest({"X": bars}, s, Decimal(500), NO_COST)
+    result = run_backtest({"NEW": bars}, s, Decimal(500), NO_COST)
     first = result.decisions[0]
     assert first.session_date == bars[s.min_bars - 1].session_date
     assert first.indicators["bars"] == s.min_bars and result.fills
