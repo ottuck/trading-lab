@@ -49,6 +49,7 @@ from quant_lab.domain.live import (
     live_allowed,
     needs_approval,
     order_key,
+    over_account_limit,
     partial_sell_qty,
     scaled_amount,
 )
@@ -86,6 +87,28 @@ def control(session: Session, now: datetime) -> LiveControlRow:
         session.add(row)
         session.flush()
     return row
+
+
+def month_bought(
+    session: Session,
+    trade_date: date,
+    bot_id: int | None = None,
+    exclude_id: int | None = None,
+) -> Decimal:
+    """거래일이 속한 달에 내기로 한(승인·보냄·체결) 사기 금액. bot_id가 없으면 계좌 전체."""
+    start = trade_date.replace(day=1)
+    end = (start + timedelta(days=32)).replace(day=1)
+    query = select(func.coalesce(func.sum(LiveOrderRow.amount), 0)).where(
+        LiveOrderRow.side == "BUY",
+        LiveOrderRow.state.in_(COMMITTED),
+        LiveOrderRow.trade_date >= start,
+        LiveOrderRow.trade_date < end,
+    )
+    if bot_id is not None:
+        query = query.where(LiveOrderRow.bot_id == bot_id)
+    if exclude_id is not None:
+        query = query.where(LiveOrderRow.id != exclude_id)  # 지금 따지는 주문 자신은 뺀다
+    return Decimal(session.scalar(query) or 0)
 
 
 def live_event(
@@ -239,6 +262,10 @@ class LiveDesk:
                 # 작은 몫은 버리지 않고 모아 둔다. 같은 종목 다음 주문에 더해 함께 산다.
                 order.state, order.reason = LiveState.SKIPPED, SkipReason.CARRIED
                 return order, False
+            if over_account_limit(total, month_bought(session, order.trade_date), self.limits):
+                # 승인해도 넘을 수 없는 계좌 전체 상한. 모아 둔 몫은 건드리지 않고 이번 몫만 넘긴다.
+                order.state, order.reason = LiveState.SKIPPED, SkipReason.ACCOUNT_LIMIT
+                return order, False
             order.amount = total
             session.add(order)
             session.flush()
@@ -246,7 +273,11 @@ class LiveDesk:
                 c.carried_into, c.updated_at = order.id, now
         # 한도를 넘거나 실제 계좌가 봇 기록과 맞지 않는 동안은 사람에게 묻는다.
         # 파는 주문은 한도를 보지 않는다.
-        month = Decimal(0) if sell else self._month_total(session, bot.id, order.trade_date)
+        month = (
+            Decimal(0)
+            if sell
+            else month_bought(session, order.trade_date, bot.id, exclude_id=order.id)
+        )
         amount = Decimal(0) if sell else order.amount
         if needs_approval(amount, month, self.limits, blocked=shortfall):
             order.state = LiveState.WAITING_APPROVAL
@@ -310,19 +341,6 @@ class LiveDesk:
             signal_date + timedelta(days=1), signal_date + timedelta(days=10)
         )[0]
 
-    @staticmethod
-    def _month_total(session: Session, bot_id: int, trade_date: date) -> Decimal:
-        start = trade_date.replace(day=1)
-        total = session.scalar(
-            select(func.coalesce(func.sum(LiveOrderRow.amount), 0)).where(
-                LiveOrderRow.bot_id == bot_id,
-                LiveOrderRow.side == "BUY",
-                LiveOrderRow.state.in_(COMMITTED),
-                LiveOrderRow.trade_date >= start,
-            )
-        )
-        return Decimal(total or 0)
-
     # --- 2) 접수 시간에 보내기 ---
 
     def _window(self, day: date) -> tuple[datetime, datetime] | None:
@@ -385,14 +403,11 @@ class LiveDesk:
     def _has_cash(self, order: LiveOrderRow) -> bool:
         """보내기 직전 증권사에 지금 달러를 묻는다.
 
-        묻지 못하면 그대로 보낸다 (모자라면 증권사가 거절하고, 그때도 자동은 끄지 않는다).
+        묻지 못하면 BrokerError가 그대로 올라가 이 주문은 보내지 않고 다음 tick에 다시 묻는다
+        (send_due가 잡는다). 접수 시간이 끝날 때까지 계속 못 물으면 놓친 주문(missed)이 된다.
         """
         assert self.trader is not None
-        try:
-            return self.trader.available_cash() >= order.amount
-        except BrokerError as exc:
-            log.warning("달러 주문 가능 금액 확인 실패, 그대로 보냄: %s", exc)
-            return True
+        return self.trader.available_cash() >= order.amount
 
     def _place(self, session: Session, order: LiveOrderRow, now: datetime) -> None:
         assert self.trader is not None
@@ -451,7 +466,7 @@ class LiveDesk:
 
     def _skip(self, session: Session, order: LiveOrderRow, reason: str, now: datetime) -> None:
         order.state, order.reason, order.updated_at = LiveState.SKIPPED, reason, now
-        warn = (SkipReason.MISSED, SkipReason.HALTED, SkipReason.NO_FUNDS)
+        warn = (SkipReason.MISSED, SkipReason.HALTED, SkipReason.NO_FUNDS, SkipReason.ACCOUNT_LIMIT)
         level = "WARN" if reason in warn else "INFO"
         live_event(session, now, order, level)
         session.commit()

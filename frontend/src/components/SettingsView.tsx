@@ -366,7 +366,7 @@ function LiveSection({ bot }: { bot: Bot }) {
   // 나 카피 봇은 매달 사기만, AI 봇은 사기(같은 한도)와 일부 팔기
   const ai = isAiBot(bot)
   const current = bot.live_ratio == null ? null : (RATIO_OF[String(Number(bot.live_ratio))] ?? bot.live_ratio)
-  const limits = `한도: 주문 1건 ${dollars(live.per_order)}, 한 달 ${dollars(live.per_month)}.`
+  const limits = `한도: 주문 1건 ${dollars(live.per_order)}, 봇마다 한 달 ${dollars(live.per_month)}. 모든 봇을 합쳐 한 달 ${dollars(live.account_month)}은 승인해도 못 넘어요.`
   // 지금 설정으로 실제로 얼마가 나가는지 (이 봇의 금액으로 계산한다)
   const deposit = Number(bot.params.deposit ?? 0)
   const rough = `매달 넣는 돈 ${plainDollars(deposit)}의 1/100이라, 한 달 약 ${plainDollars(deposit / 100)}이 실제로 나가요.`

@@ -28,7 +28,9 @@ class LiveLimits:
     """실제 주문 안전망. 넘는 주문은 자동으로 내지 않고 사람에게 묻는다."""
 
     per_order: Decimal = Decimal("20")  # 매달 나눠 사기
-    per_month: Decimal = Decimal("50")
+    per_month: Decimal = Decimal("50")  # 봇 하나당
+    # 계좌 전체(모든 봇)가 한 달에 살 수 있는 상한. 위 한도와 달리 승인해도 넘을 수 없다.
+    account_month: Decimal = Decimal("100")
 
 
 class LiveState(StrEnum):
@@ -59,6 +61,7 @@ class SkipReason(StrEnum):
     CARRIED = "carried"  # 금액이 작아 모아 둠. 같은 종목 다음 주문에 더해 함께 산다
     NO_FUNDS = "no_funds"  # 보내기 직전 달러가 모자라 넘김 (다음 달에 더하지 않는다)
     NOTHING_HELD = "nothing_held"  # 팔지만 이 봇이 실제로 산 주식이 없음 (켜기 전 모의 보유)
+    ACCOUNT_LIMIT = "account_limit"  # 계좌 전체 한 달 상한을 넘어 넘김 (승인해도 넘을 수 없다)
 
 
 def scaled_amount(budget: Decimal, ratio: Decimal) -> Decimal:
@@ -80,6 +83,11 @@ def needs_approval(
     """
     over = amount > limits.per_order or month_total + amount > limits.per_month
     return blocked or over
+
+
+def over_account_limit(amount: Decimal, account_month_total: Decimal, limits: LiveLimits) -> bool:
+    """계좌 전체의 이번 달 사기 합계(account_month_total)에 이 주문을 더하면 상한을 넘는지."""
+    return account_month_total + amount > limits.account_month
 
 
 QTY = Decimal("0.000001")  # 소수점 수량 최소 단위 (6자리)
