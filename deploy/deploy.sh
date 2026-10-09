@@ -2,7 +2,8 @@
 # CI가 만들어 GHCR(ghcr.io/ottuck/quant-lab)에 올린 이미지를 받아서 띄운다 (서버에서 빌드하지 않는다).
 #   bash deploy/deploy.sh                  # 운영 (latest). main에 합쳐지면 Actions가 서버 러너에서 TAG=커밋 해시로 부른다
 #   TAG=<커밋 해시> bash deploy/deploy.sh   # 그 버전으로 (롤백)
-#   bash deploy/deploy.sh demo             # 포트폴리오 데모 (수동, D3). 운영 Postgres가 먼저 떠 있어야 한다
+#   bash deploy/deploy.sh demo             # 포트폴리오 데모 (D3). Actions가 운영 다음에 부른다. 운영 Postgres가 먼저 떠 있어야 한다
+#   PULL=0 TAG=<태그> bash deploy/deploy.sh demo   # 서버에 이미 받아 둔 이미지로 (GHCR 로그인 없이, reset-demo.sh)
 # 비공개 이미지라 받기 전에 docker login ghcr.io가 되어 있어야 한다 (Actions는 작업 안에서 로그인한다).
 # 작업 폴더의 브랜치는 건드리지 않는다: SRC가 없으면 origin/main을 .deploy/src에 꺼내 그 compose 파일을 쓴다.
 # Actions는 이미 받아 둔 코드(SRC)와 비밀값 폴더(SECRETS_DIR)를 넘긴다.
@@ -27,13 +28,14 @@ else
 fi
 export SECRETS_DIR=${SECRETS_DIR:-$root/.secrets}
 export TAG=${TAG:-latest}
+PULL=${PULL:-1}
 
 prod="docker compose -f $src/deploy/compose.prod.yaml"
 # 도메인 접속(Cloudflare Tunnel)은 토큰 파일이 있을 때만 켠다 (N7).
 if [ -f "$SECRETS_DIR/cloudflared.env" ]; then
   prod="$prod --profile tunnel"
 fi
-$prod pull
+[ "$PULL" = 0 ] || $prod pull
 
 case "$target" in
   prod)
@@ -60,7 +62,7 @@ GRANT CONNECT ON DATABASE quant_lab_demo TO quant_demo;
 REVOKE ALL ON DATABASE quant_lab FROM PUBLIC;
 SQL
     demo="docker compose -f $src/deploy/compose.demo.yaml"
-    $demo pull
+    [ "$PULL" = 0 ] || $demo pull
     $demo up -d --remove-orphans
     $demo ps
     ;;
