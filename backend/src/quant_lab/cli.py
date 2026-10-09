@@ -10,8 +10,8 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import delete, func, select
+from sqlalchemy.orm import Session, sessionmaker
 
 from quant_lab.adapters.claude.advisor import ClaudeAdvisor
 from quant_lab.adapters.claude.candles import ClaudeCandleAdvisor
@@ -28,7 +28,7 @@ from quant_lab.application.dry_run import latest_completed_session
 from quant_lab.application.replay import replay_bot
 from quant_lab.config import get_settings
 from quant_lab.domain.advisor import Advisor, Unmasking, make_request
-from quant_lab.domain.bars import outlier_limit
+from quant_lab.domain.bars import DailyBar, outlier_limit
 from quant_lab.domain.bot import BotState, CommandKind
 from quant_lab.domain.broker import ExchangeRate, Instrument
 from quant_lab.domain.portfolio import CostModel, RiskLimits
@@ -49,7 +49,13 @@ from quant_lab.persistence.market_info import (
     upsert_exchange_rate,
     upsert_instruments,
 )
-from quant_lab.persistence.models import DailyBarRow, DecisionRow, SimOrderRow
+from quant_lab.persistence.models import (
+    AiJudgmentRow,
+    BacktestRow,
+    DailyBarRow,
+    DecisionRow,
+    SimOrderRow,
+)
 
 
 def _toss_client() -> TossClient:
@@ -285,6 +291,10 @@ def cmd_seed_demo(args: argparse.Namespace) -> int:
             print(f"이 DB에는 토스 등 실제 시세 {real}건이 있어 예시 시세를 넣지 않습니다.")
             print("데모 전용 DB(DATABASE_URL)를 지정하세요.")
             return 1
+        if _demo_changed(session, bars):
+            # 시세 만드는 법이 바뀌면 옛 시세로 쌓은 기록이 어긋나므로 처음부터 다시 채운다
+            _clear_demo(session)
+            print("예시 시세가 바뀌어 예시 봇·지난 시험·예시 시세를 지우고 처음부터 다시 채웁니다")
         for rows in bars.values():
             upsert_daily_bars(session, rows, "demo", now)
         upsert_instruments(
@@ -311,6 +321,27 @@ def cmd_seed_demo(args: argparse.Namespace) -> int:
     if args.bots:
         _seed_demo_bots(end, now)
     return 0
+
+
+def _demo_changed(session: Session, bars: dict[str, list[DailyBar]]) -> bool:
+    """DB에 있는 예시 종가가 새로 만든 값과 하나라도 다른지 (시세 만드는 법이 바뀌었는지)."""
+    want = {(b.symbol, b.session_date): b.close for rows in bars.values() for b in rows}
+    have = session.execute(
+        select(DailyBarRow.symbol, DailyBarRow.session_date, DailyBarRow.close).where(
+            DailyBarRow.source == "demo"
+        )
+    )
+    return any(want.get((s, d), c) != c for s, d, c in have)
+
+
+def _clear_demo(session: Session) -> None:
+    """데모 DB의 예시 봇·지난 시험·AI 판단·예시 시세를 지운다 (데모 DB에서만 부른다)."""
+    for bot in list_bots(session):
+        delete_bot(session, bot.id)
+    for model in (BacktestRow, AiJudgmentRow):
+        session.execute(delete(model))
+    session.execute(delete(DailyBarRow).where(DailyBarRow.source == "demo"))
+    session.flush()
 
 
 DEMO_AI_SYMBOLS = ("QQQ", "VOO", "QLD", "TQQQ", "SOXL", "NVDA", "GLD", "MAGS", "EWY", "EWJ")
