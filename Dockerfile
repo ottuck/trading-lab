@@ -22,8 +22,10 @@ COPY backend/ ./
 RUN uv sync --locked --no-dev
 COPY --from=web /web/dist /app/frontend
 
+# 캔들분석 AI 봇의 차트 그림(matplotlib): 홈 폴더 없는 app 사용자라 설정·글꼴 캐시는 /tmp에 둔다
 ENV PATH=/app/.venv/bin:$PATH \
-    FRONTEND_DIST=/app/frontend
+    FRONTEND_DIST=/app/frontend \
+    MPLCONFIGDIR=/tmp/matplotlib
 RUN useradd --system --uid 10001 app
 USER app
 EXPOSE 8000
