@@ -46,6 +46,21 @@ class BarIssue:
     detail: str
 
 
+SPLIT_RATIO = Decimal("1.2")
+
+
+def split_suspected(fill_price: Decimal, bar_open: Decimal) -> bool:
+    """예전에 체결한 가격이 지금 저장된 그날 시가와 크게 다르면 액면분할·병합으로 본다.
+
+    일봉은 수정주가로 다시 받으면 과거 값이 바뀌지만, 봇의 보유 수량·체결가는 예전 기준 그대로다.
+    정상일 때는 수수료·슬리피지, 배당 보정 정도(몇 %)만 다르다. 5:4 분할(1.25)부터 잡는다.
+    """
+    if fill_price <= 0 or bar_open <= 0:
+        return False
+    ratio = fill_price / bar_open
+    return max(ratio, 1 / ratio) >= SPLIT_RATIO
+
+
 def outlier_limit(leverage_factor: Decimal | None) -> Decimal:
     """하루 종가 변동률 이상치 기준.
 
