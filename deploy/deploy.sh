@@ -30,6 +30,25 @@ export SECRETS_DIR=${SECRETS_DIR:-$root/.secrets}
 export TAG=${TAG:-latest}
 PULL=${PULL:-1}
 
+# 봇이 판단 중(AI 판단 포함)이면 끝날 때까지 기다린다. Worker를 다시 띄우면 하던 판단이 날아간다.
+# api가 안 뜨거나 오래된 버전이라 알 수 없으면 기다리지 않는다. 최대 60분, 쉬는 틈에 시작되는 판단을
+# 놓치지 않게 두 번 연달아 쉬고 있어야 보낸다.
+wait_idle() {
+  local idle=0 body
+  for _ in $(seq 1 720); do
+    if body=$(curl -fsS --max-time 5 http://127.0.0.1:8000/api/health 2> /dev/null)       && [[ "$body" == *'"evaluating":true'* ]]; then
+      idle=0
+      echo "봇이 판단 중이라 끝나기를 기다려요"
+      sleep 5
+    else
+      idle=$((idle + 1))
+      [ "$idle" -ge 2 ] && return 0
+      sleep 3
+    fi
+  done
+  echo "60분이 지나도 판단이 끝나지 않아 그대로 진행해요" >&2
+}
+
 prod="docker compose -f $src/deploy/compose.prod.yaml"
 # 도메인 접속(Cloudflare Tunnel)은 토큰 파일이 있을 때만 켠다 (N7).
 if [ -f "$SECRETS_DIR/cloudflared.env" ]; then
@@ -39,6 +58,7 @@ fi
 
 case "$target" in
   prod)
+    wait_idle
     $prod up -d --remove-orphans
     $prod ps
     # 안 쓰는 옛 이미지를 지운다 (하루 안에 받은 것은 남김). 롤백은 GHCR에서 다시 받으면 된다.
