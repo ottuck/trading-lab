@@ -20,9 +20,9 @@ PROMPT_VERSION = "candle-2026-10-08.2"  # 지침(SYSTEM·입력 형식)을 바�
 # 판단 한 번 $0.066 → $0.144지만 한 달 상한($5) 안이다
 MODEL = "claude-opus-5-5"
 Effort = Literal["low", "medium", "high"]
-# 생각하는 양. 같은 날 실측: 중간 $0.059·높음 $0.066, 높음이 주봉 흐름·고점 거리까지 짚었다
-# (2026-10-08, project.md 14절)
-EFFORT: Effort = "high"
+# 생각하는 양: 중간 (2026-10-09 사용자 결정). Opus 5.5의 high·medium은 흔들림이 시험 오차 안에서
+# 같았고(9.9%p·8.2%p) 중간이 출력이 조금 적다. Opus 5.5의 기본값도 중간이지만 기록을 위해 넘긴다
+EFFORT: Effort = "medium"
 
 SYSTEM = """\
 당신은 한 개인 투자자의 모의 투자 봇을 운용합니다. 매일 미국 정규장이 끝난 뒤 한 번, \
