@@ -164,7 +164,7 @@ GROUPS = {
     "tech": Group(
         1.15,
         vol=0.07,
-        drift=0.03,
+        drift=0.01,
         points=_anchors(
             ("2006-01-03", 100),
             ("2007-10-31", 128),
@@ -193,7 +193,7 @@ GROUPS = {
     "semi": Group(
         1.4,
         vol=0.18,
-        drift=0.04,
+        drift=0.0,
         points=_anchors(
             ("2006-01-03", 100),
             ("2007-07-16", 106),
@@ -216,7 +216,7 @@ GROUPS = {
     # 금: 2008 폭락 땐 덜 빠지고, 2011·2020·2024에 크게 올랐다
     "gold": Group(
         0.15,
-        vol=0.14,
+        vol=0.16,
         drift=0.05,
         points=_anchors(
             ("2006-01-03", 100),
@@ -234,7 +234,7 @@ GROUPS = {
     # 한국: 2008에 시장보다 훨씬 깊이(-70%) 빠졌다
     "korea": Group(
         0.9,
-        vol=0.2,
+        vol=0.25,
         drift=-0.04,
         points=_anchors(
             ("2006-01-03", 100),
@@ -253,7 +253,7 @@ GROUPS = {
     # 일본: 20년 동안 거의 제자리
     "japan": Group(
         0.75,
-        vol=0.11,
+        vol=0.13,
         drift=-0.04,
         points=_anchors(
             ("2006-01-03", 100),
@@ -298,10 +298,11 @@ SPECS = (
         "NVDA",
         date(2006, 1, 3),
         2,
-        group="semi",
-        beta=1.2,
-        drift=0.04,
-        vol=0.30,
+        # 반도체지만 나스닥100에서 큰 몫이라 QQQ와 더 함께 움직인다 (실제 상관 QQQ 0.74, SOXL 0.67)
+        group="tech",
+        beta=1.5,
+        drift=-0.02,
+        vol=0.27,
         earnings=True,
         # 2008 -85%, 2018 말 -55%, 2022 -66%, 그 뒤 AI 붐
         points=_anchors(
@@ -323,7 +324,7 @@ SPECS = (
     Spec("EWJ", date(2006, 1, 3), 50, group="japan", vol=0.03, overnight=0.6),
     # SOXL의 기초 지수 (화면에는 보이지 않는다)
     Spec("SEMI", date(2006, 1, 3), 100, group="semi", vol=0.03),
-    Spec("MAGS", date(2023, 4, 11), 20, group="tech", beta=1.15, drift=0.04, vol=0.08),
+    Spec("MAGS", date(2023, 4, 11), 20, group="tech", beta=1.15, vol=0.08),
     Spec("QLD", date(2006, 6, 21), 20, base="QQQ", leverage=2),
     Spec("TQQQ", date(2010, 2, 11), 1.5, base="QQQ", leverage=3),
     Spec("SOXL", date(2010, 3, 11), 3, base="SEMI", leverage=3),
@@ -332,7 +333,7 @@ HIDDEN = {"SEMI"}
 LEVERAGE = {s.symbol: s.leverage for s in SPECS if s.leverage > 1}
 
 # 마지막 경유점 뒤의 가상 시장. 평소 국면 (연 기대 수익, 흔들림 배수): 순한 상승장 / 보통 장
-STEADY = ((0.16, 0.65), (0.07, 0.85))
+STEADY = ((0.16, 0.8), (0.07, 1.0))
 SWITCH = 1 / 300  # 평소 국면이 하루에 바뀔 확률 (평균 1년 남짓)
 # 조정장·하락장: 하루에 시작될 확률, 빠지는 깊이, 빠지는 기간(거래일), 흔들림 배수.
 # 평균 1년 반에 조정, 6년에 하락장 한 번
@@ -554,7 +555,7 @@ def demo_bars(sessions: Sequence[date], seed: int = 7) -> dict[str, list[DailyBa
         if spec.base is None:
             gaps = random.Random(f"{seed}-{spec.symbol}-earnings")
             jump = [
-                0.07 * _t(gaps) if spec.earnings and i in earnings else 0.0
+                0.05 * _t(gaps) if spec.earnings and i in earnings else 0.0
                 for i in range(len(sessions))
             ]
             group = groups[spec.group]
@@ -571,7 +572,7 @@ def demo_bars(sessions: Sequence[date], seed: int = 7) -> dict[str, list[DailyBa
                 return [
                     spec.beta * group[i]
                     + spec.drift / DAYS_PER_YEAR
-                    + scale * math.sqrt(vol[i]) * rng.gauss(0, 1)
+                    + scale * math.sqrt(max(vol[i], 1.0)) * rng.gauss(0, 1)
                     + jump[i]
                     for i in idx
                 ]
