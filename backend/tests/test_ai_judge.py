@@ -166,7 +166,7 @@ def test_claude_candle_advisor_sends_only_masked_table_without_search() -> None:
     first, second = request.candles.key[a.label], request.candles.key[b.label]
     assert result.advice.weights == {first: 70, second: 0, "CASH": 30}
     assert result.advice.reasons[first] == f"{second}보다 꾸준히 올라요."
-    assert result.prompt_version.endswith("/high")  # 생각하는 양도 기록한다
+    assert result.prompt_version.endswith("/medium")  # 생각하는 양도 기록한다
     assert result.usage.cost == Decimal("0.2") + Decimal("0.1")  # 입력 10만·출력 1만 토큰
 
 

@@ -551,7 +551,7 @@ def build_parser() -> argparse.ArgumentParser:
     ai.add_argument(
         "--effort",
         choices=["low", "medium", "high"],
-        default="high",
+        default="medium",
         help="캔들분석의 생각하는 양",
     )
     ai.set_defaults(func=cmd_ai_judge)
