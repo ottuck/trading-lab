@@ -1,7 +1,7 @@
 name: deploy
 
 # main의 CI가 통과하면 ① GitHub 호스팅 러너가 이미지를 빌드해 GHCR에 올리고 ② 운영 서버(Lightsail 시드니)의 러너가
-# 그 이미지를 받아 띄운다. 서버 러너는 밖으로만 연결한다 (공개 포트 0개). 데모는 자동으로 배포하지 않는다: bash deploy/deploy.sh demo
+# 그 이미지를 받아 띄운다. 서버 러너는 밖으로만 연결한다 (공개 포트 0개). 운영 다음에 데모도 같은 이미지로 띄운다 (2026-10-09, 사용자 결정)
 on:
   workflow_run:
     workflows: [CI]
@@ -89,6 +89,22 @@ jobs:
             sleep 5
           done
           echo '배포 뒤 api가 응답하지 않습니다'; exit 1
+
+      # 데모도 같은 이미지로 다시 띄운다 (demo.env가 있을 때만). 서버에는 GHCR 로그인이 없어 손으로 하면 이미지를 못 받는다.
+      # 데모가 실패해도 운영 배포 결과는 그대로 둔다.
+      - name: 데모 배포
+        continue-on-error: true
+        env:
+          SRC: ${{ github.workspace }}
+          SECRETS_DIR: ${{ vars.DEPLOY_SECRETS_DIR }}
+          TAG: ${{ env.SHA }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.actor }}
+        run: |
+          [ -f "$SECRETS_DIR/demo.env" ] || { echo '데모 비밀값(demo.env)이 없어 데모는 건너뜁니다'; exit 0; }
+          echo "$REGISTRY_TOKEN" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
+          trap 'docker logout ghcr.io' EXIT
+          bash deploy/deploy.sh demo
 
   # 오래된 이미지를 정리한다. 배포마다 GHCR에 버전이 3개쯤(태그 붙은 목록, 이미지, 출처 증명) 쌓이므로 최근 30개(약 10번 배포, 롤백 가능 범위)만 둔다.
   # 정리가 실패해도 배포 결과는 그대로 둔다.

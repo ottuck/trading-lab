@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 데모 DB를 비우고 예시 시세·예시 봇을 처음부터 다시 채운다 (D3, 수동).
+# 데모 DB를 비우고 예시 시세·예시 봇을 처음부터 다시 채운다 (D3, 수동, 서버에서).
+#   지금 떠 있는 데모와 같은 이미지로 다시 띄우므로 GHCR 로그인이 필요 없다 (이미지는 자동 배포가 받아 둔다).
 #   Git Bash에서 실행하세요 (PowerShell의 bash는 WSL이라 안 됩니다):  bash deploy/reset-demo.sh
 #   확인 없이 바로:  bash deploy/reset-demo.sh --yes
 # 언제 쓰나: 시드의 예시 값(DEMO_BOTS 등)을 바꿨을 때. 시드는 이름이 같은 봇이 있으면 새로 만들지 않고
@@ -25,18 +26,26 @@ if [ "${1:-}" != "--yes" ]; then
   [ "$answer" = "y" ] || [ "$answer" = "Y" ] || { echo "취소했어요."; exit 0; }
 fi
 
+# 지금 데모가 쓰는 이미지 태그 (자동 배포가 받아 둔 것). 데모가 없으면 GHCR에서 받아야 해 로그인이 필요하다.
+api=$($demo ps -q demo-api 2>/dev/null || true)
+image=$( [ -n "$api" ] && docker inspect --format '{{.Config.Image}}' "$api" || true)
+
 echo "1/3 데모를 내리고 데모 DB를 비웁니다"
 $demo down
 $prod exec -T db psql -U quant -d postgres -v ON_ERROR_STOP=1 -q -c "DROP DATABASE IF EXISTS quant_lab_demo WITH (FORCE)"
 
 echo "2/3 데모 DB를 다시 만들고 띄웁니다"
-bash deploy/deploy.sh demo
+if [ -n "$image" ]; then
+  TAG=${image##*:} PULL=0 bash deploy/deploy.sh demo
+else
+  bash deploy/deploy.sh demo
+fi
 
 echo "3/3 예시 시세와 예시 봇을 채우는 중 (처음엔 몇 분 걸려요, 최대 20분)"
-# 시드의 마지막 줄(마지막 예시 봇 "시장분석 AI 봇", cli.py DEMO_BOTS의 마지막)이 나오면 처음 채우기가 끝난 것이다.
+# 시드의 마지막 줄(마지막 예시 봇 "캔들분석 AI 봇", cli.py DEMO_BOTS의 마지막)이 나오면 처음 채우기가 끝난 것이다.
 for _ in $(seq 1 120); do
   logs=$($demo logs demo-seeder 2>&1 || true)
-  if grep -q "  시장분석 AI 봇:" <<< "$logs"; then
+  if grep -q "  캔들분석 AI 봇:" <<< "$logs"; then
     echo "채우기 끝. 만든 것:"
     grep -E "예시 시세| 봇: " <<< "$logs" | sed 's/^[^|]*| //'
     exit 0

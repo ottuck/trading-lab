@@ -249,11 +249,11 @@ npm run lint && npm run build
 cd infra/lightsail && terraform apply   # (서버를 옮길 때) 시드니 VM·고정 IP·자동 스냅샷
 sudo bash deploy/bootstrap.sh           # 새 서버에서 한 번
 bash deploy/deploy.sh                   # 운영 (main 기준, 마이그레이션 성공해야 api·worker가 뜸)
-bash deploy/deploy.sh demo              # 데모 (수동)
+bash deploy/deploy.sh demo              # 데모 (운영 자동 배포가 함께 부른다)
 bash deploy/reset-demo.sh               # 데모 DB를 비우고 예시 시세·예시 봇을 처음부터 다시 채움 (수동)
 ```
 
-**운영은 자동 배포**입니다. `main`의 CI가 통과하면 [deploy 워크플로](.github/workflows/deploy.yml)가 ① GitHub 서버에서 이미지를 빌드해 GHCR(`ghcr.io/ottuck/quant-lab`, 태그는 커밋 해시와 `latest`)에 올리고 ② 운영 서버(Lightsail 시드니)의 GitHub Actions 러너(라벨 `quant-lab`)가 그 이미지를 받아 `deploy.sh`로 띄웁니다. 서버는 빌드하지 않아 가볍고, 이전 버전으로 되돌리려면 `TAG=<커밋 해시> bash deploy/deploy.sh`입니다. 러너가 밖으로만 연결하므로 공개 포트는 0개 그대로이고, 장 마감 판단 시간(뉴욕 17:45~19:30)이면 끝날 때까지 기다렸다 배포합니다. 데모는 자동으로 배포하지 않습니다. 데모는 운영과 같은 Postgres 컨테이너 안의 별도 데이터베이스(`quant_lab_demo`)를 쓰고, 예시 봇의 값(`DEMO_BOTS`)을 바꾸면 시드가 이름이 같은 봇을 이어서 채우기만 해서 새 값이 보이지 않으므로 `deploy/reset-demo.sh`로 데모 DB를 비우고 다시 채웁니다(운영 DB에는 영향 없음, 서버에서 실행). `deploy.sh`는 `origin/main`의 compose 파일을 `.deploy/src`에 꺼내 쓰므로 작업 폴더의 브랜치를 바꾸지 않습니다.
+**운영은 자동 배포**입니다. `main`의 CI가 통과하면 [deploy 워크플로](.github/workflows/deploy.yml)가 ① GitHub 서버에서 이미지를 빌드해 GHCR(`ghcr.io/ottuck/quant-lab`, 태그는 커밋 해시와 `latest`)에 올리고 ② 운영 서버(Lightsail 시드니)의 GitHub Actions 러너(라벨 `quant-lab`)가 그 이미지를 받아 `deploy.sh`로 띄웁니다. 서버는 빌드하지 않아 가볍고, 이전 버전으로 되돌리려면 `TAG=<커밋 해시> bash deploy/deploy.sh`입니다. 러너가 밖으로만 연결하므로 공개 포트는 0개 그대로이고, 장 마감 판단 시간(뉴욕 17:45~19:30)이면 끝날 때까지 기다렸다 배포합니다. 운영 다음에 데모도 같은 이미지로 다시 띄웁니다(데모가 실패해도 운영은 그대로). 서버에는 GHCR 로그인이 없어 손으로 `deploy.sh`를 부르면 이미지를 받지 못하므로, 다시 배포하려면 Actions의 deploy 워크플로를 수동 실행(Run workflow)합니다. 데모는 운영과 같은 Postgres 컨테이너 안의 별도 데이터베이스(`quant_lab_demo`)를 쓰고, 예시 봇의 값(`DEMO_BOTS`)을 바꾸면 시드가 이름이 같은 봇을 이어서 채우기만 해서 새 값이 보이지 않으므로 `deploy/reset-demo.sh`로 데모 DB를 비우고 다시 채웁니다(운영 DB에는 영향 없음, 서버에서 실행, 떠 있는 데모와 같은 이미지를 써서 로그인이 필요 없음). `deploy.sh`는 `origin/main`의 compose 파일을 `.deploy/src`에 꺼내 쓰므로 작업 폴더의 브랜치를 바꾸지 않습니다.
 
 러너는 운영 서버에 systemd 서비스(Linux)로 돌고 밖으로만 연결합니다. 켜져 있는지는 GitHub 설정 → Actions → Runners에서, 배포 로그는 Actions 탭에서 봅니다.
 
