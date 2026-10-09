@@ -1,23 +1,27 @@
-"""Claude API 캔들분석 판단 어댑터: 익명 캔들 표 → 구조화 출력(글자별 목표 비중) (project.md 14절).
+"""Claude API 캔들분석 판단 어댑터: 익명 캔들 표 → 차트 그림 + 짧은 요약 → 글자별 목표 비중.
 
-웹 검색은 주지 않는다. 받는 입력(CandleRequest)에는 종목 이름·날짜·실제 가격이 없고, 답의 글자를
-종목으로 되돌리는 일은 엔진(domain/advisor.Unmasking)이 한다.
+(project.md 14절) 웹 검색은 주지 않는다. 받는 입력(CandleRequest)에는 종목 이름·날짜·실제 가격이
+없고, 그림(adapters/charts.py)과 요약도 그 표로만 만든다. 답의 글자를 종목으로 되돌리는 일은
+엔진(domain/advisor.Unmasking)이 한다.
 """
 
+import base64
 import json
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import anthropic
 from anthropic.types.beta import BetaMessage, BetaMessageParam, BetaOutputConfigParam
 
+from quant_lab.adapters.charts import candle_chart
 from quant_lab.adapters.claude.advisor import FALLBACK_BETA, SOURCE, _final_text, _usage
 from quant_lab.domain.advisor import CASH, Advice, AdviceResult, AdvisorError
 from quant_lab.domain.candles import CandleBrief, CandleRequest
 
-PROMPT_VERSION = "candle-2026-10-09.1"  # 지침(SYSTEM·입력 형식)을 바꾸면 올린다
+PROMPT_VERSION = "candle-2026-10-09.2"  # 지침(SYSTEM·입력 형식)을 바꾸면 올린다
 # 같은 익명 입력을 5개 날짜에 여러 번 물은 일관성 시험(2026-10-09): 다시 물을 때 바뀌는 비중이
 # Sonnet 5.5 high 13.9%p, Opus 5.5 high 9.9%p·medium 8.2%p (high·medium 차이는 시험 오차 안).
-# 판단 한 번 $0.066 → $0.144지만 한 달 상한($5) 안이다
+# 판단 한 번 $0.066 → $0.144지만 한 달 상한($5) 안이다. 입력을 숫자 표(약 2.5만 토큰)에서 차트
+# 그림 + 짧은 요약(약 8천 토큰)으로 바꾼 뒤(실험 2026-10-09, 흔들림 11.5%p → 8.0%p) 약 $0.06
 MODEL = "claude-opus-5-5"
 Effort = Literal["low", "medium", "high"]
 # 생각하는 양: 중간 (2026-10-09 사용자 결정). Opus 5.5의 high·medium은 흔들림이 시험 오차 안에서
@@ -30,8 +34,11 @@ SYSTEM = """\
 시가에 팔고 사서 맞춥니다(팔기 먼저, 작은 차이는 무시). 주문·수수료·한도는 엔진이 맡습니다.
 
 이 봇은 가격 차트만 보고 판단합니다
-- 입력은 종목마다 일봉 90개와 주봉 52개입니다. 가격은 판단일 종가를 100으로 맞춘 지수이고, \
-종목 이름과 날짜는 가려져 있습니다. 종목은 "종목 A"처럼 글자로만 부르고, 글자는 매일 새로 섞입니다.
+- 입력은 종목마다 차트 그림 한 장입니다 (위: 일봉 90개, 아래: 주봉 52개, 빨강은 오른 봉, \
+파랑은 내린 봉, 세로축 숫자는 판단일 종가 = 100인 지수, 가로축은 왼쪽이 오래된 것). 그림마다 \
+계산해 둔 짧은 숫자 요약이 함께 있으니 정확한 값은 요약을 보세요. 가격은 판단일 종가를 100으로 \
+맞춘 지수이고, 종목 이름과 날짜는 가려져 있습니다. 종목은 "종목 A"처럼 글자로만 부르고, \
+글자는 매일 새로 섞입니다.
 - 추세의 방향과 기울기, 최근 고점·저점 대비 위치, 흔들림의 크기, 최근 캔들 모양(몸통과 꼬리), \
 종목끼리 어느 쪽이 더 강한지만 근거로 쓰세요.
 - 종목이 무엇인지 짐작하지 마세요. 알고 있는 뉴스·실적·시장 이야기도 근거로 쓰지 마세요.
@@ -79,17 +86,24 @@ def _schema(labels: list[str]) -> dict[str, Any]:
     }
 
 
-def _rows(rows: tuple[tuple[Any, ...], ...]) -> str:
-    return "\n".join(" ".join(str(v) for v in row) for row in rows)
+def _summary(b: CandleBrief) -> str:
+    """그림에서 흐려지는 정확한 값: 오늘(= 100) 기준 변화와 거리, 하루 평균 움직임."""
+    c = [float(row[3]) for row in b.daily]
+    w = [float(row[3]) for row in b.weekly]
 
+    def vs(level: float) -> float:
+        return 100 / level * 100 - 100
 
-def _table(b: CandleBrief) -> str:
-    lever = f", 레버리지 {b.leverage.normalize():f}배" if b.leverage else ""
-    return (
-        f"## 종목 {b.label} (지금 비중 {b.weight_now}%{lever})\n"
-        f"일봉 {len(b.daily)}개 (오래된 것부터, 시가 고가 저가 종가):\n{_rows(b.daily)}\n"
-        f"주봉 {len(b.weekly)}개 (오래된 것부터, 마지막 주는 판단일까지):\n{_rows(b.weekly)}"
-    )
+    recent = [abs(c[i] / c[i - 1] - 1) * 100 for i in range(max(1, len(c) - 20), len(c))]
+    parts = [
+        f"20일 전 대비 {vs(c[-21]):+.1f}%" if len(c) > 20 else None,
+        f"60일 전 대비 {vs(c[-61]):+.1f}%" if len(c) > 60 else None,
+        f"90일 최고가보다 {vs(max(c)):+.1f}%",
+        f"90일 최저가보다 {vs(min(c)):+.1f}%",
+        f"52주 최고가보다 {vs(max(w)):+.1f}%",
+        f"최근 20일 하루 평균 움직임 {sum(recent) / len(recent):.1f}%" if recent else None,
+    ]
+    return ", ".join(p for p in parts if p)
 
 
 def _feedback(request: CandleRequest) -> str:
@@ -104,19 +118,29 @@ def _feedback(request: CandleRequest) -> str:
     return "지난 판단과 그 뒤 결과 (오래된 것부터):\n" + "\n".join(lines) + "\n"
 
 
-def _prompt(request: CandleRequest) -> str:
+def _header(request: CandleRequest) -> str:
     previous = (
         json.dumps(dict(request.previous), ensure_ascii=False) if request.previous else "없음"
     )
     return (
-        "오늘 판단할 봇의 상태와 종목별 차트입니다. 가격은 판단일 종가 = 100인 지수, "
-        "비중의 단위는 %입니다.\n\n"
+        "오늘 판단할 봇의 상태와 종목별 차트입니다. 비중의 단위는 %입니다.\n\n"
         f"지금 현금 비중: {request.cash_weight}%\n"
-        f"지난 판단의 목표 비중: {previous}\n"
-        + _feedback(request)
-        + "\n"
-        + "\n\n".join(_table(b) for b in request.symbols)
+        f"지난 판단의 목표 비중: {previous}\n" + _feedback(request)
     )
+
+
+def _content(request: CandleRequest) -> list[dict[str, Any]]:
+    """글(상태·피드백) 다음에 종목마다 이름표·요약 글과 차트 그림."""
+    content: list[dict[str, Any]] = [{"type": "text", "text": _header(request)}]
+    for b in request.symbols:
+        lever = f", 레버리지 {b.leverage.normalize():f}배" if b.leverage else ""
+        title = f"## 종목 {b.label} (지금 비중 {b.weight_now}%{lever})"
+        png = base64.b64encode(candle_chart(b.label, b.daily, b.weekly)).decode()
+        content.append({"type": "text", "text": f"{title}\n요약: {_summary(b)}"})
+        content.append(
+            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": png}}
+        )
+    return content
 
 
 class ClaudeCandleAdvisor:
@@ -137,7 +161,7 @@ class ClaudeCandleAdvisor:
 
     def advise(self, request: CandleRequest) -> AdviceResult:
         labels = [b.label for b in request.symbols]
-        messages: list[BetaMessageParam] = [{"role": "user", "content": _prompt(request)}]
+        messages = cast(list[BetaMessageParam], [{"role": "user", "content": _content(request)}])
         output: BetaOutputConfigParam = {
             "effort": self._effort,
             "format": {"type": "json_schema", "schema": _schema(labels)},

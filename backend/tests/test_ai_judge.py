@@ -142,7 +142,7 @@ def test_claude_advisor_reads_weights_sources_and_cost_across_pause() -> None:
     assert result.usage.web_searches == 1
 
 
-def test_claude_candle_advisor_sends_only_masked_table_without_search() -> None:
+def test_claude_candle_advisor_sends_masked_charts_without_search() -> None:
     histories = {s: make_bars(s, [100 + i for i in range(260)]) for s in ("QQQ", "GLD")}
     request = make_request(histories, Decimal(1000), {}, Decimal(1000), Decimal(500), candles=True)
     assert request.candles is not None
@@ -162,7 +162,11 @@ def test_claude_candle_advisor_sends_only_masked_table_without_search() -> None:
 
     sent = client.calls[0]
     assert "tools" not in sent  # 검색 없음
-    assert not any(s in sent["messages"][0]["content"] for s in ("QQQ", "GLD", "2026"))
+    content = sent["messages"][0]["content"]
+    text = " ".join(c["text"] for c in content if c["type"] == "text")
+    assert not any(s in text for s in ("QQQ", "GLD", "2026"))  # 이름·날짜 없음
+    images = [c for c in content if c["type"] == "image"]
+    assert len(images) == 2 and "요약: 20일 전 대비" in text  # 종목마다 차트 그림과 짧은 요약
     first, second = request.candles.key[a.label], request.candles.key[b.label]
     assert result.advice.weights == {first: 70, second: 0, "CASH": 30}
     assert result.advice.reasons[first] == f"{second}보다 꾸준히 올라요."
