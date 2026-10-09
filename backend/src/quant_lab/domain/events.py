@@ -53,6 +53,7 @@ class ErrorReason(StrEnum):
 
     BROKER_ACCESS = "broker_access"  # 허용 IP·인증
     UNEXPECTED = "unexpected"
+    SPLIT_SUSPECTED = "split_suspected"  # 보유 종목의 가격 기록이 분할·병합으로 바뀐 듯함
 
 
 class ConfigChange(StrEnum):

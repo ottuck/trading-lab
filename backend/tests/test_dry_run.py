@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
@@ -21,7 +22,14 @@ from quant_lab.domain.portfolio import CostModel, RiskLimits
 from quant_lab.domain.strategy import DipSaver
 from quant_lab.persistence.bars import upsert_daily_bars
 from quant_lab.persistence.bots import create_bot, get_bot, load_account
-from quant_lab.persistence.models import BotDepositRow, DecisionRow, EventRow, SimOrderRow
+from quant_lab.persistence.models import (
+    BotDepositRow,
+    BotPositionRow,
+    DecisionRow,
+    EventRow,
+    RunRow,
+    SimOrderRow,
+)
 from tests.fakes import WeekdayCalendar, make_bars
 
 CAL = WeekdayCalendar()
@@ -173,6 +181,51 @@ def test_forbidden_puts_bot_in_error(session: Session, bars: list[DailyBar], bot
     bot = get_bot(session, bot_id)
     assert bot is not None and bot.state == BotState.ERROR
     assert count(session, DecisionRow) == 0
+
+
+def test_split_in_price_history_stops_bot_that_holds_the_symbol(
+    session: Session, bars: list[DailyBar], bot_id: int
+) -> None:
+    """체결가가 지금 저장된 그날 시가의 2배: 분할로 일봉만 다시 받은 것으로 보고 멈춘다."""
+    fill = bars[5]
+    run = RunRow(
+        id=uuid.uuid4(),
+        bot_id=bot_id,
+        trigger="SCHEDULED",
+        started_at=datetime.now(UTC),
+        status="OK",
+    )
+    session.add(run)
+    session.flush()
+    decision = DecisionRow(
+        bot_id=bot_id, symbol="QQQ", session_date=bars[4].session_date, mode="DRY_RUN",
+        run_id=run.id, strategy={}, action="BUY", target_long=True, holding=False, reason="",
+        indicators={}, created_at=datetime.now(UTC),
+    )  # fmt: skip
+    session.add(decision)
+    session.flush()
+    session.add(
+        SimOrderRow(
+            bot_id=bot_id, symbol="QQQ", decision_id=decision.id, side="BUY", status="FILLED",
+            signal_date=bars[4].session_date, created_at=datetime.now(UTC),
+            fill_date=fill.session_date, qty=Decimal(1), price=fill.open * 2,
+        )
+    )  # fmt: skip
+    session.add(BotPositionRow(bot_id=bot_id, symbol="QQQ", qty=Decimal(1), avg_cost=fill.open * 2))
+    session.commit()
+
+    out = evaluate_bot(
+        session,
+        bot_id,
+        market=FakeMarket(),
+        calendar=CAL,
+        now=after_close(bars[10].session_date),
+        trigger=Trigger.SCHEDULED,
+    )
+    assert (out.status, out.reason) == (RunStatus.ERROR, "split_suspected")
+    bot = get_bot(session, bot_id)
+    assert bot is not None and bot.state == BotState.ERROR
+    assert count(session, DecisionRow) == 1  # 새 판단은 없다 (위에서 넣은 것뿐)
 
 
 def test_transient_toss_error_keeps_running(
