@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from quant_lab.domain.bot import CommandKind
 
@@ -213,6 +213,7 @@ class LiveView(BaseModel):
     held_value: Decimal = Decimal(0)  # 그 주식의 지금 값
     shortfall: list[dict[str, str]] = []  # 실제 계좌 대조 [{symbol, held, bought}]
     checked_at: datetime | None = None
+    unknown_order_ids: list[int] = []
     orders: list[LiveOrderView]
 
 
@@ -233,6 +234,11 @@ class NotifyUpdate(BaseModel):
 
 class LiveHalt(BaseModel):
     halted: bool
+
+
+class LiveOrderResolution(BaseModel):
+    confirmed: Literal[True]  # 증권사 주문 내역·보유를 확인한 뒤에만 정리한다
+    broker_order_id: str | None = Field(max_length=64)  # null: 미접수 확인, 번호: Worker 조회 대기
 
 
 class EventView(BaseModel):

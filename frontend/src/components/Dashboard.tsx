@@ -19,7 +19,7 @@ import { realKeepNote } from '../live'
 import { AI_KINDS, isAiBot, isMeBot, useStrategies, type AiKind } from '../strategies'
 import { useDemo } from '../demo'
 import { FxNote } from './Currency'
-import { AccountCard, LiveApprovals } from './Live'
+import { AccountCard } from './Live'
 import { Term } from './Help'
 import { goTo, openBot, selectBot, startMeEdit, startMeQuestions, useSelectedBot } from '../selectedBot'
 import { PriceChart } from './PriceChart'
@@ -1150,7 +1150,6 @@ export function MeHome({ bots }: { bots: Bot[] }) {
         <BotTabs bots={bots} current={bot} onPick={pick} />
         {bot ? (
           <>
-            <LiveApprovals />
             <MeHero bot={bot} />
             <NextPlan bot={bot} />
             <MonthDigest bot={bot} />

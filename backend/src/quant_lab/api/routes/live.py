@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter
 
 from quant_lab.api.deps import SessionDep
-from quant_lab.api.schemas import BotView, LiveHalt, LiveRatioUpdate, LiveView
+from quant_lab.api.schemas import BotView, LiveHalt, LiveOrderResolution, LiveRatioUpdate, LiveView
 from quant_lab.application import bot_status, live_admin
 
 router = APIRouter()
@@ -44,4 +44,10 @@ def decline(session: SessionDep, order_id: int) -> LiveView:
 @router.post("/live/halt")
 def halt(session: SessionDep, body: LiveHalt) -> LiveView:
     live_admin.set_halted(session, body.halted, _now())
+    return live(session)
+
+
+@router.post("/live-orders/{order_id}/resolve")
+def resolve(session: SessionDep, order_id: int, body: LiveOrderResolution) -> LiveView:
+    live_admin.resolve_unknown(session, order_id, _now(), broker_order_id=body.broker_order_id)
     return live(session)

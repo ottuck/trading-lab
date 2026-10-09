@@ -19,7 +19,7 @@ from quant_lab.persistence.bars import upsert_daily_bars
 from quant_lab.persistence.bots import create_bot
 from quant_lab.persistence.db import get_session
 from quant_lab.persistence.heartbeat import record_heartbeat
-from quant_lab.persistence.models import BotPositionRow, BotRow, CommandRow, RunRow
+from quant_lab.persistence.models import BotPositionRow, BotRow, CommandRow, LiveOrderRow, RunRow
 from tests.fakes import WeekdayCalendar, make_bars
 
 CAL = WeekdayCalendar()
@@ -331,3 +331,38 @@ def test_demo_mode_is_read_only(
     assert client.post("/api/parallel", json={"symbol": "QQQ", "params": params}).status_code == 200
     assert client.post(f"/api/bots/{bot_id}/commands", json={"kind": "STOP"}).status_code == 403
     assert client.delete(f"/api/bots/{bot_id}").status_code == 403
+    assert (
+        client.post(
+            "/api/live-orders/1/resolve", json={"confirmed": True, "broker_order_id": None}
+        ).status_code
+        == 403
+    )
+
+
+def test_unknown_resolution_requires_confirmation_and_never_marks_a_hint_as_sent(
+    client: TestClient, session: Session
+) -> None:
+    now = datetime(2026, 10, 2, 13, 35, tzinfo=UTC)
+    order = LiveOrderRow(
+        symbol="VOO", signal_date=now.date(), trade_date=now.date(), amount=Decimal(10),
+        key="unknown-api", state="UNKNOWN", source="test", sent_at=now,
+        created_at=now, updated_at=now,
+    )  # fmt: skip
+    session.add(order)
+    session.commit()
+    route = f"/api/live-orders/{order.id}/resolve"
+    assert client.get("/api/live").json()["unknown_order_ids"] == [order.id]
+    assert client.post(route, json={"broker_order_id": None}).status_code == 422
+    assert client.post(route, json={"confirmed": False, "broker_order_id": None}).status_code == 422
+    assert client.post(route, json={"confirmed": True, "broker_order_id": "  "}).status_code == 400
+    response = client.post(route, json={"confirmed": True, "broker_order_id": "broker-id"})
+    assert response.status_code == 200
+    assert response.json()["unknown_order_ids"] == [order.id]
+    assert response.json()["orders"][0]["state"] == "UNKNOWN"
+    assert (
+        client.post(route, json={"confirmed": True, "broker_order_id": None}).json()[
+            "unknown_order_ids"
+        ]
+        == []
+    )
+    assert client.post(route, json={"confirmed": True, "broker_order_id": None}).status_code == 409

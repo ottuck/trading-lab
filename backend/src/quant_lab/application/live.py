@@ -8,7 +8,8 @@
 - 모의 매수 1건에 실제 주문은 최대 하나 (live_orders.sim_order_id 유일).
 - 보내기 전에 SENDING으로 먼저 적고(commit) 보낸다. 같은 판단은 늘 같은 키(order_key)다.
 - 결과를 모르는 주문은 Trader.idempotency_window 안에서만 같은 키로 다시 보낸다.
-  그 뒤에는 다시 보내지 않고 find_orders로 찾고, 못 찾으면 UNKNOWN으로 두고 사람에게 알린다.
+  그 뒤에는 다시 보내지 않고 find_orders로 찾는다. UNKNOWN이 남으면 계좌 전체 새 주문을 막고,
+  매수 금액은 한도에 계속 포함한다. 조회로 찾거나 사람이 미접수를 확인해야 풀린다.
 """
 
 import logging
@@ -68,7 +69,13 @@ from quant_lab.persistence.models import (
 KST = ZoneInfo("Asia/Seoul")
 RETRY_MARGIN = timedelta(minutes=1)  # 멱등 유효 시간이 끝나기 이만큼 전까지만 같은 키로 다시 보낸다
 CHECK_INTERVAL = timedelta(minutes=1)  # 보낸 주문의 체결 확인 간격
-COMMITTED = (LiveState.APPROVED, LiveState.SENDING, LiveState.SENT, LiveState.FILLED)
+COMMITTED = (
+    LiveState.APPROVED,
+    LiveState.SENDING,
+    LiveState.SENT,
+    LiveState.FILLED,
+    LiveState.UNKNOWN,
+)
 WAITING_TO_SEND = (LiveState.WAITING_APPROVAL, LiveState.APPROVED)
 # 체결 수량: 사면 +, 팔면 - (봇이 실제 계좌에 남긴 수량 계산)
 SIGNED_QTY = case(
@@ -95,12 +102,16 @@ def month_bought(
     bot_id: int | None = None,
     exclude_id: int | None = None,
 ) -> Decimal:
-    """거래일이 속한 달에 내기로 한(승인·보냄·체결) 사기 금액. bot_id가 없으면 계좌 전체."""
+    """거래일이 속한 달에 내기로 한 사기 금액(결과 불명 포함). bot_id가 없으면 계좌 전체."""
     start = trade_date.replace(day=1)
     end = (start + timedelta(days=32)).replace(day=1)
-    query = select(func.coalesce(func.sum(LiveOrderRow.amount), 0)).where(
+    reserved = case(
+        (LiveOrderRow.state.in_(COMMITTED), LiveOrderRow.amount),
+        else_=func.coalesce(LiveOrderRow.filled_amount, 0),
+    )
+    query = select(func.coalesce(func.sum(reserved), 0)).where(
         LiveOrderRow.side == "BUY",
-        LiveOrderRow.state.in_(COMMITTED),
+        LiveOrderRow.state.in_((*COMMITTED, LiveState.CANCELED, LiveState.REJECTED)),
         LiveOrderRow.trade_date >= start,
         LiveOrderRow.trade_date < end,
     )
@@ -109,6 +120,16 @@ def month_bought(
     if exclude_id is not None:
         query = query.where(LiveOrderRow.id != exclude_id)  # 지금 따지는 주문 자신은 뺀다
     return Decimal(session.scalar(query) or 0)
+
+
+def has_unknown(session: Session) -> bool:
+    """달·봇과 무관하게, 삭제한 봇의 기록까지 확인한다."""
+    return (
+        session.scalar(
+            select(LiveOrderRow.id).where(LiveOrderRow.state == LiveState.UNKNOWN).limit(1)
+        )
+        is not None
+    )
 
 
 def live_event(
@@ -159,6 +180,8 @@ class LiveDesk:
     def tick(self, now: datetime) -> None:
         if self.trader is None:
             return
+        self.check_unknown(now)
+        self.check_sent(now)
         self.plan(now)
         self.send_due(now)
         self.check_sent(now)
@@ -170,6 +193,8 @@ class LiveDesk:
         made: list[LiveOrderRow] = []
         with self.make_session() as session:
             ctl = control(session, now)
+            if has_unknown(session):
+                return made  # 모의 주문은 남겨 두고, 확인 뒤 원래 접수 시간 안에서만 따라 한다.
             halted, shortfall = ctl.halted, bool(ctl.shortfall)
             rows = session.execute(
                 select(SimOrderRow, BotRow)
@@ -351,7 +376,6 @@ class LiveDesk:
 
     def send_due(self, now: datetime) -> None:
         with self.make_session() as session:
-            halted = control(session, now).halted
             ids = list(
                 session.scalars(
                     select(LiveOrderRow.id)
@@ -365,13 +389,15 @@ class LiveDesk:
             )
         for order_id in ids:
             try:
-                self._advance(order_id, now, halted)
+                self._advance(order_id, now)
             except BrokerError as exc:  # 접수 시간 조회 실패 등: 다음 tick에 다시
                 log.warning("실제 주문 %s 처리 보류: %s", order_id, exc)
 
-    def _advance(self, order_id: int, now: datetime, halted: bool) -> None:
+    def _advance(self, order_id: int, now: datetime) -> None:
         assert self.trader is not None
         with self.make_session() as session:
+            halted = control(session, now).halted
+            unknown = has_unknown(session)  # 같은 바퀴의 앞 주문이 UNKNOWN이 됐을 수도 있다.
             order = session.get_one(LiveOrderRow, order_id, with_for_update=True)
             window = self._window(order.trade_date)
             if window is None:
@@ -380,12 +406,12 @@ class LiveDesk:
                 return
             start, end = window
             if order.state == LiveState.SENDING:
-                self._resend_or_resolve(session, order, now, end, halted)
+                self._resend_or_resolve(session, order, now, end, halted or unknown)
                 return
             if now >= end:  # 승인을 못 받았거나, 멈춰 있었거나, PC가 꺼져 있었다
                 self._skip(session, order, SkipReason.HALTED if halted else SkipReason.MISSED, now)
                 return
-            if order.state != LiveState.APPROVED or halted:
+            if order.state != LiveState.APPROVED or halted or unknown:
                 return
             if now < start + timedelta(minutes=SEND_DELAY_MINUTES):
                 return
@@ -442,25 +468,74 @@ class LiveDesk:
         if within and now < end and not halted:
             self._place(session, order, now)  # 같은 키라 이미 접수됐으면 같은 주문이 돌아온다
             return
+        self._find_order(session, order, now)
+
+    def check_unknown(self, now: datetime) -> None:
+        """불명 주문은 1분마다 조회만 한다. 접수 창·멱등 시간이 지나도 재전송하지 않는다."""
+        with self.make_session() as session:
+            ids = list(
+                session.scalars(
+                    select(LiveOrderRow.id).where(LiveOrderRow.state == LiveState.UNKNOWN)
+                )
+            )
+        for order_id in ids:
+            last = self._checked_at.get(order_id)
+            if last is not None and now - last < CHECK_INTERVAL:
+                continue
+            self._checked_at[order_id] = now
+            with self.make_session() as session:
+                control(session, now)
+                order = session.get_one(LiveOrderRow, order_id, with_for_update=True)
+                if order.state != LiveState.UNKNOWN:
+                    continue
+                try:
+                    self._find_order(session, order, now)
+                except BrokerError as exc:
+                    log.warning("실제 주문 %s 결과 확인 보류: %s", order_id, exc)
+                if order.state != LiveState.UNKNOWN:
+                    self._checked_at.pop(order_id, None)
+
+    def _find_order(self, session: Session, order: LiveOrderRow, now: datetime) -> None:
+        assert self.trader is not None and order.sent_at is not None
         # 같은 키로 다시 보내면 새 주문이 될 수 있다. 다시 보내지 않고 찾는다.
         sent_day = order.sent_at.astimezone(KST).date()
+        linked = set(
+            session.scalars(
+                select(LiveOrderRow.broker_order_id).where(
+                    LiveOrderRow.id != order.id,
+                    LiveOrderRow.source == order.source,
+                    LiveOrderRow.broker_order_id.is_not(None),
+                )
+            )
+        )
         matches = [
             o
             for o in self.trader.find_orders(order.symbol, sent_day)
-            if o.side == order.side
-            and o.ordered_at >= order.sent_at - RETRY_MARGIN
+            if o.symbol == order.symbol
+            and o.side == order.side
+            and o.currency == "USD"
+            and order.sent_at - RETRY_MARGIN
+            <= o.ordered_at
+            <= order.sent_at + self.trader.idempotency_window
+            and o.order_id not in linked
+            and (order.broker_order_id is None or o.order_id == order.broker_order_id)
             and (
                 o.quantity == order.quantity
                 if order.side == "SELL"
                 else o.order_amount == order.amount
             )
         ]
+        was_unknown = order.state == LiveState.UNKNOWN
         if len(matches) == 1:
             order.state, order.broker_order_id = LiveState.SENT, matches[0].order_id
+            order.note = "증권사 조회로 주문 확인"
+            if was_unknown:
+                live_event(session, now, order, resolved=True)
         else:
             order.state = LiveState.UNKNOWN
-            order.note = f"주문 조회로 {len(matches)}건을 찾음"
-            live_event(session, now, order, "WARN")
+            if not was_unknown:
+                order.note = f"주문 조회로 {len(matches)}건을 찾음"
+                live_event(session, now, order, "WARN")
         order.updated_at = now
         session.commit()
 

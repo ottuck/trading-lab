@@ -536,6 +536,7 @@ _LIVE_REASONS = {
     "carried": "금액이 작아 모아 뒀어요. 같은 종목 몫이 $1을 넘으면 함께 사요.",
     "no_funds": "실제 계좌에 달러가 모자라 사지 않았어요. 이번 몫은 넘어가요.",
     "account_limit": "이번 달 계좌 전체 한도를 넘어 사지 않았어요. 이번 몫은 넘어가요.",
+    "confirmed_not_placed": "증권사 주문 내역·보유를 확인해 미접수로 정리했어요. 이 주문은 다시 보내지 않아요.",
     "nothing_held": "이 봇이 실제로 산 주식이 없어 팔지 않아요 (따라 하기를 켜기 전 모의 보유예요).",
     "outside_hours": "주문을 받는 시간이 아니었어요.",
     "insufficient_funds": "실제 계좌에 돈이 부족해요. 달러를 채워 주세요.",
@@ -559,6 +560,14 @@ def _live_order_message(d: LiveOrderData) -> Message | None:
     if state == "FILLED":
         body = f"{sym} {_shares(d.get('filled_qty'))}주를 {amount}에 샀어요 (실제 계좌)."
         return Message("✅", f"실제로 샀어요 · {sym}", body, "INFO", True)
+    if state == "SENT" and d.get("resolved"):
+        return Message(
+            "✅",
+            f"실제 주문을 확인했어요 · {sym}",
+            "증권사 조회로 주문을 찾았어요. 체결을 확인하고 이어서 진행해요.",
+            "INFO",
+            True,
+        )
     if state == "SKIPPED":
         warn = d.get("reason") in ("missed", "halted")
         return Message("⏭️", f"실제 주문을 넘겼어요 · {sym}", why, "WARN" if warn else "INFO", warn)
@@ -570,7 +579,7 @@ def _live_order_message(d: LiveOrderData) -> Message | None:
             body = f"{why} 증권사 앱에서 확인해 주세요.".strip()
         return Message("⚠️", f"{title} · {sym}", body, "WARN", True)
     if state == "UNKNOWN":
-        body = f"증권사 앱에서 {sym} {amount} 주문이 들어갔는지 확인해 주세요."
+        body = f"모든 봇의 새 실제 주문을 멈췄어요. 증권사 앱에서 {sym} {amount} 주문 내역·보유를 확인하고, 앱의 확인 필요 카드에서 정리해 주세요. 매수 금액은 월 한도에 계속 포함해요."
         return Message("⚠️", f"실제 주문을 확인하지 못했어요 · {sym}", body, "WARN", True)
     return None  # SENDING·SENT는 내부 상태
 
@@ -591,6 +600,14 @@ def _live_sell_message(d: LiveOrderData) -> Message | None:
     if state == "FILLED":
         body = f"{sym} {_shares(d.get('filled_qty'))}주를 팔았어요 (실제 계좌)."
         return Message("✅", f"실제로 팔았어요 · {sym}", body, "INFO", True)
+    if state == "SENT" and d.get("resolved"):
+        return Message(
+            "✅",
+            f"실제 매도를 확인했어요 · {sym}",
+            "증권사 조회로 주문을 찾았어요. 체결을 확인하고 이어서 진행해요.",
+            "INFO",
+            True,
+        )
     if state == "SKIPPED":
         warn = d.get("reason") in ("missed", "halted")
         return Message("⏭️", f"실제 매도를 넘겼어요 · {sym}", why, "WARN" if warn else "INFO", warn)
@@ -601,6 +618,8 @@ def _live_sell_message(d: LiveOrderData) -> Message | None:
             "UNKNOWN": "실제 매도를 확인하지 못했어요",
         }[state]
         body = f"{why} 증권사 앱에서 {sym}를 확인해 주세요."
+        if state == "UNKNOWN":
+            body = f"모든 봇의 새 실제 주문을 멈췄어요. 증권사 앱에서 {sym} 주문 내역·보유를 확인하고, 앱의 확인 필요 카드에서 정리해 주세요."
         return Message("⚠️", f"{title} · {sym}", body.strip(), "WARN", True)
     return None
 

@@ -7,7 +7,7 @@ import { sourceLabel } from '../source'
 
 /* 실제로 따라 사기 (실거래 R2). 실제 계좌 금액은 원화로 바꿔 보지 않고 늘 달러로 보여준다. */
 
-/** 홈 맨 위: 승인을 기다리는 실제 주문. 한도를 넘는 주문은 사람이 눌러야 나간다. */
+/** 화면 맨 위: 불명 주문 확인과 승인. 봇이 삭제돼도 불명 주문은 숨기지 않는다. */
 export function LiveApprovals() {
   const qc = useQueryClient()
   const { data } = useLive()
@@ -15,13 +15,40 @@ export function LiveApprovals() {
     mutationFn: ({ id, ok }: { id: number; ok: boolean }) => (ok ? liveApi.approve(id) : liveApi.decline(id)),
     onSuccess: (live) => qc.setQueryData(['live'], live),
   })
+  const resolve = useMutation({
+    mutationFn: ({ id, brokerOrderId }: { id: number; brokerOrderId: string | null }) => liveApi.resolve(id, brokerOrderId),
+    onSuccess: (live) => qc.setQueryData(['live'], live),
+  })
+  const unknown = data?.orders.filter((o) => o.state === 'UNKNOWN') ?? []
   const waiting = data?.orders.filter((o) => o.state === 'WAITING_APPROVAL') ?? []
-  if (!data?.trader || !waiting.length) return null
+  if (!data || (!unknown.length && (!data.trader || !waiting.length))) return null
+  const specify = (o: LiveOrder) => {
+    const id = window.prompt(`${o.symbol} ${dayLabel(o.trade_date)} 주문을 증권사 앱에서 확인하고 주문 번호를 입력해 주세요.\n프로그램이 종목·방향·금액 또는 수량·접수 시각을 다시 확인할 때까지 새 주문은 멈춰 있어요.`)?.trim()
+    if (id) resolve.mutate({ id: o.id, brokerOrderId: id })
+  }
+  const notPlaced = (o: LiveOrder) => {
+    if (window.confirm(`${o.symbol} ${dayLabel(o.trade_date)} 주문이 접수되지 않았고, 체결된 주식도 없는지 증권사 앱의 주문 내역과 보유를 모두 확인했나요?\n\n확인하면 이 주문은 다시 보내지 않고 넘겨요. 확인할 수 없다면 취소를 눌러 주세요. 다른 불명 주문이 없으면 이후 주문은 다시 진행돼요.`)) {
+      resolve.mutate({ id: o.id, brokerOrderId: null })
+    }
+  }
   return (
     <section className="block live-ask">
       <div className="block-head">
-        <h2>{waiting.some((o) => o.side === 'SELL') ? '실제로 주문할까요?' : '실제로 살까요?'}</h2>
+        <h2>{unknown.length ? '실제 주문 결과를 확인해 주세요' : waiting.some((o) => o.side === 'SELL') ? '실제로 주문할까요?' : '실제로 살까요?'}</h2>
       </div>
+      {unknown.length > 0 && <div className="notice">결과가 불명확한 주문이 있어 모든 봇의 새 실제 주문과 승인을 멈췄어요. 매수 금액은 월 한도에 계속 포함해요. 증권사에 조회해 주문을 찾으면 자동으로 이어가요.</div>}
+      {unknown.map((o) => (
+        <div key={o.id} className="live-ask-row">
+          <div>
+            <div className="title">{o.symbol} · {o.side === 'SELL' ? `${shares(o.quantity)}주 팔기` : `${dollars(o.amount)}어치 사기`}</div>
+            <div className="faint small">{dayLabel(o.trade_date)} · {o.bot_name ?? '삭제한 봇'} · 확인 필요</div>
+          </div>
+          <div className="controls">
+            <button className="ghost" disabled={resolve.isPending} onClick={() => specify(o)}>주문 번호 입력</button>
+            <button className="ghost" disabled={resolve.isPending} onClick={() => notPlaced(o)}>미접수 확인</button>
+          </div>
+        </div>
+      ))}
       {data.halted && <div className="notice">실제 주문을 멈춰 둔 상태예요. 설정에서 다시 시작해야 승인할 수 있어요.</div>}
       {waiting.map((o) => (
         <div key={o.id} className="live-ask-row">
@@ -43,7 +70,7 @@ export function LiveApprovals() {
             </div>
           </div>
           <div className="controls">
-            <button className="primary" disabled={act.isPending || data.halted} onClick={() => act.mutate({ id: o.id, ok: true })}>
+            <button className="primary" disabled={act.isPending || data.halted || data.unknown_order_ids.length > 0} onClick={() => act.mutate({ id: o.id, ok: true })}>
               승인
             </button>
             <button className="ghost" disabled={act.isPending} onClick={() => act.mutate({ id: o.id, ok: false })}>
@@ -53,6 +80,7 @@ export function LiveApprovals() {
         </div>
       ))}
       {act.error && <span className="bad small">{act.error.message}</span>}
+      {resolve.error && <span className="bad small">{resolve.error.message}</span>}
     </section>
   )
 }

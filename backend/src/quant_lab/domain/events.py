@@ -126,6 +126,8 @@ class LiveOrderData(TypedDict):
     ]  # 건너뜀(domain/live.py SkipReason)·거절(domain/broker.py RejectReason)
     filled_qty: NotRequired[str]
     auto: NotRequired[bool]  # 사람에게 묻지 않고 자동으로 내기로 함
+    resolved: NotRequired[bool]  # UNKNOWN을 증권사 조회로 확인
+    manual_resolution: NotRequired[bool]  # 사용자가 번호 지정 또는 미접수 확인
 
 
 class LiveFundsData(TypedDict):
