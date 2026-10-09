@@ -15,6 +15,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from quant_lab.domain.bars import DailyBar
+from quant_lab.domain.feedback import PastCall
 from quant_lab.domain.korean import has_batchim
 
 CASH = "CASH"  # 현금 비중의 키 (종목과 함께 비중을 담는다)
@@ -52,12 +53,14 @@ class CandleRequest:
     symbols: tuple[CandleBrief, ...]
     cash_weight: Decimal  # 지금 현금 비중 %
     previous: Mapping[str, int] | None = None  # 지난 판단의 목표 비중 (오늘 글자로 바꿈)
+    feedback: tuple[PastCall, ...] = ()  # 최근 판단과 그 뒤 결과 (날짜 없이, 오늘 글자로)
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "symbols": [s.as_dict() for s in self.symbols],
             "cash_weight": str(self.cash_weight),
             "previous": dict(self.previous) if self.previous is not None else None,
+            "feedback": [c.as_dict() for c in self.feedback],
         }
 
 
@@ -98,6 +101,7 @@ def mask(
     cash_weight: Decimal,
     previous: Mapping[str, int] | None,
     session_date: date,
+    feedback: Sequence[PastCall] = (),
 ) -> MaskedCandles:
     """histories의 마지막 봉(판단일)까지로 익명 입력을 만든다."""
     symbols = sorted(histories)
@@ -120,13 +124,19 @@ def mask(
                 leverage=leverage.get(symbol),
             )
         )
-    shown = None
-    if previous is not None:
+
+    def relabel(weights: Mapping[str, int]) -> dict[str, int]:
         # 지금 종목이 아닌 이름은 넘기지 않는다 (이름이 드러난다)
-        shown = {label_of[s]: w for s, w in previous.items() if s in label_of}
-        if CASH in previous:
-            shown[CASH] = previous[CASH]
-    return MaskedCandles(CandleRequest(tuple(briefs), cash_weight, shown), key)
+        out = {label_of[s]: w for s, w in weights.items() if s in label_of}
+        if CASH in weights:
+            out[CASH] = weights[CASH]
+        return out
+
+    shown = relabel(previous) if previous is not None else None
+    calls = tuple(
+        PastCall(None, c.days_ago, relabel(c.weights), c.result, c.even) for c in feedback
+    )
+    return MaskedCandles(CandleRequest(tuple(briefs), cash_weight, shown, calls), key)
 
 
 # AI가 종목을 부르는 꼴: "종목 C는", 목록으로 이어 쓴 "B와 C". 앞뒤에 영문·숫자가 붙은 글자("AI",

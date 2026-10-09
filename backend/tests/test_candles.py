@@ -25,7 +25,11 @@ def test_masked_candles_hide_names_dates_and_prices() -> None:
         leverage={"TQQQ": Decimal(3)},
         previous={"QQQ": 40, "OLD": 10, "CASH": 50},
         candles=True,
+        past=[(HISTORIES["QQQ"][-6].session_date, {"QQQ": 40, "OLD": 10, "CASH": 50})],
     )
+    # 피드백: 5거래일 전 판단대로 들고 있었다면 QQQ 40% × (599/594 - 1) = +0.3%
+    (call,) = request.feedback
+    assert (call.days_ago, call.result) == (5, Decimal("0.3"))
     masked = request.candles
     assert masked is not None
     shown = json.dumps(masked.request.as_dict())
@@ -35,6 +39,8 @@ def test_masked_candles_hide_names_dates_and_prices() -> None:
         assert b.daily[-1][3] == Decimal(100) == b.weekly[-1][3]  # 판단일 종가 = 100
     label = {s: k for k, s in masked.key.items()}
     assert masked.request.previous == {label["QQQ"]: 40, "CASH": 50}  # 지금 종목이 아닌 이름은 뺀다
+    (shown_call,) = masked.request.feedback  # 피드백도 날짜 없이 오늘 글자로
+    assert shown_call.session_date is None and shown_call.weights == masked.request.previous
     assert next(b for b in masked.request.symbols if b.label == label["TQQQ"]).leverage == 3
     # 같은 판단일은 같은 표 (다시 만들어도 같다)
     again = make_request(HISTORIES, Decimal(1000), {}, Decimal(1000), Decimal(500), candles=True)

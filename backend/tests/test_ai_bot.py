@@ -221,6 +221,9 @@ def test_candle_bot_sees_only_masked_candles_and_replays(engine: Engine, session
     assert len(rows) == len(advisor.calls) > 2
     assert {r.status for r in rows} == {"OK"} and {r.strategy for r in rows} == {"ai_candle"}
     assert all("QQQ" not in str(c.as_dict()) for c in advisor.calls)  # 이름은 넘기지 않는다
+    # 최근 판단 5개와 그 뒤 결과를 피드백으로 받는다 (오래된 것부터, 마지막이 지난 판단)
+    last = advisor.calls[-1]
+    assert len(last.feedback) == 5 and last.feedback[-1].weights == last.previous
     assert set(rows[0].weights or {}) == {"QQQ", "VOO", "CASH"}  # 기록은 종목으로 되돌린 판단
     assert (rows[0].summary or "").removesuffix("가 강해요") in ("QQQ", "VOO")
 
