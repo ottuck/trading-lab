@@ -293,8 +293,14 @@ def found_order(order_id: str, status: OrderStatus = OrderStatus.FILLED) -> Acco
     )  # fmt: skip
 
 
+@pytest.mark.parametrize(
+    "filled_amount, reserved", [(Decimal(12), Decimal(12)), (None, Decimal(70))]
+)
 def test_unknown_recovers_by_query_without_resending_and_retains_partial_fill_cost(
-    make_session: Callable[[], Session], session: Session
+    make_session: Callable[[], Session],
+    session: Session,
+    filled_amount: Decimal | None,
+    reserved: Decimal,
 ) -> None:
     unknown = unknown_order(session)
     trader = FakeTrader()
@@ -302,12 +308,14 @@ def test_unknown_recovers_by_query_without_resending_and_retains_partial_fill_co
     desk.tick(SEND + timedelta(minutes=30))  # 조회 지연: 모르는 동안은 그대로
     trader.orders["found"] = AccountOrder(
         "found", "VOO", "BUY", OrderStatus.CANCELED, "USD", SEND,
-        Decimal(70), Decimal("0.02"), Decimal(12),
+        Decimal(70), Decimal("0.02"), filled_amount,
     )  # fmt: skip
     desk.tick(SEND + timedelta(minutes=32))
     session.expire_all()
     assert session.get_one(LiveOrderRow, unknown.id).state == LiveState.CANCELED
-    assert month_bought(session, TRADE) == Decimal(12)  # 일부 체결 뒤 취소도 돈을 쓴 만큼 유지
+    assert (
+        month_bought(session, TRADE) == reserved
+    )  # 체결 금액이 없으면 원래 금액을 보수적으로 예약
     assert overview(session).unknown_order_ids == []
     assert trader.placed == []
     bot = live_bot(session)

@@ -107,6 +107,10 @@ def month_bought(
     end = (start + timedelta(days=32)).replace(day=1)
     reserved = case(
         (LiveOrderRow.state.in_(COMMITTED), LiveOrderRow.amount),
+        (
+            LiveOrderRow.filled_qty > 0,
+            func.coalesce(LiveOrderRow.filled_amount, LiveOrderRow.amount),
+        ),
         else_=func.coalesce(LiveOrderRow.filled_amount, 0),
     )
     query = select(func.coalesce(func.sum(reserved), 0)).where(
