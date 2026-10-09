@@ -35,7 +35,7 @@ from quant_lab.persistence.market_info import (
     upsert_live_bars,
     upsert_quotes,
 )
-from quant_lab.persistence.models import BotRow, CommandRow
+from quant_lab.persistence.models import BotRow, CommandRow, InstrumentRow
 
 # 같은 DB에 Worker가 둘 뜨지 않게 하는 PostgreSQL advisory lock 키 ("QLAB")
 WORKER_LOCK_KEY = 0x514C4142
@@ -108,6 +108,7 @@ class Worker:
         self._watchlist_failing: set[str] = set()
         self._quotes_at: datetime | None = None
         self._instruments_at: datetime | None = None
+        self._instruments_asked: set[str] = set()
         self._fx_at: datetime | None = None
 
     def recover_after_restart(self) -> None:
@@ -191,10 +192,25 @@ class Worker:
             bot_symbols = sorted(
                 {s for bot in session.scalars(select(BotRow)) for s in bot_weights(bot)}
             )
+            known = set(
+                session.scalars(
+                    select(InstrumentRow.symbol).where(InstrumentRow.symbol.in_(bot_symbols))
+                )
+            )
         try:
-            if self._instruments_at is None or now - self._instruments_at >= INSTRUMENT_INTERVAL:
+            # 하루에 한 번 받되, 새 봇의 종목처럼 정보가 아직 없는 종목은 바로 받는다.
+            # 토스가 모르는 종목을 15초마다 되묻지 않게, 한 번 물어본 종목은 다음 갱신까지 둔다.
+            unknown = [
+                s for s in bot_symbols if s not in known and s not in self._instruments_asked
+            ]
+            if (
+                unknown
+                or self._instruments_at is None
+                or now - self._instruments_at >= INSTRUMENT_INTERVAL
+            ):
                 self._instruments_at = now
                 symbols = sorted(set(self.watchlist) | set(bot_symbols))
+                self._instruments_asked = set(symbols)
                 if symbols:
                     infos = self.live.instruments(symbols)
                     with self.make_session() as session:
