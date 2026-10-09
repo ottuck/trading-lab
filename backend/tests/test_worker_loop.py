@@ -159,6 +159,32 @@ def test_live_quotes_only_for_bot_symbols_in_trading_hours(
     assert (fx.mid_rate, fx.source, fx.fetched_at) == (Decimal("1400.5"), "test", clock[0])
 
 
+def test_new_bot_symbol_gets_instrument_info_without_waiting_a_day(
+    make_session: Callable[[], Session], session: Session
+) -> None:
+    new_bot(session, BotState.RUNNING)
+    clock = [datetime(2026, 10, 2, 14, 0, tzinfo=UTC)]
+    worker = Worker(make_session, StoredMarket(), CAL, now=lambda: clock[0], live=FakeLive())
+    worker.refresh_live()
+    assert session.get(InstrumentRow, "VOO") is None
+
+    create_bot(
+        session,
+        name="voo",
+        symbol="VOO",
+        strategy="dip_saver",
+        params={"deposit": 500, "day": 1, "dip": 5, "hot": 5, "high": 10, "sma": 5},
+        initial_cash=Decimal(500),
+        costs=CostModel(),
+        limits=RiskLimits(),
+        now=clock[0],
+    )
+    session.commit()
+    clock[0] += timedelta(seconds=15)  # 하루가 지나지 않았어도 새 종목 정보는 바로 받는다
+    worker.refresh_live()
+    assert session.get_one(InstrumentRow, "VOO").leverage_factor == 3
+
+
 def test_account_read_hourly_and_keeps_last_value_on_failure(
     make_session: Callable[[], Session], session: Session
 ) -> None:
