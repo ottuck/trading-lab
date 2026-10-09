@@ -26,6 +26,7 @@ from quant_lab.domain.bars import (
     check_daily_bars,
     is_completed,
     outlier_limit,
+    split_suspected,
 )
 from quant_lab.domain.bot import BotState
 from quant_lab.domain.broker import BrokerAccessError, BrokerError
@@ -77,7 +78,14 @@ from quant_lab.persistence.bots import (
     set_bot_state,
 )
 from quant_lab.persistence.market_info import leverage_of
-from quant_lab.persistence.models import BotDepositRow, BotRow, DecisionRow, RunRow, SimOrderRow
+from quant_lab.persistence.models import (
+    BotDepositRow,
+    BotPositionRow,
+    BotRow,
+    DecisionRow,
+    RunRow,
+    SimOrderRow,
+)
 
 MODE = "DRY_RUN"
 RETRY_AFTER = timedelta(minutes=15)
@@ -111,6 +119,14 @@ class _Skip(Exception):
     """신규 주문 없이 이번 평가를 건너뛴다. 잠시 뒤 다시 시도한다."""
 
     def __init__(self, reason: SkipReason, message: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+
+
+class _Stop(Exception):
+    """사람이 확인할 때까지 봇을 멈춘다 (ERROR)."""
+
+    def __init__(self, reason: ErrorReason, message: str) -> None:
         super().__init__(message)
         self.reason = reason
 
@@ -178,6 +194,10 @@ def evaluate_bot(
         session.rollback()
         outcome = EvaluationOutcome(run_id, RunStatus.SKIPPED, None, str(skip), reason=skip.reason)
         _finish(session, bot_id, outcome, now, level="WARN", retry=True)
+    except _Stop as stop:
+        session.rollback()
+        outcome = EvaluationOutcome(run_id, RunStatus.ERROR, None, str(stop), reason=stop.reason)
+        _finish(session, bot_id, outcome, now, level="ERROR", to_error=True)
     except BrokerAccessError as exc:
         # 허용 IP·토큰 경합은 기다려도 풀리지 않는다. 사람이 확인할 때까지 멈춘다.
         session.rollback()
@@ -211,6 +231,41 @@ def evaluate_bot(
         )
         _finish(session, bot_id, outcome, now, level="ERROR", to_error=True)
     return outcome
+
+
+def _stop_if_split(session: Session, bot_id: int, series: dict[str, list[DailyBar]]) -> None:
+    """들고 있는 종목의 마지막 체결가가 지금 저장된 그날 시가와 크게 다르면 분할로 보고 멈춘다.
+
+    분할이 일어나면 일봉은 수정주가로 다시 받아 바뀌지만, 봇의 보유 수량은 예전 기준 그대로라
+    평가금액과 판단이 틀어진다. 다시 시작하면 새 기준으로 처음부터 계산하므로 풀린다.
+    """
+    held = session.scalars(
+        select(BotPositionRow.symbol).where(BotPositionRow.bot_id == bot_id, BotPositionRow.qty > 0)
+    )
+    for symbol in held:
+        fill = session.scalars(
+            select(SimOrderRow)
+            .where(
+                SimOrderRow.bot_id == bot_id,
+                SimOrderRow.symbol == symbol,
+                SimOrderRow.status == "FILLED",
+                SimOrderRow.price.is_not(None),
+                SimOrderRow.fill_date.is_not(None),
+            )
+            .order_by(SimOrderRow.fill_date.desc(), SimOrderRow.id.desc())
+            .limit(1)
+        ).first()
+        if fill is None or fill.price is None:
+            continue
+        bar = next((b for b in series.get(symbol, []) if b.session_date == fill.fill_date), None)
+        if bar is not None and split_suspected(fill.price, bar.open):
+            raise _Stop(
+                ErrorReason.SPLIT_SUSPECTED,
+                f"{symbol} 가격 기록이 예전과 크게 달라졌어요 ({fill.fill_date} 체결가 "
+                f"${fill.price:f}, 지금 기록 시가 ${bar.open:f}). 액면분할로 보여 멈췄어요. "
+                "보유 수량이 맞지 않을 수 있어요. "
+                "설정에서 '처음부터 다시 시작'을 누르면 새 기준으로 다시 계산해요.",
+            )
 
 
 def _finish(
@@ -313,6 +368,7 @@ def _evaluate(
                 f"{who}판단 구간 일봉 문제: {issues[0].kind} {issues[0].session_date}",
             )
         series[symbol] = bars
+    _stop_if_split(session, bot.id, series)
 
     # 3) 이전 대기 주문(종목별)을 T+1 시가로 체결
     pf = load_account(session, bot.id)

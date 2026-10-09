@@ -169,6 +169,7 @@ export type Live = {
   halted: boolean
   per_order: Money
   per_month: Money
+  account_month: Money // 모든 봇을 합친 한 달 상한 (승인해도 못 넘는다)
   ratios: string[]
   // 봇이 낸 실제 주문의 장부 (체결 기준, 수수료 제외 어림값)
   bought_this_month: Money // 이번 달 산 금액

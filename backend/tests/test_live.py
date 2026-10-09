@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
+from quant_lab.application.errors import Conflict
 from quant_lab.application.live import LiveDesk, check_holdings, live_position
 from quant_lab.application.live_admin import approve
 from quant_lab.domain.broker import (
@@ -63,8 +64,11 @@ class FakeTrader:
         return OPEN + shift, CLOSE_CUTOFF + shift
 
     cash = Decimal("100")
+    cash_error = False
 
     def available_cash(self) -> Decimal:
+        if self.cash_error:
+            raise BrokerError("계좌 조회 실패")
         return self.cash
 
     def place_amount_buy(self, order: AmountOrder) -> str:
@@ -280,6 +284,61 @@ def test_short_of_dollars_warns_early_then_skips(
     order = live_order(session)
     assert (order.state, order.reason) == (LiveState.SKIPPED, "no_funds")
     assert trader.placed == []
+
+
+def test_order_is_held_while_cash_cannot_be_checked(
+    make_session: Callable[[], Session], session: Session
+) -> None:
+    bot = live_bot(session)
+    sim_buy(session, bot, "337.5")
+    trader = FakeTrader()
+    trader.cash_error = True
+    desk = LiveDesk(make_session, trader, WeekdayCalendar())
+
+    desk.tick(SEND)  # 달러를 확인하지 못하면 보내지 않고 기다린다
+    assert (live_order(session).state, trader.placed) == (LiveState.APPROVED, [])
+
+    trader.cash_error = False
+    desk.tick(SEND + timedelta(minutes=1))  # 다시 확인되면 그때 보낸다
+    assert live_order(session).state == LiveState.FILLED
+
+
+def test_account_month_limit_cannot_be_approved_past(
+    make_session: Callable[[], Session], session: Session
+) -> None:
+    bot = live_bot(session)
+
+    def filled(amount: str, key: str) -> None:
+        session.add(
+            LiveOrderRow(
+                bot_id=bot.id, symbol="VOO", signal_date=SIGNAL, trade_date=TRADE,
+                amount=Decimal(amount), key=key, state=LiveState.FILLED,
+                filled_qty=Decimal(1), created_at=OPEN, updated_at=OPEN,
+            )
+        )  # fmt: skip
+        session.commit()
+
+    filled("60", "ql-a")
+    first = sim_buy(session, bot, "3000")  # $30: 봇 한도는 넘지만 계좌 전체 $100 안이라 묻는다
+    desk = LiveDesk(make_session, FakeTrader(), WeekdayCalendar())
+    desk.plan(SEND)
+    waiting = live_order_where(session, LiveState.WAITING_APPROVAL)
+
+    filled("40", "ql-b")  # 그 사이 다른 주문이 늘어 계좌 합계가 $100이 됐다
+    with pytest.raises(Conflict):
+        approve(session, waiting.id, SEND)
+
+    first.status = "FILLED"  # 모의 체결 뒤 다음 매수
+    session.commit()
+    sim_buy(session, bot, "1500", date(2026, 10, 2))  # $15: 건당 한도 안이어도 상한을 넘으면 넘긴다
+    desk.plan(SEND)
+    skipped = live_order_where(session, LiveState.SKIPPED)
+    assert skipped.reason == "account_limit"
+
+
+def live_order_where(session: Session, state: LiveState) -> LiveOrderRow:
+    session.expire_all()
+    return session.scalars(select(LiveOrderRow).where(LiveOrderRow.state == state)).one()
 
 
 def test_ai_bot_sells_only_what_it_really_bought_without_asking(

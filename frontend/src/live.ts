@@ -44,6 +44,7 @@ const REASON: Record<string, string> = {
   too_small: '금액이 너무 작음',
   carried: '$1이 넘으면 함께 사요',
   no_funds: '달러가 모자라 넘김',
+  account_limit: '이번 달 계좌 전체 한도를 넘음',
   nothing_held: '실제로 산 주식이 없음',
   outside_hours: '주문 시간이 아님',
   insufficient_funds: '계좌에 돈이 부족함',

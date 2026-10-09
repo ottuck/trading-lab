@@ -201,6 +201,7 @@ class LiveView(BaseModel):
     halted: bool
     per_order: Decimal
     per_month: Decimal
+    account_month: Decimal
     ratios: list[str]
     # 봇이 낸 실제 주문의 장부 (체결 기준, 수수료 제외 어림값)
     bought_this_month: Decimal = Decimal(0)  # 이번 달 산 금액
