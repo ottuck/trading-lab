@@ -42,6 +42,7 @@ from quant_lab.domain.events import (
     RunData,
     SkipReason,
 )
+from quant_lab.domain.feedback import CALLS as FEEDBACK_CALLS
 from quant_lab.domain.portfolio import Portfolio, money
 from quant_lab.domain.strategy import (
     STRATEGIES,
@@ -59,7 +60,7 @@ from quant_lab.domain.trading import (
     execute,
     rebalance,
 )
-from quant_lab.persistence.ai_judgments import judgment_for, last_ok
+from quant_lab.persistence.ai_judgments import judgment_for, recent_ok
 from quant_lab.persistence.backtests import to_jsonable
 from quant_lab.persistence.bars import load_daily_bars
 from quant_lab.persistence.bots import (
@@ -498,7 +499,8 @@ def _ai_decisions(
     target = max(b[-1].session_date for b in series.values())
     row = judgment_for(session, bot.id, target)
     if row is None:
-        prev = last_ok(session, bot.id, target)
+        recent = recent_ok(session, bot.id, target, FEEDBACK_CALLS)
+        prev = recent[-1] if recent else None
         plan = strategy.deposit_plan
         raise _NeedJudgment(
             make_request(
@@ -512,6 +514,7 @@ def _ai_decisions(
                 previous_date=prev.session_date if prev else None,
                 as_of=now,
                 candles=is_candle(strategy),
+                past=[(r.session_date, r.weights or {}) for r in recent],
             )
         )
     ok = row.status == JudgmentStatus.OK

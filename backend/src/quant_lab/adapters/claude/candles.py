@@ -14,7 +14,7 @@ from quant_lab.adapters.claude.advisor import FALLBACK_BETA, SOURCE, _final_text
 from quant_lab.domain.advisor import CASH, Advice, AdviceResult, AdvisorError
 from quant_lab.domain.candles import CandleBrief, CandleRequest
 
-PROMPT_VERSION = "candle-2026-10-08.2"  # 지침(SYSTEM·입력 형식)을 바꾸면 올린다
+PROMPT_VERSION = "candle-2026-10-09.1"  # 지침(SYSTEM·입력 형식)을 바꾸면 올린다
 # 같은 익명 입력을 5개 날짜에 여러 번 물은 일관성 시험(2026-10-09): 다시 물을 때 바뀌는 비중이
 # Sonnet 5.5 high 13.9%p, Opus 5.5 high 9.9%p·medium 8.2%p (high·medium 차이는 시험 오차 안).
 # 판단 한 번 $0.066 → $0.144지만 한 달 상한($5) 안이다
@@ -38,6 +38,11 @@ SYSTEM = """\
 - 레버리지 배수가 있는 종목은 하락장에서 손실이 그 배수만큼 커집니다.
 - 이 투자자는 매달 돈을 넣는 장기 투자자입니다. 지난 판단(오늘 글자로 바꿔 둠)을 유지하는 것이 \
 기본이고, 차트에 분명한 이유가 있을 때만 비중을 바꾸세요. 근거 없이 매일 뒤집지 마세요.
+- "지난 판단과 그 뒤 결과"는 최근 판단마다 그 비중대로 들고 있었다면 오늘까지의 수익과, 같은 \
+현금 비중으로 레버리지가 아닌 종목을 똑같이 나눠 들고 있었다면의 수익입니다 (종목 글자는 오늘 \
+글자로 바꿔 두었습니다). 종목을 잘 골랐는지 보는 기준이지 현금을 줄이거나 레버리지를 늘리라는 뜻이 \
+아닙니다. 며칠 결과에는 운이 크게 섞여 있으니 한두 번의 결과로 판단을 뒤집지 말고, 같은 방향으로 \
+여러 번 계속 빗나갈 때 그 이유를 돌아보는 데만 쓰세요.
 - 목표 비중은 정해 준 글자와 CASH(현금)에만, 0~100 정수로, 합이 정확히 100이 되게 정하세요. \
 비중을 0으로 두는 종목도 allocations에 넣으세요.
 
@@ -87,6 +92,18 @@ def _table(b: CandleBrief) -> str:
     )
 
 
+def _feedback(request: CandleRequest) -> str:
+    if not request.feedback:
+        return ""
+    lines = [
+        f"- {c.days_ago}거래일 전: 목표 {json.dumps(dict(c.weights), ensure_ascii=False)} → "
+        f"그대로 들고 있었다면 {c.result:+}%, 같은 현금으로 레버리지 아닌 종목을 똑같이 나눴다면 "
+        f"{c.even:+}%"
+        for c in request.feedback
+    ]
+    return "지난 판단과 그 뒤 결과 (오래된 것부터):\n" + "\n".join(lines) + "\n"
+
+
 def _prompt(request: CandleRequest) -> str:
     previous = (
         json.dumps(dict(request.previous), ensure_ascii=False) if request.previous else "없음"
@@ -95,7 +112,10 @@ def _prompt(request: CandleRequest) -> str:
         "오늘 판단할 봇의 상태와 종목별 차트입니다. 가격은 판단일 종가 = 100인 지수, "
         "비중의 단위는 %입니다.\n\n"
         f"지금 현금 비중: {request.cash_weight}%\n"
-        f"지난 판단의 목표 비중: {previous}\n\n" + "\n\n".join(_table(b) for b in request.symbols)
+        f"지난 판단의 목표 비중: {previous}\n"
+        + _feedback(request)
+        + "\n"
+        + "\n\n".join(_table(b) for b in request.symbols)
     )
 
 

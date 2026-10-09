@@ -15,6 +15,7 @@ from typing import Any, Protocol
 from quant_lab.domain.bars import DailyBar
 from quant_lab.domain.candles import CASH as CASH  # 판단 비중의 현금 키 (여기서도 쓴다)
 from quant_lab.domain.candles import CandleRequest, MaskedCandles, mask, unmask_text
+from quant_lab.domain.feedback import PastCall, past_calls
 
 ONE_YEAR = 252  # 거래일
 MIN_BARS = 21  # 이보다 짧은 이력의 종목은 요약하지 않는다 (상장 한 달 미만)
@@ -120,6 +121,9 @@ class AdviceRequest:
     as_of: datetime | None = None  # 판단을 부른 시각 (AI가 검색할 때 "지금"을 알게)
     # 캔들분석 AI 봇의 익명 입력 (domain/candles.py). 시장분석 AI 봇은 None
     candles: MaskedCandles | None = None
+    feedback: tuple[
+        PastCall, ...
+    ] = ()  # 최근 판단과 그 뒤 결과 (오래된 것부터, domain/feedback.py)
 
     def as_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -132,6 +136,7 @@ class AdviceRequest:
             "previous": dict(self.previous) if self.previous is not None else None,
             "previous_date": self.previous_date.isoformat() if self.previous_date else None,
             "as_of": self.as_of.isoformat() if self.as_of else None,
+            "feedback": [c.as_dict() for c in self.feedback],
         }
         if self.candles is not None:
             out["candles"] = self.candles.as_dict()
@@ -267,10 +272,12 @@ def make_request(
     previous_date: date | None = None,
     as_of: datetime | None = None,
     candles: bool = False,
+    past: Sequence[tuple[date, Mapping[str, int]]] = (),
 ) -> AdviceRequest:
     """판단일(모든 종목의 마지막 봉) 종가로 봇 상태를 요약한다. 이력이 짧은 종목은 빠진다.
 
-    candles면 같은 종목으로 캔들분석 AI 봇의 익명 입력도 함께 만든다.
+    candles면 같은 종목으로 캔들분석 AI 봇의 익명 입력도 함께 만든다. past는 최근 판단
+    (판단일, 목표 비중)이고 그 뒤 결과를 피드백으로 붙인다.
     """
     closes = {s: h[-1].close for s, h in histories.items()}
     equity = cash + sum((qtys.get(s, Decimal(0)) * c for s, c in closes.items()), Decimal(0))
@@ -282,6 +289,8 @@ def make_request(
             briefs.append(item)
     session_date = max(h[-1].session_date for h in histories.values())
     cash_weight = _pct(cash / equity) if equity else Decimal(100)
+    lev = {b.symbol for b in briefs if b.leverage and b.leverage > 1}
+    feedback = past_calls({b.symbol: histories[b.symbol] for b in briefs}, past, lev)
     masked = None
     if candles:
         masked = mask(
@@ -291,6 +300,7 @@ def make_request(
             cash_weight,
             previous,
             session_date,
+            feedback,
         )
     return AdviceRequest(
         session_date=session_date,
@@ -303,4 +313,5 @@ def make_request(
         previous_date=previous_date,
         as_of=as_of,
         candles=masked,
+        feedback=feedback,
     )

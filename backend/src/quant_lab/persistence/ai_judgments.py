@@ -62,9 +62,9 @@ def judgment_for(session: Session, bot_id: int, day: date) -> AiJudgmentRow | No
     ).first()
 
 
-def last_ok(session: Session, bot_id: int, before: date) -> AiJudgmentRow | None:
-    """before 전 마지막으로 받은 판단 (AI에게 "지난 판단"으로 넘긴다)."""
-    return session.scalars(
+def recent_ok(session: Session, bot_id: int, before: date, n: int) -> list[AiJudgmentRow]:
+    """before 전 마지막으로 받은 판단 n개, 오래된 것부터 (마지막이 "지난 판단", 모두 피드백)."""
+    rows = session.scalars(
         select(AiJudgmentRow)
         .where(
             AiJudgmentRow.bot_id == bot_id,
@@ -72,5 +72,6 @@ def last_ok(session: Session, bot_id: int, before: date) -> AiJudgmentRow | None
             AiJudgmentRow.status == "OK",
         )
         .order_by(AiJudgmentRow.session_date.desc())
-        .limit(1)
-    ).first()
+        .limit(n)
+    )
+    return list(reversed(list(rows)))
