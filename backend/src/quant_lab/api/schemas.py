@@ -308,6 +308,7 @@ class HealthResponse(BaseModel):
     db: Literal["ok", "down"]
     worker: WorkerStatus | None
     demo: bool = False  # 예시 데이터로 보는 공개 데모
+    evaluating: bool = False  # 봇이 지금 판단 중 (배포가 끝나기를 기다린다)
 
 
 class PresetView(BaseModel):

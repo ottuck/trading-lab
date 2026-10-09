@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
@@ -18,7 +19,7 @@ from quant_lab.persistence.bars import upsert_daily_bars
 from quant_lab.persistence.bots import create_bot
 from quant_lab.persistence.db import get_session
 from quant_lab.persistence.heartbeat import record_heartbeat
-from quant_lab.persistence.models import BotPositionRow, BotRow, CommandRow
+from quant_lab.persistence.models import BotPositionRow, BotRow, CommandRow, RunRow
 from tests.fakes import WeekdayCalendar, make_bars
 
 CAL = WeekdayCalendar()
@@ -92,6 +93,26 @@ def test_command_is_queued_for_worker(client: TestClient, session: Session, bot_
 
     assert client.post(f"/api/bots/{bot_id}/commands", json={"kind": "NOPE"}).status_code == 422
     assert client.post("/api/bots/999/commands", json={"kind": "START"}).status_code == 404
+
+
+def test_health_says_bots_are_evaluating_only_for_recent_running_runs(
+    client: TestClient, session: Session
+) -> None:
+    """배포가 판단 중에 Worker를 다시 띄우지 않도록 묻는 값. 옛 기록은 무시한다."""
+    now = datetime.now(UTC)
+    assert client.get("/api/health").json()["evaluating"] is False
+    bot = create_bot(
+        session, name="t", symbol="QQQ", strategy="dip_saver", params=DipSaver(**RULE).params,
+        initial_cash=Decimal(500), costs=CostModel(), limits=RiskLimits(), now=now,
+    )  # fmt: skip
+    old = RunRow(id=uuid.uuid4(), bot_id=bot.id, trigger="SCHEDULED", status="RUNNING",
+                 started_at=now - timedelta(hours=2))  # fmt: skip
+    session.add(old)
+    session.commit()
+    assert client.get("/api/health").json()["evaluating"] is False
+    old.started_at = now - timedelta(minutes=2)
+    session.commit()
+    assert client.get("/api/health").json()["evaluating"] is True
 
 
 def test_health_reports_worker_heartbeat(client: TestClient, session: Session) -> None:

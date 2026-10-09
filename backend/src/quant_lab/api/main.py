@@ -18,7 +18,7 @@ from quant_lab.api.schemas import HealthResponse, WorkerStatus
 from quant_lab.application.errors import AppError, Conflict, Invalid, NotFound
 from quant_lab.config import get_settings
 from quant_lab.persistence.db import get_session
-from quant_lab.persistence.heartbeat import latest_heartbeat
+from quant_lab.persistence.heartbeat import evaluating, latest_heartbeat
 
 # 접근 제어는 Tailscale과 Cloudflare Access가 맡는다 (공개 포트 없음, project.md 6절).
 # 공개 인터넷에 직접 노출하지 않는다.
@@ -76,6 +76,7 @@ def health(response: Response, session: Annotated[Session, Depends(get_session)]
     try:
         session.execute(text("SELECT 1"))
         beat = latest_heartbeat(session)
+        busy = evaluating(session, datetime.now(UTC))
     except SQLAlchemyError:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return HealthResponse(version=__version__, db="down", worker=None, demo=_settings.demo_mode)
@@ -87,7 +88,9 @@ def health(response: Response, session: Annotated[Session, Depends(get_session)]
         limit = timedelta(seconds=get_settings().worker_heartbeat_interval_s * 3)
         alive = datetime.now(UTC) - beat.last_seen_at <= limit
         worker = WorkerStatus(alive=alive, worker_id=beat.worker_id, last_seen_at=beat.last_seen_at)
-    return HealthResponse(version=__version__, db="ok", worker=worker, demo=_settings.demo_mode)
+    return HealthResponse(
+        version=__version__, db="ok", worker=worker, demo=_settings.demo_mode, evaluating=busy
+    )
 
 
 # 빌드된 화면이 있으면 같은 서버에서 제공한다 (운영 이미지). API 경로 뒤에 둔다.

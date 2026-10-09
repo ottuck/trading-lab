@@ -59,16 +59,7 @@ jobs:
         with:
           ref: ${{ env.SHA }}
 
-      # 장 마감 판단(뉴욕 18:00, AI 판단 포함) 중에 Worker를 다시 띄우지 않는다. 그 시간이면 끝날 때까지 기다린다.
-      - name: 판단 시간 피하기
-        run: |
-          while true; do
-            hm=$((10#$(TZ=America/New_York date +%H%M)))
-            if [ "$hm" -lt 1745 ] || [ "$hm" -ge 1930 ]; then break; fi
-            echo "뉴욕 $(TZ=America/New_York date +%H:%M): 판단 시간이라 19:30까지 기다려요"
-            sleep 60
-          done
-
+      # 봇이 판단 중(AI 판단 포함)이면 deploy.sh가 Worker를 다시 띄우기 직전에 끝나기를 기다린다 (최대 60분).
       - name: 운영 배포
         env:
           SRC: ${{ github.workspace }}
