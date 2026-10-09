@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from quant_lab.application.bots import require_bot
 from quant_lab.application.errors import Conflict, Invalid, NotFound
-from quant_lab.application.live import control, last_close, live_event
+from quant_lab.application.live import control, last_close, live_event, month_bought
 from quant_lab.domain.events import (
     ConfigChange,
     ConfigChangeData,
@@ -28,6 +28,7 @@ from quant_lab.domain.live import (
     RealFill,
     RealLedger,
     SkipReason,
+    over_account_limit,
     real_ledger,
 )
 from quant_lab.persistence.bots import add_event, drop_unsent_live_orders
@@ -63,6 +64,7 @@ class LiveOverview:
     halted: bool
     per_order: Decimal
     per_month: Decimal
+    account_month: Decimal  # 계좌 전체 한 달 상한 (승인해도 넘을 수 없다)
     ratios: list[str]  # 고를 수 있는 비율 이름 (1/100)
     # 봇이 낸 실제 주문의 장부 (체결 기준, 수수료 제외 어림값). 최근 주문 목록과 별개로 모두 더한다
     bought_this_month: Decimal  # 이번 달 산 금액
@@ -132,6 +134,7 @@ def overview(session: Session) -> LiveOverview:
         halted=bool(row and row.halted),
         per_order=limits.per_order,
         per_month=limits.per_month,
+        account_month=limits.account_month,
         ratios=list(RATIOS),
         bought_this_month=ledger.bought.get(month, Decimal(0)),
         sold_this_month=ledger.sold.get(month, Decimal(0)),
@@ -213,6 +216,13 @@ def approve(session: Session, order_id: int, now: datetime) -> LiveOrderRow:
         raise Conflict("이미 처리된 주문이에요")
     if control(session, now).halted:
         raise Conflict("실제 주문을 멈춰 둔 동안에는 승인할 수 없어요")
+    limits = LiveLimits()
+    if order.side == "BUY" and over_account_limit(
+        order.amount, month_bought(session, order.trade_date, exclude_id=order.id), limits
+    ):
+        raise Conflict(
+            f"이번 달 계좌 전체 한도(${limits.account_month:f})를 넘어서 승인할 수 없어요"
+        )
     order.state, order.updated_at = LiveState.APPROVED, now
     live_event(session, now, order)
     session.commit()
