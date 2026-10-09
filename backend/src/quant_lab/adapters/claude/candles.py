@@ -15,8 +15,9 @@ from quant_lab.domain.advisor import CASH, Advice, AdviceResult, AdvisorError
 from quant_lab.domain.candles import CandleBrief, CandleRequest
 
 PROMPT_VERSION = "candle-2026-10-08.2"  # 지침(SYSTEM·입력 형식)을 바꾸면 올린다
-# 같은 익명 입력을 5개 날짜 × 3번 물은 일관성 시험(2026-10-09): Sonnet 5.5는 다시 물을 때마다 비중이
-# 평균 13.9%p 바뀌었고 Opus 5.5는 7.3%p. 판단 한 번 $0.066 → $0.144지만 한 달 상한($5) 안이다
+# 같은 익명 입력을 5개 날짜에 여러 번 물은 일관성 시험(2026-10-09): 다시 물을 때 바뀌는 비중이
+# Sonnet 5.5 high 13.9%p, Opus 5.5 high 9.9%p·medium 8.2%p (high·medium 차이는 시험 오차 안).
+# 판단 한 번 $0.066 → $0.144지만 한 달 상한($5) 안이다
 MODEL = "claude-opus-5-5"
 Effort = Literal["low", "medium", "high"]
 # 생각하는 양. 같은 날 실측: 중간 $0.059·높음 $0.066, 높음이 주봉 흐름·고점 거리까지 짚었다
