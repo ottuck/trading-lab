@@ -181,6 +181,7 @@ export type Live = {
   held_value: Money // 그 주식의 지금 값
   shortfall: { symbol: string; held: Money; bought: Money }[] // 실제 계좌 대조: 봇이 산 것보다 적은 종목
   checked_at: string | null
+  unknown_order_ids: number[]
   orders: LiveOrder[]
 }
 
@@ -442,5 +443,7 @@ export const liveApi = {
   get: () => request<Live>('/api/live'),
   approve: (orderId: number) => request<Live>(`/api/live-orders/${orderId}/approve`, { method: 'POST' }),
   decline: (orderId: number) => request<Live>(`/api/live-orders/${orderId}/decline`, { method: 'POST' }),
+  resolve: (orderId: number, brokerOrderId: string | null) =>
+    request<Live>(`/api/live-orders/${orderId}/resolve`, json('POST', { confirmed: true, broker_order_id: brokerOrderId })),
   halt: (halted: boolean) => request<Live>('/api/live/halt', json('POST', { halted })),
 }

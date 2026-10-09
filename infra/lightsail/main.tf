@@ -71,7 +71,7 @@ resource "aws_lightsail_static_ip_attachment" "server" {
 }
 
 # 인바운드는 Lightsail 콘솔의 브라우저 SSH만 허용한다.
-# 화면 접속과 이후 SSH는 Tailscale을 쓰며, Tailscale은 인바운드 포트가 필요 없다.
+# 화면은 Cloudflare Tunnel·Access, 관리 SSH는 Tailscale을 쓴다. 둘 다 공개 인바운드 포트가 필요 없다.
 resource "aws_lightsail_instance_public_ports" "server" {
   instance_name = aws_lightsail_instance.server.name
 

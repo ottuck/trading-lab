@@ -49,7 +49,7 @@ services:
 
   api:
     <<: *app
-    # 호스트의 localhost에만 연다. 외부 접근은 tailscale serve가 담당한다.
+    # 호스트 localhost는 Tailscale 예비 경로다. 운영 도메인은 cloudflared → api:8000으로 연결한다.
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:

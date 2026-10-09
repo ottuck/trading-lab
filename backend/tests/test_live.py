@@ -10,8 +10,8 @@ from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from quant_lab.application.errors import Conflict
-from quant_lab.application.live import LiveDesk, check_holdings, live_position
-from quant_lab.application.live_admin import approve
+from quant_lab.application.live import LiveDesk, check_holdings, live_position, month_bought
+from quant_lab.application.live_admin import approve, overview, resolve_unknown, set_halted
 from quant_lab.domain.broker import (
     AccountOrder,
     AccountSnapshot,
@@ -209,6 +209,202 @@ def test_unknown_result_is_never_resent_after_window(
     desk.tick(SEND + timedelta(minutes=30))  # 멱등 시간이 지났다: 다시 보내지 않고 찾기만
     assert len(trader.placed) == 1
     assert live_order(session).state == LiveState.UNKNOWN
+
+
+def unknown_order(session: Session, *, side: str = "BUY", amount: str = "70") -> LiveOrderRow:
+    order = LiveOrderRow(
+        bot_id=None, symbol="VOO", side=side, signal_date=SIGNAL, trade_date=TRADE,
+        amount=Decimal(amount), quantity=Decimal("0.1") if side == "SELL" else None,
+        key="unknown", state=LiveState.UNKNOWN, source="test", sent_at=SEND,
+        created_at=OPEN, updated_at=OPEN,
+    )  # fmt: skip
+    session.add(order)
+    session.commit()
+    return order
+
+
+@pytest.mark.parametrize("side", ["BUY", "SELL"])
+def test_unknown_blocks_account_planning_approval_and_already_approved_orders(
+    make_session: Callable[[], Session], session: Session, side: str
+) -> None:
+    bot = live_bot(session)
+    sim = sim_buy(session, bot, "3000")
+    trader = FakeTrader()
+    desk = LiveDesk(make_session, trader, WeekdayCalendar())
+    desk.plan(SEND)
+    waiting = live_order(session)
+    unknown = unknown_order(session, side=side)
+    assert month_bought(session, TRADE) == (Decimal(70) if side == "BUY" else Decimal(0))
+    with pytest.raises(Conflict, match="결과"):
+        approve(session, waiting.id, SEND)
+    session.rollback()
+    # 이미 승인된 주문도 막고, 비상 중지를 껐다 켜도 UNKNOWN 차단을 풀지 못한다.
+    waiting = session.get_one(LiveOrderRow, waiting.id)
+    waiting.state = LiveState.APPROVED
+    session.commit()
+    set_halted(session, True, SEND)
+    set_halted(session, False, SEND)
+    desk.tick(SEND + timedelta(minutes=30))
+    assert trader.placed == [] and trader.sold == []
+    sim.status = "FILLED"
+    session.commit()
+    sim_buy(session, bot, "1000", TRADE)
+    assert desk.plan(SEND + timedelta(days=3)) == []
+    # 달이 바뀌고 원래 봇이 삭제된 주문이어도 차단은 남는다.
+    assert desk.plan(datetime(2026, 11, 2, tzinfo=UTC)) == []
+    assert overview(session).unknown_order_ids == [unknown.id]
+
+
+def test_unknown_in_same_send_batch_blocks_later_orders(
+    make_session: Callable[[], Session], session: Session
+) -> None:
+    bot = live_bot(session)
+    sim_buy(session, bot, "1000")
+    trader = FakeTrader()
+    desk = LiveDesk(make_session, trader, WeekdayCalendar())
+    desk.plan(SEND)
+    first = live_order(session)
+    first.state, first.sent_at, first.source = LiveState.SENDING, SEND, "test"
+    session.add(
+        LiveOrderRow(
+            bot_id=bot.id,
+            symbol="QQQ",
+            signal_date=SIGNAL,
+            trade_date=TRADE,
+            amount=Decimal(10),
+            key="second",
+            state=LiveState.APPROVED,
+            created_at=OPEN,
+            updated_at=OPEN,
+        )
+    )
+    session.commit()
+    desk.send_due(SEND + timedelta(minutes=30))
+    session.expire_all()
+    assert session.get_one(LiveOrderRow, first.id).state == LiveState.UNKNOWN
+    assert month_bought(session, TRADE) == Decimal(20)
+    assert trader.placed == []
+
+
+def found_order(order_id: str, status: OrderStatus = OrderStatus.FILLED) -> AccountOrder:
+    return AccountOrder(
+        order_id, "VOO", "BUY", status, "USD", SEND,
+        Decimal(70), Decimal("0.1"), Decimal(70),
+    )  # fmt: skip
+
+
+def test_unknown_recovers_by_query_without_resending_and_retains_partial_fill_cost(
+    make_session: Callable[[], Session], session: Session
+) -> None:
+    unknown = unknown_order(session)
+    trader = FakeTrader()
+    desk = LiveDesk(make_session, trader, WeekdayCalendar())
+    desk.tick(SEND + timedelta(minutes=30))  # 조회 지연: 모르는 동안은 그대로
+    trader.orders["found"] = AccountOrder(
+        "found", "VOO", "BUY", OrderStatus.CANCELED, "USD", SEND,
+        Decimal(70), Decimal("0.02"), Decimal(12),
+    )  # fmt: skip
+    desk.tick(SEND + timedelta(minutes=32))
+    session.expire_all()
+    assert session.get_one(LiveOrderRow, unknown.id).state == LiveState.CANCELED
+    assert month_bought(session, TRADE) == Decimal(12)  # 일부 체결 뒤 취소도 돈을 쓴 만큼 유지
+    assert overview(session).unknown_order_ids == []
+    assert trader.placed == []
+    bot = live_bot(session)
+    sim_buy(session, bot, "1000")
+    desk.tick(SEND + timedelta(minutes=34))
+    assert len(trader.placed) == 1  # 확인한 주문을 재전송하지 않고 새 주문은 이어간다
+
+
+def test_manual_order_number_is_only_a_hint_until_broker_confirms(
+    make_session: Callable[[], Session], session: Session
+) -> None:
+    order = unknown_order(session)
+    trader = FakeTrader()
+    trader.orders = {"a": found_order("a"), "b": found_order("b")}
+    desk = LiveDesk(make_session, trader, WeekdayCalendar())
+    desk.tick(SEND + timedelta(minutes=30))  # 동액 주문 두 개면 임의로 고르지 않는다
+    assert live_order(session).state == LiveState.UNKNOWN
+    resolve_unknown(session, order.id, SEND, broker_order_id="wrong")
+    desk.tick(SEND + timedelta(minutes=32))
+    assert live_order(session).state == LiveState.UNKNOWN
+    resolve_unknown(session, order.id, SEND, broker_order_id="b")
+    assert live_order(session).state == LiveState.UNKNOWN  # API만으로 차단을 풀지 않는다
+    desk.tick(SEND + timedelta(minutes=34))
+    assert (live_order(session).state, live_order(session).broker_order_id) == (
+        LiveState.FILLED,
+        "b",
+    )
+    assert trader.placed == []
+    with pytest.raises(Conflict):
+        resolve_unknown(session, order.id, SEND, broker_order_id=None)
+
+
+def test_unknown_cannot_reuse_an_order_linked_to_another_record(
+    make_session: Callable[[], Session], session: Session
+) -> None:
+    unknown = unknown_order(session)
+    session.add(
+        LiveOrderRow(
+            symbol="VOO",
+            signal_date=SIGNAL,
+            trade_date=TRADE,
+            amount=Decimal(70),
+            key="linked",
+            state=LiveState.FILLED,
+            source="test",
+            broker_order_id="used",
+            created_at=OPEN,
+            updated_at=OPEN,
+        )
+    )
+    session.commit()
+    trader = FakeTrader()
+    trader.orders["used"] = found_order("used")
+    LiveDesk(make_session, trader, WeekdayCalendar()).tick(SEND + timedelta(minutes=30))
+    session.expire_all()
+    assert session.get_one(LiveOrderRow, unknown.id).state == LiveState.UNKNOWN
+    with pytest.raises(Conflict, match="다른 실제 주문"):
+        resolve_unknown(session, unknown.id, SEND, broker_order_id="used")
+    assert trader.placed == []
+
+
+def test_old_unknown_remains_visible_and_manual_no_order_releases_reservation(
+    make_session: Callable[[], Session], session: Session
+) -> None:
+    bot = live_bot(session)
+    sim = sim_buy(session, bot, "7000")
+    order = unknown_order(session)
+    order.bot_id, order.sim_order_id = bot.id, sim.id
+    session.add_all(
+        [
+            LiveOrderRow(
+                symbol="QQQ",
+                signal_date=SIGNAL,
+                trade_date=TRADE,
+                amount=Decimal(1),
+                key=f"later-{i}",
+                state=LiveState.SKIPPED,
+                created_at=OPEN,
+                updated_at=OPEN,
+            )
+            for i in range(25)
+        ]
+    )
+    session.commit()
+    info = overview(session)
+    assert info.unknown_order_ids == [order.id]
+    assert info.orders[0].id == order.id
+    resolve_unknown(session, order.id, SEND, broker_order_id=None)
+    assert month_bought(session, TRADE) == 0
+    assert overview(session).unknown_order_ids == []
+    resolved = session.get_one(LiveOrderRow, order.id)
+    assert (resolved.state, resolved.reason) == (LiveState.SKIPPED, "confirmed_not_placed")
+    event = session.scalars(select(EventRow).where(EventRow.kind == "live_order")).one()
+    assert event.data is not None and event.data["manual_resolution"] is True
+    trader = FakeTrader()
+    LiveDesk(make_session, trader, WeekdayCalendar()).tick(SEND + timedelta(minutes=30))
+    assert trader.placed == []  # 미접수로 정리한 원래 주문은 다시 보내지 않는다
 
 
 def test_small_shares_are_carried_until_they_reach_the_minimum(

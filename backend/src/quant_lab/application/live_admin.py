@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from quant_lab.application.bots import require_bot
 from quant_lab.application.errors import Conflict, Invalid, NotFound
-from quant_lab.application.live import control, last_close, live_event, month_bought
+from quant_lab.application.live import control, has_unknown, last_close, live_event, month_bought
 from quant_lab.domain.events import (
     ConfigChange,
     ConfigChangeData,
@@ -76,7 +76,8 @@ class LiveOverview:
     held_value: Decimal  # 그 주식의 지금 값 (토스 현재가, 없으면 최근 종가)
     shortfall: list[dict[str, str]]  # 실제 계좌 대조: 보유가 봇이 산 수량보다 적은 종목
     checked_at: datetime | None  # 마지막 대조 시각
-    orders: list[LiveOrderInfo]  # 최근 실제 주문 (승인 기다림이 먼저)
+    unknown_order_ids: list[int]  # 오래되거나 삭제한 봇의 불명 주문도 빠뜨리지 않는다
+    orders: list[LiveOrderInfo]  # 불명 주문 전부 + 최근 실제 주문 (불명·승인 기다림이 먼저)
 
 
 def _ledger(session: Session) -> RealLedger:
@@ -124,7 +125,16 @@ def overview(session: Session) -> LiveOverview:
     rows = list(
         session.scalars(select(LiveOrderRow).order_by(LiveOrderRow.id.desc()).limit(RECENT))
     )
-    rows.sort(key=lambda o: o.state != LiveState.WAITING_APPROVAL)  # 승인 기다림을 맨 앞에
+    unknown = list(
+        session.scalars(
+            select(LiveOrderRow)
+            .where(LiveOrderRow.state == LiveState.UNKNOWN)
+            .order_by(LiveOrderRow.id)
+        )
+    )
+    known_ids = {o.id for o in rows}
+    rows.extend(o for o in unknown if o.id not in known_ids)
+    rows.sort(key=lambda o: (o.state != LiveState.UNKNOWN, o.state != LiveState.WAITING_APPROVAL))
     limits = LiveLimits()
     month = datetime.now(KST).strftime("%Y-%m")
     ledger = _ledger(session)
@@ -145,6 +155,7 @@ def overview(session: Session) -> LiveOverview:
         held_value=held_value,
         shortfall=list(row.shortfall or []) if row else [],
         checked_at=row.checked_at if row else None,
+        unknown_order_ids=[o.id for o in unknown],
         orders=[
             LiveOrderInfo(
                 o.id,
@@ -211,11 +222,14 @@ def _order(session: Session, order_id: int) -> LiveOrderRow:
 
 
 def approve(session: Session, order_id: int, now: datetime) -> LiveOrderRow:
+    ctl = control(session, now)
     order = _order(session, order_id)
     if order.state != LiveState.WAITING_APPROVAL:
         raise Conflict("이미 처리된 주문이에요")
-    if control(session, now).halted:
+    if ctl.halted:
         raise Conflict("실제 주문을 멈춰 둔 동안에는 승인할 수 없어요")
+    if has_unknown(session):
+        raise Conflict("결과를 확인하지 못한 실제 주문이 있어요. 먼저 주문 결과를 확인해 주세요")
     limits = LiveLimits()
     if order.side == "BUY" and over_account_limit(
         order.amount, month_bought(session, order.trade_date, exclude_id=order.id), limits
@@ -227,6 +241,40 @@ def approve(session: Session, order_id: int, now: datetime) -> LiveOrderRow:
     live_event(session, now, order)
     session.commit()
     return order
+
+
+def resolve_unknown(
+    session: Session, order_id: int, now: datetime, *, broker_order_id: str | None
+) -> None:
+    """주문 번호는 조회의 단서만 저장한다. 미접수 확인은 기록을 남기고 이번 몫을 넘긴다."""
+    control(session, now)
+    order = _order(session, order_id)
+    if order.state != LiveState.UNKNOWN:
+        raise Conflict("확인이 필요한 주문이 아니에요")
+    if broker_order_id is not None:
+        broker_order_id = broker_order_id.strip()
+        if not broker_order_id or len(broker_order_id) > 64:
+            raise Invalid("증권사 주문 번호를 입력해 주세요 (64자 이하)")
+        linked = session.scalar(
+            select(LiveOrderRow.id)
+            .where(
+                LiveOrderRow.id != order.id,
+                LiveOrderRow.source == order.source,
+                LiveOrderRow.broker_order_id == broker_order_id,
+            )
+            .limit(1)
+        )
+        if linked is not None:
+            raise Conflict("다른 실제 주문에 연결된 번호예요")
+        order.broker_order_id = broker_order_id
+        order.note = "사용자가 주문 번호 지정; Worker의 증권사 조회 확인 대기"
+    else:
+        order.state, order.reason = LiveState.SKIPPED, SkipReason.CONFIRMED_NOT_PLACED
+        order.note = "사용자가 증권사 주문 내역·보유를 확인해 미접수로 정리"
+        order.broker_order_id = None
+    order.updated_at = now
+    live_event(session, now, order, manual_resolution=True)
+    session.commit()
 
 
 def decline(session: Session, order_id: int, now: datetime) -> LiveOrderRow:

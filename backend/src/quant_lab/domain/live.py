@@ -44,7 +44,7 @@ class LiveState(StrEnum):
     CANCELED = "CANCELED"  # 증권사에서 취소됨 (일부 체결됐을 수 있음)
     REJECTED = "REJECTED"  # 증권사가 거절
     SKIPPED = "SKIPPED"  # 내지 않음 (거절함·비상 중지·시간 놓침·레버리지·너무 작음)
-    UNKNOWN = "UNKNOWN"  # 보냈는지 확인할 수 없음. 사람이 증권사 앱에서 확인해야 한다
+    UNKNOWN = "UNKNOWN"  # 계좌 전체 새 주문 차단. 조회로 찾거나 사람이 미접수를 확인해야 풀린다
 
 
 OPEN_STATES = {LiveState.WAITING_APPROVAL, LiveState.APPROVED, LiveState.SENDING, LiveState.SENT}
@@ -62,6 +62,7 @@ class SkipReason(StrEnum):
     NO_FUNDS = "no_funds"  # 보내기 직전 달러가 모자라 넘김 (다음 달에 더하지 않는다)
     NOTHING_HELD = "nothing_held"  # 팔지만 이 봇이 실제로 산 주식이 없음 (켜기 전 모의 보유)
     ACCOUNT_LIMIT = "account_limit"  # 계좌 전체 한 달 상한을 넘어 넘김 (승인해도 넘을 수 없다)
+    CONFIRMED_NOT_PLACED = "confirmed_not_placed"  # 사람이 증권사 내역·보유를 확인해 미접수로 정리
 
 
 def scaled_amount(budget: Decimal, ratio: Decimal) -> Decimal:

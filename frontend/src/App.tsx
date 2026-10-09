@@ -8,6 +8,7 @@ import { Home, MeHome } from './components/Dashboard'
 import { HelpButton } from './components/Help'
 import { MeView } from './components/MeView'
 import { SettingsView } from './components/SettingsView'
+import { LiveApprovals } from './components/Live'
 import { ago } from './format'
 import { useDemo } from './demo'
 import { useCurrency, useFxSync } from './currency'
@@ -138,6 +139,7 @@ export default function App() {
       )}
       <WorkerAlert />
       <main>
+        <LiveApprovals />
         {bots.error && <div className="alert">봇 정보를 불러오지 못했습니다: {bots.error.message}</div>}
         {tab === 'dashboard' && bots.data && <MeHome bots={bots.data} />}
         {tab === 'bot' && !!bots.data?.length && <Home bots={bots.data} />}
