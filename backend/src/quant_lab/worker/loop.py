@@ -42,7 +42,8 @@ WORKER_LOCK_KEY = 0x514C4142
 WATCHLIST_CHECK_INTERVAL = timedelta(minutes=30)
 QUOTE_INTERVAL = timedelta(seconds=30)
 INSTRUMENT_INTERVAL = timedelta(days=1)
-ACCOUNT_INTERVAL = timedelta(hours=1)
+ACCOUNT_INTERVAL = timedelta(minutes=5)
+ACCOUNT_RETRY_INTERVAL = timedelta(minutes=1)
 FX_INTERVAL = timedelta(hours=1)  # 화면 원화 환산용 (W1). 참고 값이라 자주 받을 필요 없다
 ACCOUNT_ORDER_DAYS = 30  # 화면에 보여줄 최근 주문 기간
 KST = ZoneInfo("Asia/Seoul")
@@ -104,6 +105,7 @@ class Worker:
         self.desk = desk
         self.ai = ai  # AI 봇 판단 (마일스톤 4). 없으면 AI 봇은 판단하지 않고 그대로 둔다
         self._account_at: datetime | None = None
+        self._account_failed = False
         self._watchlist_checked_at: datetime | None = None
         self._watchlist_failing: set[str] = set()
         self._quotes_at: datetime | None = None
@@ -141,6 +143,8 @@ class Worker:
         self.refresh_live()
         self.refresh_account()
         self.trade_live()
+        if self.desk is not None and self.desk.account_refresh_pending:
+            self.refresh_account(force=True)
         return outcomes
 
     def trade_live(self) -> None:
@@ -152,22 +156,28 @@ class Worker:
         except Exception:
             log.exception("실제 주문 처리 실패, 다음 주기에 다시")
 
-    def refresh_account(self) -> None:
-        """실제 증권사 계좌를 한 시간마다 읽어 저장한다 (실거래 R1, 읽기만).
+    def refresh_account(self, *, force: bool = False) -> None:
+        """실제 계좌를 5분마다, 주문 접수·체결 확인 뒤에도 읽어 저장한다.
 
         판단·모의 체결과 무관하다. 실패하면 마지막 값은 두고 실패 종류만 적는다 (알림 없음):
-        access(인증·권한·허용 IP, 사람이 확인) | temporary(일시 장애, 다음 시간에 다시).
+        access(인증·권한·허용 IP, 사람이 확인) | temporary(일시 장애).
+        주문 뒤 조회가 실패하면 요청을 남겨 1분 뒤 재시도한다. 일반 조회 실패는 5분 뒤 재시도한다.
         """
         if self.account is None:
             return
         now = self.now()
-        if self._account_at is not None and now - self._account_at < ACCOUNT_INTERVAL:
-            return
+        if self._account_at is not None:
+            elapsed = now - self._account_at
+            if not force and elapsed < ACCOUNT_INTERVAL:
+                return
+            if self._account_failed and elapsed < ACCOUNT_RETRY_INTERVAL:
+                return
         self._account_at = now
         since = now.astimezone(KST).date() - timedelta(days=ACCOUNT_ORDER_DAYS)
         try:
             snap = self.account(since)
         except Exception as exc:
+            self._account_failed = True
             log.warning("계좌 읽기 실패: %s", exc)
             kind = "access" if isinstance(exc, BrokerAccessError) else "temporary"
             with self.make_session() as session:
@@ -178,6 +188,9 @@ class Worker:
             save_snapshot(session, snap, now)
             check_holdings(session, snap, now)  # 실제 계좌 대조 (실거래 R2)
             session.commit()
+        self._account_failed = False
+        if self.desk is not None:
+            self.desk.account_refresh_pending = False
 
     def refresh_live(self) -> None:
         """화면용 종목 정보(하루 한 번), 봇 종목 현재가·진행 중 일봉(거래 시간 중 30초마다),

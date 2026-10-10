@@ -116,7 +116,7 @@ export function AccountCard() {
   const { data: account } = useQuery({
     queryKey: ['broker-account'],
     queryFn: api.brokerAccount,
-    refetchInterval: 60_000,
+    refetchInterval: 30_000,
     enabled: !demo,
   })
   const { data: live } = useLive()

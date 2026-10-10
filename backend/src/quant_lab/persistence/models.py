@@ -296,7 +296,7 @@ class LiveBarRow(Base):
 class BrokerAccountRow(Base):
     """실제 증권사 계좌를 마지막으로 읽은 결과 1행 (실거래 R1, 화면 표시용).
 
-    Worker가 한 시간마다 덮어쓴다. 계좌번호와 원본 응답은 저장하지 않는다.
+    Worker가 5분마다, 봇 주문 변화 뒤에도 덮어쓴다. 계좌번호와 원본 응답은 저장하지 않는다.
     읽기에 실패하면 마지막 성공 값은 두고 error·error_at만 바꾼다.
     """
 
