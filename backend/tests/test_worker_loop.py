@@ -185,7 +185,7 @@ def test_new_bot_symbol_gets_instrument_info_without_waiting_a_day(
     assert session.get_one(InstrumentRow, "VOO").leverage_factor == 3
 
 
-def test_account_read_hourly_and_keeps_last_value_on_failure(
+def test_account_read_every_five_minutes_and_keeps_last_value_on_failure(
     make_session: Callable[[], Session], session: Session
 ) -> None:
     clock = [NOW]
@@ -199,8 +199,10 @@ def test_account_read_hourly_and_keeps_last_value_on_failure(
 
     worker = Worker(make_session, StoredMarket(), CAL, now=lambda: clock[0], account=read)
     worker.refresh_account()
-    worker.refresh_account()  # 한 시간 안에는 다시 읽지 않는다
-    clock[0] = NOW + timedelta(hours=1)
+    clock[0] = NOW + timedelta(minutes=5, seconds=-1)
+    worker.refresh_account()
+    assert len(calls) == 1
+    clock[0] = NOW + timedelta(minutes=5)
     worker.refresh_account()
 
     assert len(calls) == 2

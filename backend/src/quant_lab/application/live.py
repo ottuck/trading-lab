@@ -172,6 +172,8 @@ class LiveDesk:
         self.limits = limits
         self._windows: dict[date, tuple[datetime, datetime] | None] = {}
         self._checked_at: dict[int, datetime] = {}
+        # DB 저장이 끝난 실제 주문 변화만 표시한다. Worker가 계좌 저장에 성공하면 지운다.
+        self.account_refresh_pending = False
 
     def announce(self, now: datetime) -> None:
         """화면이 실거래 스위치 상태를 알 수 있게 Worker 시작 때 적는다."""
@@ -316,7 +318,7 @@ class LiveDesk:
     def _warn_low_funds(self, session: Session, made: list[LiveOrderRow], now: datetime) -> None:
         """새로 만든 실제 주문을 내기 전에 달러가 모자라 보이면 미리 알린다 (채울 시간을 준다).
 
-        마지막으로 읽은 계좌(한 시간마다)와 그날 낼 주문 합계를 비교한다.
+        마지막으로 읽은 계좌(5분 주기·주문 변화 뒤)와 그날 낼 주문 합계를 비교한다.
         보내기 직전에 다시 확인한다.
         """
         account = session.get(BrokerAccountRow, 1)
@@ -463,6 +465,7 @@ class LiveDesk:
             return
         order.state, order.broker_order_id, order.updated_at = LiveState.SENT, broker_id, now
         session.commit()
+        self.account_refresh_pending = True
 
     def _resend_or_resolve(
         self, session: Session, order: LiveOrderRow, now: datetime, end: datetime, halted: bool
@@ -542,6 +545,8 @@ class LiveDesk:
                 live_event(session, now, order, "WARN")
         order.updated_at = now
         session.commit()
+        if len(matches) == 1:
+            self.account_refresh_pending = True
 
     def _skip(self, session: Session, order: LiveOrderRow, reason: str, now: datetime) -> None:
         order.state, order.reason, order.updated_at = LiveState.SKIPPED, reason, now
@@ -571,7 +576,18 @@ class LiveDesk:
                 except BrokerError as exc:
                     log.warning("실제 주문 %s 체결 확인 보류: %s", order_id, exc)
                     continue
-                if found.status in (OrderStatus.OPEN, OrderStatus.PARTIAL, OrderStatus.OTHER):
+                if found.status == OrderStatus.PARTIAL:
+                    if (order.filled_qty, order.filled_amount) != (
+                        found.filled_quantity,
+                        found.filled_amount,
+                    ):
+                        order.filled_qty = found.filled_quantity
+                        order.filled_amount = found.filled_amount
+                        order.updated_at = now
+                        session.commit()
+                        self.account_refresh_pending = True
+                    continue
+                if found.status in (OrderStatus.OPEN, OrderStatus.OTHER):
                     continue
                 order.filled_qty, order.filled_amount = found.filled_quantity, found.filled_amount
                 order.updated_at = now
@@ -586,6 +602,7 @@ class LiveDesk:
                     )
                     live_event(session, now, order, "WARN")
                 session.commit()
+                self.account_refresh_pending = True
                 self._checked_at.pop(order_id, None)
 
 
@@ -595,8 +612,8 @@ SETTLE = timedelta(minutes=10)  # 체결 직후 계좌 보유에 아직 안 보�
 def check_holdings(session: Session, snap: AccountSnapshot, now: datetime) -> None:
     """실제 계좌 대조: 종목마다 계좌 보유 ≥ 봇이 실제로 산(체결된) 수량 합계인지 본다.
 
-    Worker가 계좌를 읽을 때마다(한 시간마다) 부른다. 결과가 바뀔 때만 알린다. 부족이 있는 동안에는
-    새 실제 주문을 모두 승인을 받고 낸다 (LiveDesk.plan이 이 기록을 본다).
+    Worker가 계좌를 읽을 때마다(5분 주기·주문 변화 뒤) 부른다. 결과가 바뀔 때만 알린다.
+    부족이 있는 동안에는 새 실제 주문을 모두 승인을 받고 낸다 (LiveDesk.plan이 이 기록을 본다).
     """
     rows = session.execute(
         select(LiveOrderRow.symbol, func.sum(SIGNED_QTY))

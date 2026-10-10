@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
@@ -12,6 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from quant_lab.application.errors import Conflict
 from quant_lab.application.live import LiveDesk, check_holdings, live_position, month_bought
 from quant_lab.application.live_admin import approve, overview, resolve_unknown, set_halted
+from quant_lab.application.market import StoredMarket
 from quant_lab.domain.broker import (
     AccountOrder,
     AccountSnapshot,
@@ -30,6 +32,7 @@ from quant_lab.persistence.market_info import upsert_instruments
 from quant_lab.persistence.models import (
     BotPositionRow,
     BotRow,
+    BrokerAccountRow,
     DailyBarRow,
     DecisionRow,
     EventRow,
@@ -37,6 +40,7 @@ from quant_lab.persistence.models import (
     RunRow,
     SimOrderRow,
 )
+from quant_lab.worker.loop import Worker
 from tests.fakes import WeekdayCalendar
 
 SIGNAL = date(2026, 10, 1)  # 목요일 판단 → 금요일에 산다
@@ -154,6 +158,149 @@ def sim_buy(
 def live_order(session: Session) -> LiveOrderRow:
     session.expire_all()
     return session.scalars(select(LiveOrderRow)).one()
+
+
+class PendingTrader(FakeTrader):
+    def place_amount_buy(self, order: AmountOrder) -> str:
+        order_id = super().place_amount_buy(order)
+        self.orders[order_id] = replace(
+            self.orders[order_id],
+            status=OrderStatus.OPEN,
+            filled_quantity=Decimal(0),
+            filled_amount=Decimal(0),
+        )
+        return order_id
+
+
+@pytest.mark.parametrize(
+    "terminal", [OrderStatus.FILLED, OrderStatus.CANCELED, OrderStatus.REJECTED]
+)
+def test_worker_refreshes_account_after_acceptance_partial_and_terminal_changes(
+    make_session: Callable[[], Session], session: Session, terminal: OrderStatus
+) -> None:
+    bot = live_bot(session)
+    sim_buy(session, bot, "337.5")
+    trader = PendingTrader()
+    desk = LiveDesk(make_session, trader, WeekdayCalendar())
+    clock = [SEND - timedelta(seconds=15)]
+    reads: list[datetime] = []
+
+    def read(since: date) -> AccountSnapshot:
+        reads.append(clock[0])
+        return AccountSnapshot("test", Decimal(100 - len(reads)), Decimal(0), [], [])
+
+    worker = Worker(
+        make_session, StoredMarket(), WeekdayCalendar(), now=lambda: clock[0], account=read,
+        desk=desk,
+    )  # fmt: skip
+    worker.refresh_account()
+    clock[0] = SEND
+    worker.tick()
+    order = live_order(session)
+    assert order.state == LiveState.SENT
+    assert reads == [SEND - timedelta(seconds=15), SEND]
+    assert not desk.account_refresh_pending
+    assert order.broker_order_id is not None
+    broker_id = order.broker_order_id
+
+    clock[0] += timedelta(minutes=1)
+    trader.orders[broker_id] = replace(
+        trader.orders[broker_id], status=OrderStatus.PARTIAL,
+        filled_quantity=Decimal("0.002"), filled_amount=Decimal("1.5"),
+    )  # fmt: skip
+    worker.tick()
+    assert len(reads) == 3
+    assert live_order(session).filled_qty == Decimal("0.002")
+    clock[0] += timedelta(minutes=1)
+    worker.tick()  # 같은 부분 체결을 다시 확인해도 계좌를 더 읽지 않는다
+    assert len(reads) == 3
+
+    clock[0] += timedelta(minutes=1)
+    trader.orders[broker_id] = replace(trader.orders[broker_id], status=terminal)
+    worker.tick()
+    assert len(reads) == 4
+    session.expire_all()
+    account = session.scalars(select(BrokerAccountRow)).one()
+    assert account.cash_usd == Decimal(96) and account.fetched_at == clock[0]
+    assert not desk.account_refresh_pending
+
+
+def test_order_refresh_failure_keeps_pending_and_retries_after_one_minute(
+    make_session: Callable[[], Session], session: Session
+) -> None:
+    bot = live_bot(session)
+    sim_buy(session, bot, "337.5")
+    desk = LiveDesk(make_session, PendingTrader(), WeekdayCalendar())
+    clock = [SEND - timedelta(seconds=15)]
+    calls: list[datetime] = []
+
+    def read(since: date) -> AccountSnapshot:
+        calls.append(clock[0])
+        if len(calls) == 2:
+            raise BrokerError("temporary")
+        return AccountSnapshot("test", Decimal(100 - len(calls)), Decimal(0), [], [])
+
+    worker = Worker(
+        make_session, StoredMarket(), WeekdayCalendar(), now=lambda: clock[0], account=read,
+        desk=desk,
+    )  # fmt: skip
+    worker.refresh_account()
+    clock[0] = SEND
+    worker.tick()
+    assert desk.account_refresh_pending and len(calls) == 2
+    account = session.scalars(select(BrokerAccountRow)).one()
+    assert account.cash_usd == Decimal(99) and account.error == "temporary"
+    clock[0] += timedelta(seconds=59)
+    worker.tick()
+    assert desk.account_refresh_pending and len(calls) == 2
+    clock[0] += timedelta(seconds=1)
+    worker.tick()
+    assert not desk.account_refresh_pending and len(calls) == 3
+    session.expire_all()
+    account = session.scalars(select(BrokerAccountRow)).one()
+    assert account.cash_usd == Decimal(97) and account.error is None
+
+
+def test_worker_coalesces_multiple_order_acceptances_and_fills_into_one_refresh(
+    make_session: Callable[[], Session], session: Session
+) -> None:
+    bot = live_bot(session)
+    sim_buy(session, bot, "337.5")
+    session.add(
+        LiveOrderRow(
+            bot_id=bot.id,
+            symbol="QQQ",
+            signal_date=SIGNAL,
+            trade_date=TRADE,
+            amount=Decimal(1),
+            key="second",
+            state=LiveState.APPROVED,
+            created_at=OPEN,
+            updated_at=OPEN,
+        )
+    )
+    session.commit()
+    trader = FakeTrader()
+    desk = LiveDesk(make_session, trader, WeekdayCalendar())
+    clock = [SEND - timedelta(seconds=15)]
+    calls: list[datetime] = []
+
+    def read(since: date) -> AccountSnapshot:
+        calls.append(clock[0])
+        return AccountSnapshot("test", Decimal(100), Decimal(0), [], [])
+
+    worker = Worker(
+        make_session, StoredMarket(), WeekdayCalendar(), now=lambda: clock[0], account=read,
+        desk=desk,
+    )  # fmt: skip
+    worker.refresh_account()
+    clock[0] = SEND
+    worker.tick()
+    assert len(trader.placed) == 2
+    session.expire_all()
+    assert all(o.state == LiveState.FILLED for o in session.scalars(select(LiveOrderRow)))
+    assert calls == [SEND - timedelta(seconds=15), SEND]
+    assert not desk.account_refresh_pending
 
 
 def test_order_within_limit_goes_out_without_asking_and_resends_only_with_same_key(
@@ -306,6 +453,7 @@ def test_unknown_recovers_by_query_without_resending_and_retains_partial_fill_co
     trader = FakeTrader()
     desk = LiveDesk(make_session, trader, WeekdayCalendar())
     desk.tick(SEND + timedelta(minutes=30))  # 조회 지연: 모르는 동안은 그대로
+    assert not desk.account_refresh_pending
     trader.orders["found"] = AccountOrder(
         "found", "VOO", "BUY", OrderStatus.CANCELED, "USD", SEND,
         Decimal(70), Decimal("0.02"), filled_amount,
@@ -317,6 +465,7 @@ def test_unknown_recovers_by_query_without_resending_and_retains_partial_fill_co
         month_bought(session, TRADE) == reserved
     )  # 체결 금액이 없으면 원래 금액을 보수적으로 예약
     assert overview(session).unknown_order_ids == []
+    assert desk.account_refresh_pending
     assert trader.placed == []
     bot = live_bot(session)
     sim_buy(session, bot, "1000")

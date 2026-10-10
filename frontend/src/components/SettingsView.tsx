@@ -253,9 +253,9 @@ function Tile({ label, value, note, tone: t, chip, dim }: { label: React.ReactNo
   )
 }
 
-/** 실제 증권사 계좌 (실거래 R1). Worker가 한 시간마다 읽은 값을 보여주기만 하고 주문은 내지 않는다. */
+/** 실제 증권사 계좌 (실거래 R1). Worker가 읽어 저장한 값을 보여주며 주문은 내지 않는다. */
 function BrokerAccountSection() {
-  const { data } = useQuery({ queryKey: ['broker-account'], queryFn: api.brokerAccount, refetchInterval: 60_000 })
+  const { data } = useQuery({ queryKey: ['broker-account'], queryFn: api.brokerAccount, refetchInterval: 30_000 })
   const { data: live } = useLive()
   if (!data) return null
   const name = data.source ? sourceLabel(data.source) : '증권사'
@@ -265,13 +265,13 @@ function BrokerAccountSection() {
   const realized = Number(live?.realized_total ?? 0)
   const everSold = Number(live?.sold_total ?? 0) > 0
   return (
-    <Section title={`${name} 계좌`} desc={`실제 ${name} 계좌를 한 시간마다 읽어 와요. 실제 주문은 봇 설정의 "실제로 따라 사기"에서 켜요.`}>
+    <Section title={`${name} 계좌`} desc={`실제 ${name} 계좌를 5분마다, 봇의 주문 접수·체결 확인 뒤에도 읽어 와요. 실제 주문은 봇 설정의 "실제로 따라 사기"에서 켜요.`}>
       {failing && (
         <div className="notice">
           {ago(data.error_at)}에 계좌를 읽지 못했어요.{' '}
           {data.error === 'access'
             ? '연결 권한을 확인해 주세요. 집 인터넷 주소가 바뀌었다면 증권사 Open API의 허용 IP를 다시 등록해야 해요.'
-            : '잠시 연결이 안 됐어요. 한 시간 뒤에 다시 읽어요.'}
+            : '잠시 연결이 안 됐어요. 자동으로 다시 읽을게요.'}
         </div>
       )}
       {data.fetched_at && (

@@ -58,7 +58,7 @@ def fx(session: SessionDep) -> FxView | None:
 
 @router.get("/broker-account")
 def broker_account(session: SessionDep) -> BrokerAccountView | None:
-    """실제 증권사 계좌 (Worker가 한 시간마다 읽은 값). 읽기를 켜지 않았으면 null."""
+    """실제 계좌 (Worker가 5분 주기·주문 변화 뒤 읽은 값). 읽기를 켜지 않았으면 null."""
     row = session.get(BrokerAccountRow, 1)
     return BrokerAccountView.model_validate(row, from_attributes=True) if row else None
 
