@@ -318,7 +318,7 @@ class LiveDesk:
     def _warn_low_funds(self, session: Session, made: list[LiveOrderRow], now: datetime) -> None:
         """새로 만든 실제 주문을 내기 전에 달러가 모자라 보이면 미리 알린다 (채울 시간을 준다).
 
-        마지막으로 읽은 계좌(5분 주기·주문 변화 뒤)와 그날 낼 주문 합계를 비교한다.
+        마지막으로 읽은 계좌(1시간 주기·주문 변화 뒤)와 그날 낼 주문 합계를 비교한다.
         보내기 직전에 다시 확인한다.
         """
         account = session.get(BrokerAccountRow, 1)
@@ -612,7 +612,7 @@ SETTLE = timedelta(minutes=10)  # 체결 직후 계좌 보유에 아직 안 보�
 def check_holdings(session: Session, snap: AccountSnapshot, now: datetime) -> None:
     """실제 계좌 대조: 종목마다 계좌 보유 ≥ 봇이 실제로 산(체결된) 수량 합계인지 본다.
 
-    Worker가 계좌를 읽을 때마다(5분 주기·주문 변화 뒤) 부른다. 결과가 바뀔 때만 알린다.
+    Worker가 계좌를 읽을 때마다(1시간 주기·주문 변화 뒤) 부른다. 결과가 바뀔 때만 알린다.
     부족이 있는 동안에는 새 실제 주문을 모두 승인을 받고 낸다 (LiveDesk.plan이 이 기록을 본다).
     """
     rows = session.execute(

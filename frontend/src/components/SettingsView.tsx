@@ -265,7 +265,7 @@ function BrokerAccountSection() {
   const realized = Number(live?.realized_total ?? 0)
   const everSold = Number(live?.sold_total ?? 0) > 0
   return (
-    <Section title={`${name} 계좌`} desc={`실제 ${name} 계좌를 5분마다, 봇의 주문 접수·체결 확인 뒤에도 읽어 와요. 실제 주문은 봇 설정의 "실제로 따라 사기"에서 켜요.`}>
+    <Section title={`${name} 계좌`} desc={`실제 ${name} 계좌를 1시간마다, 봇의 주문 접수·체결 확인 뒤에도 읽어 와요. 실제 주문은 봇 설정의 "실제로 따라 사기"에서 켜요.`}>
       {failing && (
         <div className="notice">
           {ago(data.error_at)}에 계좌를 읽지 못했어요.{' '}

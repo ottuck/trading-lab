@@ -94,7 +94,7 @@ def run(stop: threading.Event) -> None:
     account = None
     if settings.toss_account_enabled and isinstance(market, BrokerMarket):
         account = market.broker.account_snapshot
-        log.info("토스 계좌 읽기 켜짐 (5분 주기·주문 변화 뒤, 조회만)")
+        log.info("토스 계좌 읽기 켜짐 (1시간 주기·주문 변화 뒤, 조회만)")
     # 실거래 스위치 (실거래 R2). 꺼져 있으면 주문 어댑터를 만들지 않아 실제 주문 경로가 없다.
     trader = None
     if settings.live_trading:
