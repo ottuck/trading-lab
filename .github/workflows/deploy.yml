@@ -99,9 +99,10 @@ jobs:
 
   # 오래된 이미지를 정리한다. 배포마다 GHCR에 버전이 3개쯤(태그 붙은 목록, 이미지, 출처 증명) 쌓이므로 최근 30개(약 10번 배포, 롤백 가능 범위)만 둔다.
   # 정리가 실패해도 배포 결과는 그대로 둔다.
+  # API 호출만 하므로 서버 러너에서 돌려 GitHub 호스팅 분을 쓰지 않는다 (2026-10-14).
   cleanup:
     needs: prod
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, quant-lab, Linux]
     continue-on-error: true
     permissions:
       packages: write
