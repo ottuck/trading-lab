@@ -1,12 +1,16 @@
 name: deploy
 
-# main의 CI가 통과하면 ① GitHub 호스팅 러너가 이미지를 빌드해 GHCR에 올리고 ② 운영 서버(Lightsail 시드니)의 러너가
+# main에 push되면 (CI는 작업 PR에서 이미 돌았으므로 다시 돌지 않는다, 2026-10-14) ① GitHub 호스팅 러너가 이미지를 빌드해 GHCR에 올리고 ② 운영 서버(Lightsail 시드니)의 러너가
 # 그 이미지를 받아 띄운다. 서버 러너는 밖으로만 연결한다 (공개 포트 0개). 운영 다음에 데모도 같은 이미지로 띄운다 (2026-10-09, 사용자 결정)
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
+  push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "infra/**"
+      - "LICENSE"
+      - ".claude/**"
   workflow_dispatch:
 
 concurrency:
@@ -15,11 +19,10 @@ concurrency:
 
 env:
   IMAGE: ghcr.io/${{ github.repository }}
-  SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+  SHA: ${{ github.sha }}
 
 jobs:
   image:
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -1,19 +1,11 @@
 name: CI
 
 # Actions 분(월 2,000분)을 아끼려고 같은 코드를 두 번 이상 돌리지 않는다 (2026-10-14).
-# 작업 PR(→ dev)에서 한 번, main push에서 한 번(배포의 관문)만 돌고, dev push와 dev → main PR에서는 돌지 않는다.
-# 문서·인프라만 바뀐 변경은 건너뛴다 (그 push는 배포도 일어나지 않는다).
+# 작업 PR(→ dev)에서 한 번만 돌고, dev push·dev → main PR·main push에서는 돌지 않는다 (2026-10-14, 사용자 결정).
+# main push는 CI 없이 바로 배포한다 (deploy.yml). 문서·인프라만 바뀐 변경은 건너뛴다.
 on:
   pull_request:
     branches: [dev]
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - "infra/**"
-      - "LICENSE"
-      - ".claude/**"
-  push:
-    branches: [main]
     paths-ignore:
       - "docs/**"
       - "**/*.md"
@@ -26,14 +18,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  backend:
+  # 잡마다 분 단위로 올림해 과금되므로 backend와 frontend를 한 잡에 둔다 (frontend는 약 15초라 따로 두면 1분이 된다).
+  verify:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: backend
     services:
       postgres:
-        image: postgres:17
+        image: postgres:17-alpine
         env:
           POSTGRES_USER: quant
           POSTGRES_PASSWORD: quant
@@ -60,19 +53,14 @@ jobs:
           DATABASE_URL: postgresql+psycopg://quant:quant@localhost:5432/quant_lab
         run: uv run alembic upgrade head && uv run alembic check
       - run: uv run pytest
-
-  frontend:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: lts/*
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+        working-directory: frontend
       - run: npm run lint
+        working-directory: frontend
       - run: npm run build
+        working-directory: frontend
