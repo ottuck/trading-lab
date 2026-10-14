@@ -56,6 +56,8 @@
 
 시드니 Lightsail VM 한 대에서 Docker Compose로 DB·API·Worker·Cloudflare Tunnel을 실행한다. 운영 화면은 Cloudflare Access로 본인만 접속하고, SSH 관리·예비 화면 경로는 Tailscale을 쓴다. 앱·DB 공개 인바운드 포트는 없다. 서버 준비 때 연 콘솔 SSH(22번) 차단은 아직 확인하지 않았으며 roadmap의 남은 작업이다. 데모는 같은 서버의 별도 API·DB 계정으로 공개한다.
 
+**서버 자원 (2026-10-14 측정):** 2 vCPU, RAM 1906MB, 스왑 2GB(`bootstrap.sh`가 만든 `/swapfile`), 디스크 58GB 중 11GB 사용. 같은 서버에 ur-check와 puny-chat도 돈다. RAM은 컨테이너가 약 870MB, 시스템(dockerd·Tailscale·CI 러너 등)이 약 450MB를 쓰고 가용은 약 590MB, 스왑은 약 770MB를 쓰는 중이다 (메모리 압박 지표는 0, 로드 평균 0.1). 프로젝트별 RAM은 Quant Lab 운영 약 245MB·데모 약 200MB, puny-chat 약 310MB, ur-check 약 115MB이고, 스왑으로 밀려난 양은 Quant Lab이 약 580MB로 대부분이다 (worker가 평가 때 최대 303MB까지 올랐다가 밀려난다). `docker stats`는 스왑에 나간 메모리를 세지 않아 실제보다 작게 보이므로, 크기를 볼 때는 cgroup의 `memory.current`+`memory.swap.current`를 함께 본다. 여유가 모자라면 서버를 4GB 플랜으로 올리는 것이 가장 단순하다.
+
 ```mermaid
 flowchart LR
     ME[본인 브라우저·폰] -->|HTTPS · 본인 인증| ACCESS[Cloudflare Access]
