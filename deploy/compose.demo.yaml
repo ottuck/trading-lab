@@ -25,6 +25,8 @@ services:
   demo-seeder:
     <<: *app
     command: ["sh", "-c", "while true; do python -m quant_lab.cli seed-demo; sleep 21600; done"]
+    # 서버(2GB)를 운영과 나눠 쓴다. 측정(2026-10-14): 평소 약 20MiB, 최대 375MiB (처음 2년치 채울 때 포함)
+    mem_limit: 512m
     depends_on:
       demo-migrate:
         condition: service_completed_successfully
@@ -32,6 +34,8 @@ services:
   demo-api:
     <<: *app
     networks: [default, dbnet, edge]
+    # 측정(2026-10-14): 평소 약 175MiB, 최대 286MiB. 넘으면 이 컨테이너만 재시작되고 운영에는 닿지 않는다
+    mem_limit: 384m
     depends_on:
       demo-migrate:
         condition: service_completed_successfully
