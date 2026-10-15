@@ -3,9 +3,9 @@
 import ast
 from pathlib import Path
 
-import quant_lab
+import trading_lab
 
-DOMAIN_DIR = Path(quant_lab.__file__).parent / "domain"
+DOMAIN_DIR = Path(trading_lab.__file__).parent / "domain"
 FORBIDDEN = (
     "fastapi",
     "starlette",
@@ -14,12 +14,12 @@ FORBIDDEN = (
     "psycopg",
     "alembic",
     "pydantic_settings",
-    "quant_lab.adapters",
-    "quant_lab.application",
-    "quant_lab.api",
-    "quant_lab.persistence",
-    "quant_lab.worker",
-    "quant_lab.config",
+    "trading_lab.adapters",
+    "trading_lab.application",
+    "trading_lab.api",
+    "trading_lab.persistence",
+    "trading_lab.worker",
+    "trading_lab.config",
 )
 
 
@@ -58,7 +58,7 @@ def test_only_assembly_points_know_the_broker() -> None:
         if "adapters" not in path.relative_to(root).parts
         and path.relative_to(root).as_posix() not in BROKER_ASSEMBLY
         and any(
-            n.startswith(("quant_lab.adapters.toss", "quant_lab.adapters.claude"))
+            n.startswith(("trading_lab.adapters.toss", "trading_lab.adapters.claude"))
             for n in imported_modules(path)
         )
     ]

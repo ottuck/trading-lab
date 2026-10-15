@@ -1,6 +1,6 @@
 {
-  "name": "Quant Lab",
-  "short_name": "Quant Lab",
+  "name": "Trading Lab",
+  "short_name": "Trading Lab",
   "description": "미국 주식 모의 투자 봇",
   "lang": "ko",
   "start_url": "/",

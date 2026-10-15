@@ -3,8 +3,8 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from quant_lab.config import get_settings
-from quant_lab.persistence.models import Base
+from trading_lab.config import get_settings
+from trading_lab.persistence.models import Base
 
 config = context.config
 if config.config_file_name is not None:

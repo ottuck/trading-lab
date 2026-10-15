@@ -10,7 +10,7 @@
 name: quant-lab-prod
 
 x-app: &app
-  image: ghcr.io/ottuck/quant-lab:${TAG:-latest}
+  image: ${IMAGE:-ghcr.io/ottuck/trading-lab}:${TAG:-latest}
   env_file: ${SECRETS_DIR:-../.secrets}/env
   restart: unless-stopped
 
@@ -63,7 +63,7 @@ services:
 
   worker:
     <<: *app
-    command: ["python", "-m", "quant_lab.worker"]
+    command: ["python", "-m", "trading_lab.worker"]
     env_file:
       - ${SECRETS_DIR:-../.secrets}/env
       - ${SECRETS_DIR:-../.secrets}/worker.env

@@ -10,11 +10,12 @@ import pytest
 from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
-from quant_lab.application.errors import Conflict
-from quant_lab.application.live import LiveDesk, check_holdings, live_position, month_bought
-from quant_lab.application.live_admin import approve, overview, resolve_unknown, set_halted
-from quant_lab.application.market import StoredMarket
-from quant_lab.domain.broker import (
+from tests.fakes import WeekdayCalendar
+from trading_lab.application.errors import Conflict
+from trading_lab.application.live import LiveDesk, check_holdings, live_position, month_bought
+from trading_lab.application.live_admin import approve, overview, resolve_unknown, set_halted
+from trading_lab.application.market import StoredMarket
+from trading_lab.domain.broker import (
     AccountOrder,
     AccountSnapshot,
     AmountOrder,
@@ -24,12 +25,12 @@ from quant_lab.domain.broker import (
     OrderStatus,
     SellOrder,
 )
-from quant_lab.domain.live import LiveState, RealFill, partial_sell_qty, real_ledger
-from quant_lab.domain.portfolio import CostModel, RiskLimits
-from quant_lab.persistence.bots import create_bot
-from quant_lab.persistence.broker_account import save_snapshot
-from quant_lab.persistence.market_info import upsert_instruments
-from quant_lab.persistence.models import (
+from trading_lab.domain.live import LiveState, RealFill, partial_sell_qty, real_ledger
+from trading_lab.domain.portfolio import CostModel, RiskLimits
+from trading_lab.persistence.bots import create_bot
+from trading_lab.persistence.broker_account import save_snapshot
+from trading_lab.persistence.market_info import upsert_instruments
+from trading_lab.persistence.models import (
     BotPositionRow,
     BotRow,
     BrokerAccountRow,
@@ -40,8 +41,7 @@ from quant_lab.persistence.models import (
     RunRow,
     SimOrderRow,
 )
-from quant_lab.worker.loop import Worker
-from tests.fakes import WeekdayCalendar
+from trading_lab.worker.loop import Worker
 
 SIGNAL = date(2026, 10, 1)  # 목요일 판단 → 금요일에 산다
 TRADE = date(2026, 10, 2)
@@ -786,7 +786,7 @@ def test_live_overview_adds_up_bought_sold_and_profit_of_real_orders(session: Se
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
-    from quant_lab.application.live_admin import overview
+    from trading_lab.application.live_admin import overview
 
     bot = live_bot(session)
     today = datetime.now(ZoneInfo("Asia/Seoul")).date()

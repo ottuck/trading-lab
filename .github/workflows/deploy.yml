@@ -52,7 +52,7 @@ jobs:
 
   prod:
     needs: image
-    runs-on: [self-hosted, quant-lab, Linux]
+    runs-on: [self-hosted, trading-lab, Linux]
     permissions:
       contents: read
       packages: read
@@ -105,7 +105,7 @@ jobs:
   # API 호출만 하므로 서버 러너에서 돌려 GitHub 호스팅 분을 쓰지 않는다 (2026-10-14).
   cleanup:
     needs: prod
-    runs-on: [self-hosted, quant-lab, Linux]
+    runs-on: [self-hosted, trading-lab, Linux]
     continue-on-error: true
     permissions:
       packages: write

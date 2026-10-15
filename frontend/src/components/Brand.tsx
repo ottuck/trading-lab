@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { setThemePref, useTheme, type ThemePref } from '../theme'
 
-/** 로고: 글자색 사각형 위에 오른쪽 위로 오르는 선 + "Quant Lab" 워드마크. 테마 색을 그대로 따른다. */
+/** 로고: 글자색 사각형 위에 오른쪽 위로 오르는 선 + "Trading Lab" 워드마크. 테마 색을 그대로 따른다. */
 export function Brand() {
   return (
-    <a className="brand" href="#dashboard" aria-label="Quant Lab 홈">
+    <a className="brand" href="#dashboard" aria-label="Trading Lab 홈">
       <svg className="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
         <rect width="24" height="24" rx="6" style={{ fill: 'var(--text)' }} />
         <path
@@ -16,7 +16,7 @@ export function Brand() {
           strokeLinejoin="round"
         />
       </svg>
-      <h1 className="wordmark">Quant Lab</h1>
+      <h1 className="wordmark">Trading Lab</h1>
     </a>
   )
 }

@@ -3,11 +3,11 @@ from decimal import ROUND_DOWN, Decimal
 
 import pytest
 
-from quant_lab.domain.backtest import run_backtest
-from quant_lab.domain.portfolio import QTY_STEP, CostModel, RiskLimits
-from quant_lab.domain.strategy import DipSaver
-from quant_lab.domain.trading import Action
 from tests.fakes import make_bars
+from trading_lab.domain.backtest import run_backtest
+from trading_lab.domain.portfolio import QTY_STEP, CostModel, RiskLimits
+from trading_lab.domain.strategy import DipSaver
+from trading_lab.domain.trading import Action
 
 NO_COST = CostModel(commission_rate=Decimal(0), slippage_bps=Decimal(0))
 

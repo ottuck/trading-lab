@@ -55,7 +55,7 @@ resource "aws_lightsail_instance" "server" {
     status        = "Enabled"
   }
 
-  # 이름은 Lightsail에서 바꿀 수 없어 태그로 용도를 적는다 (Quant Lab·ur-check·puny-chat이 함께 쓴다)
+  # 이름은 Lightsail에서 바꿀 수 없어 태그로 용도를 적는다 (Trading Lab·ur-check·puny-chat이 함께 쓴다)
   tags = {
     project = "quant-lab"
     purpose = "shared"

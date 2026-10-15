@@ -3,12 +3,12 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from quant_lab.application.backtesting import backtest_symbol
-from quant_lab.domain.portfolio import CostModel, RiskLimits
-from quant_lab.domain.strategy import DipSaver
-from quant_lab.persistence.backtests import list_backtests
-from quant_lab.persistence.bars import upsert_daily_bars
 from tests.fakes import make_bars
+from trading_lab.application.backtesting import backtest_symbol
+from trading_lab.domain.portfolio import CostModel, RiskLimits
+from trading_lab.domain.strategy import DipSaver
+from trading_lab.persistence.backtests import list_backtests
+from trading_lab.persistence.bars import upsert_daily_bars
 
 NOW = datetime(2026, 10, 1, tzinfo=UTC)
 

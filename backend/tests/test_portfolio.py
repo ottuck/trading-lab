@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from quant_lab.domain.portfolio import CostModel, Portfolio, RiskLimits, affordable_qty
+from trading_lab.domain.portfolio import CostModel, Portfolio, RiskLimits, affordable_qty
 
 COSTS = CostModel(commission_rate=Decimal("0.001"), slippage_bps=Decimal(10))
 

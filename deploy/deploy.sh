@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CI가 만들어 GHCR(ghcr.io/ottuck/quant-lab)에 올린 이미지를 받아서 띄운다 (서버에서 빌드하지 않는다).
+# CI가 만들어 GHCR(ghcr.io/ottuck/trading-lab)에 올린 이미지를 받아서 띄운다 (서버에서 빌드하지 않는다).
 #   bash deploy/deploy.sh                  # 운영 (latest). main에 합쳐지면 Actions가 서버 러너에서 TAG=커밋 해시로 부른다
 #   TAG=<커밋 해시> bash deploy/deploy.sh   # 그 버전으로 (롤백)
 #   bash deploy/deploy.sh demo             # 포트폴리오 데모 (D3). Actions가 운영 다음에 부른다. 운영 Postgres가 먼저 떠 있어야 한다

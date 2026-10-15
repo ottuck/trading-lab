@@ -1,7 +1,7 @@
 import math
 from datetime import date, timedelta
 
-from quant_lab.application.demo_prices import DEMO_START, demo_bars
+from trading_lab.application.demo_prices import DEMO_START, demo_bars
 
 
 def _weekdays(start: date, end: date) -> list[date]:

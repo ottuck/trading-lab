@@ -1,8 +1,8 @@
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 
-from quant_lab.domain.bars import BarIssue, check_daily_bars, is_completed
 from tests.fakes import WeekdayCalendar, make_bars
+from trading_lab.domain.bars import BarIssue, check_daily_bars, is_completed
 
 CAL = WeekdayCalendar()
 

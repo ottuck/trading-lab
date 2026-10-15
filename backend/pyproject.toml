@@ -1,5 +1,5 @@
 [project]
-name = "quant-lab"
+name = "trading-lab"
 version = "0.1.0"
 description = "토스증권 시세 기반 퀀트 전략 DRY RUN 도구"
 requires-python = ">=3.14"
@@ -57,4 +57,4 @@ addopts = "-ra"
 
 [tool.ruff.lint.per-file-ignores]
 # 사용자에게 보이는 문장은 줄 길이 제한에서 제외한다
-"src/quant_lab/application/messages.py" = ["E501"]
+"src/trading_lab/application/messages.py" = ["E501"]

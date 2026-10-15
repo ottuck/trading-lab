@@ -11,10 +11,11 @@ import httpx2
 import pytest
 from anthropic.types.beta import BetaMessage
 
-from quant_lab.adapters.claude.advisor import ClaudeAdvisor
-from quant_lab.adapters.claude.candles import ClaudeCandleAdvisor
-from quant_lab.application.ai_judge import judge
-from quant_lab.domain.advisor import (
+from tests.fakes import make_bars
+from trading_lab.adapters.claude.advisor import ClaudeAdvisor
+from trading_lab.adapters.claude.candles import ClaudeCandleAdvisor
+from trading_lab.application.ai_judge import judge
+from trading_lab.domain.advisor import (
     Advice,
     AdviceRequest,
     AdviceResult,
@@ -23,7 +24,6 @@ from quant_lab.domain.advisor import (
     Unmasking,
     make_request,
 )
-from tests.fakes import make_bars
 
 
 def _request() -> AdviceRequest:
@@ -216,7 +216,7 @@ def test_judge_accepts_only_given_symbols_summing_to_100(
 
 
 def test_demo_advisor_follows_rules_and_keeps_previous() -> None:
-    from quant_lab.application.demo_advisor import DemoAdvisor
+    from trading_lab.application.demo_advisor import DemoAdvisor
 
     first = judge(DemoAdvisor(), _request())
     assert first.status is JudgmentStatus.OK and first.advice is not None

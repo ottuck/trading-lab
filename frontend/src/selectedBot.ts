@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react'
 import type { SymbolWeight } from './api'
 
 /** 홈과 설정이 같이 쓰는 "지금 보고 있는 봇". 이 브라우저에만 기억한다. */
-const KEY = 'quant-lab:bot'
+const KEY = 'trading-lab:bot'
 const listeners = new Set<() => void>()
 
 function read(): number | null {
