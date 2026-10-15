@@ -186,7 +186,7 @@
 
 - [x] ① 코드·화면·문서 (2026-10-15, PR #281): 패키지 `quant_lab` → `trading_lab`, 표시 이름 "Quant Lab" → "Trading Lab", 프런트 `localStorage` 키 `quant-lab:*` → `trading-lab:*`(테마·선택한 봇·통화·잔액 숨김이 한 번 초기화된다), 패키지 이름. 운영 배포 뒤 api·worker 정상, DB 컨테이너는 그대로(6일째)
 - [x] ② 바깥 이름 (2026-10-15): GitHub 저장소 `ottuck/trading-lab`, GHCR 이미지 `ghcr.io/ottuck/trading-lab`(compose는 워크플로가 넘기는 `IMAGE`를 먼저 쓰므로 저장소 이름을 바꾸는 순서와 무관했다), 서버 러너 라벨 `trading-lab`(새 라벨을 먼저 달고 워크플로를 바꾼 뒤 옛 라벨 제거). 저장소 이름을 바꾼 뒤 `workflow_dispatch` 배포로 새 이미지 이름 빌드·서버 받기·데모까지 성공 확인. 서버 러너와 `DEPLOY_SECRETS_DIR`은 이름 변경 뒤에도 그대로 동작한다
-- [ ] ③ GHCR의 옛 패키지 `ghcr.io/ottuck/quant-lab` 삭제 (사용자 확인 뒤): 롤백은 새 이름 아래 쌓인 이미지부터 가능하다. 삭제에는 `gh` 토큰에 `read:packages`·`delete:packages` 권한이 필요하다
+- [x] ③ GHCR의 옛 패키지 `ghcr.io/ottuck/quant-lab` 정리 (2026-10-15, 사용자 확인): 이름 변경 직후 배포(`bc95832`)와 변경 전 마지막 배포(`7bee68c`)만 남기고 나머지 9번 배포(24개 버전)를 지웠다. 한 배포는 태그 붙은 목록 1개와 태그 없는 하위 항목 2개라 **하위 항목까지 묶어서** 남겨야 이미지가 깨지지 않는다 (레지스트리에서 목록을 읽어 확인, 남긴 이미지의 manifest 조회 정상). 이름 변경 전 커밋으로 되돌려야 하면 `7bee68c`만 쓸 수 있다. 옛 패키지는 더 이상 갱신되지 않으며(`cleanup` 작업은 새 패키지만 정리), 필요가 없어지면 통째로 지워도 된다. `gh` 토큰에 `read:packages`·`delete:packages`를 더했다
 - 하지 않는다: DB 이름·계정(`quant_lab`·`quant_lab_demo`·`quant`), Compose 프로젝트·네트워크 이름(`quant-lab-prod`·`quant-lab-demo`·`quant-lab-edge`·`quant-lab-dbnet`, 이름이 바뀌면 데이터 볼륨이 새로 생겨 DB가 빈 것처럼 보인다), 서버의 폴더·백업 경로·Terraform 인스턴스 이름(`quant-lab-02`, Lightsail에서 못 바꾼다)
 
 ### 서버 이전 (Lightsail 시드니)
