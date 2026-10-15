@@ -6,7 +6,7 @@ import { api } from './api'
     고른 값은 이 브라우저에만 저장한다. 환율을 아직 못 받았으면 달러로 보여준다. */
 export type Currency = 'USD' | 'KRW'
 
-const KEY = 'quant-lab:currency'
+const KEY = 'trading-lab:currency'
 const listeners = new Set<() => void>()
 
 function readPref(): Currency {

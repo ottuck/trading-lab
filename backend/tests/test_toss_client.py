@@ -7,15 +7,15 @@ import httpx
 import pytest
 import respx
 
-from quant_lab.adapters.toss.client import (
+from trading_lab.adapters.toss.client import (
     BASE_URL,
     TossAuthError,
     TossClient,
     TossForbiddenError,
     to_daily_bar,
 )
-from quant_lab.adapters.toss.trader import TossTrader
-from quant_lab.domain.broker import (
+from trading_lab.adapters.toss.trader import TossTrader
+from trading_lab.domain.broker import (
     AmountOrder,
     BrokerAccessError,
     BrokerError,

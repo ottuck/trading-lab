@@ -5,10 +5,10 @@ from typing import Any
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from quant_lab.application import notify_settings
-from quant_lab.application.messages import event_message
-from quant_lab.application.notify import EventNotifier
-from quant_lab.domain.events import (
+from trading_lab.application import notify_settings
+from trading_lab.application.messages import event_message
+from trading_lab.application.notify import EventNotifier
+from trading_lab.domain.events import (
     AiJudgmentData,
     BalanceSummary,
     BotDeletedData,
@@ -31,7 +31,7 @@ from quant_lab.domain.events import (
     SkipReason,
     WeeklyData,
 )
-from quant_lab.persistence.bots import add_event
+from trading_lab.persistence.bots import add_event
 
 NOW = datetime(2026, 10, 1, tzinfo=UTC)
 BALANCE = BalanceSummary(

@@ -7,21 +7,22 @@ import pytest
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from quant_lab.application.market import StoredMarket
-from quant_lab.domain.bars import DailyBar
-from quant_lab.domain.bot import BotState, CommandKind
-from quant_lab.domain.broker import (
+from tests.fakes import WeekdayCalendar, make_bars
+from trading_lab.application.market import StoredMarket
+from trading_lab.domain.bars import DailyBar
+from trading_lab.domain.bot import BotState, CommandKind
+from trading_lab.domain.broker import (
     AccountSnapshot,
     BrokerAccessError,
     ExchangeRate,
     Instrument,
     Quote,
 )
-from quant_lab.domain.portfolio import CostModel, RiskLimits
-from quant_lab.persistence.bars import upsert_daily_bars
-from quant_lab.persistence.bots import create_bot, enqueue_command, get_bot
-from quant_lab.persistence.heartbeat import latest_heartbeat
-from quant_lab.persistence.models import (
+from trading_lab.domain.portfolio import CostModel, RiskLimits
+from trading_lab.persistence.bars import upsert_daily_bars
+from trading_lab.persistence.bots import create_bot, enqueue_command, get_bot
+from trading_lab.persistence.heartbeat import latest_heartbeat
+from trading_lab.persistence.models import (
     BrokerAccountRow,
     CommandRow,
     DecisionRow,
@@ -31,9 +32,8 @@ from quant_lab.persistence.models import (
     LiveBarRow,
     QuoteRow,
 )
-from quant_lab.worker.heartbeat import HeartbeatThread
-from quant_lab.worker.loop import Worker, release_worker_lock, try_acquire_worker_lock
-from tests.fakes import WeekdayCalendar, make_bars
+from trading_lab.worker.heartbeat import HeartbeatThread
+from trading_lab.worker.loop import Worker, release_worker_lock, try_acquire_worker_lock
 
 CAL = WeekdayCalendar()
 BARS = make_bars("QQQ", [100 + (i % 7) for i in range(30)])

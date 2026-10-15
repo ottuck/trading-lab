@@ -11,7 +11,7 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="Quant Lab" />
+    <meta name="apple-mobile-web-app-title" content="Trading Lab" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -19,12 +19,12 @@
     <script>
       // 첫 화면부터 테마를 맞춰 깜빡임을 막는다 (자세한 동작은 src/theme.ts).
       try {
-        var t = localStorage.getItem('quant-lab:theme')
+        var t = localStorage.getItem('trading-lab:theme')
         if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
         document.documentElement.dataset.theme = t
       } catch (e) {}
     </script>
-    <title>Quant Lab</title>
+    <title>Trading Lab</title>
   </head>
   <body>
     <div id="root"></div>

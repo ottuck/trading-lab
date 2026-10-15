@@ -20,7 +20,7 @@
         "--directory",
         "backend",
         "uvicorn",
-        "quant_lab.api.main:app",
+        "trading_lab.api.main:app",
         "--port",
         "8001"
       ],
@@ -57,7 +57,7 @@
         "--directory",
         "backend",
         "uvicorn",
-        "quant_lab.api.main:app",
+        "trading_lab.api.main:app",
         "--port",
         "8002"
       ],
@@ -94,7 +94,7 @@
         "--directory",
         "backend",
         "uvicorn",
-        "quant_lab.api.main:app",
+        "trading_lab.api.main:app",
         "--port",
         "8003"
       ],

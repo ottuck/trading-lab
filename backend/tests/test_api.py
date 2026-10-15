@@ -9,18 +9,18 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from quant_lab.api.main import app
-from quant_lab.application.dry_run import Trigger, evaluate_bot
-from quant_lab.application.market import StoredMarket
-from quant_lab.domain.bot import BotState
-from quant_lab.domain.portfolio import CostModel, RiskLimits
-from quant_lab.domain.strategy import DipSaver
-from quant_lab.persistence.bars import upsert_daily_bars
-from quant_lab.persistence.bots import create_bot
-from quant_lab.persistence.db import get_session
-from quant_lab.persistence.heartbeat import record_heartbeat
-from quant_lab.persistence.models import BotPositionRow, BotRow, CommandRow, LiveOrderRow, RunRow
 from tests.fakes import WeekdayCalendar, make_bars
+from trading_lab.api.main import app
+from trading_lab.application.dry_run import Trigger, evaluate_bot
+from trading_lab.application.market import StoredMarket
+from trading_lab.domain.bot import BotState
+from trading_lab.domain.portfolio import CostModel, RiskLimits
+from trading_lab.domain.strategy import DipSaver
+from trading_lab.persistence.bars import upsert_daily_bars
+from trading_lab.persistence.bots import create_bot
+from trading_lab.persistence.db import get_session
+from trading_lab.persistence.heartbeat import record_heartbeat
+from trading_lab.persistence.models import BotPositionRow, BotRow, CommandRow, LiveOrderRow, RunRow
 
 CAL = WeekdayCalendar()
 BARS = make_bars("QQQ", [100 + i for i in range(30)])
@@ -263,8 +263,8 @@ def test_cloudflare_access_guard(client: TestClient, monkeypatch: pytest.MonkeyP
     # 도메인(Cloudflare, cf-ray 헤더)으로 온 요청은 Access 토큰이 있어야 한다. Tailscale은 그대로
     from cryptography.hazmat.primitives.asymmetric import rsa
 
-    from quant_lab.api import main
-    from quant_lab.api.access import AccessGuard
+    from trading_lab.api import main
+    from trading_lab.api.access import AccessGuard
 
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     guard = AccessGuard("me", "aud-tag")
@@ -322,7 +322,7 @@ def test_demo_mode_is_read_only(
     client: TestClient, bot_id: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # 데모(D2): 보기·계산은 되고, 봇 만들기·명령·설정 바꾸기는 막는다
-    from quant_lab.api import main
+    from trading_lab.api import main
 
     monkeypatch.setattr(main._settings, "demo_mode", True)
     assert client.get("/api/health").json()["demo"] is True

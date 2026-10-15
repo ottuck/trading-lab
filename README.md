@@ -1,4 +1,4 @@
-# Quant Lab
+# Trading Lab
 
 **내 투자 습관을 복사한 봇이, 내 방식대로 대신 투자해 보는 개인용 퀀트 앱입니다.**
 
@@ -43,10 +43,10 @@
 
 | 마일스톤 | 내용 | 상태 |
 | --- | --- | --- |
-| 1. 모의 운영 기반 | 시세 수집·검증, 백테스트, 정기 DRY RUN, 운영 화면, 배포 | 완료 · 태그 [`milestone-1`](https://github.com/ottuck/quant-lab/tree/milestone-1) |
-| 2. 나 카피 봇 | 질문으로 나 만들기, 평행세계의 나, 홈 첫 화면, 도메인 접속 | 완료 · 태그 [`milestone-2`](https://github.com/ottuck/quant-lab/tree/milestone-2) |
+| 1. 모의 운영 기반 | 시세 수집·검증, 백테스트, 정기 DRY RUN, 운영 화면, 배포 | 완료 · 태그 [`milestone-1`](https://github.com/ottuck/trading-lab/tree/milestone-1) |
+| 2. 나 카피 봇 | 질문으로 나 만들기, 평행세계의 나, 홈 첫 화면, 도메인 접속 | 완료 · 태그 [`milestone-2`](https://github.com/ottuck/trading-lab/tree/milestone-2) |
 | 따라 하기 · 데모 · 원화 | 다음에 할 일, 포트폴리오 데모, 원화로 보기 | 완료 |
-| 3. 실거래 | 실제 계좌 읽기, 1/100로 실제로 따라 사기, 파는 전략·레버리지(QLD·TQQQ) | 완료 · 태그 [`milestone-3`](https://github.com/ottuck/quant-lab/tree/milestone-3) |
+| 3. 실거래 | 실제 계좌 읽기, 1/100로 실제로 따라 사기, 파는 전략·레버리지(QLD·TQQQ) | 완료 · 태그 [`milestone-3`](https://github.com/ottuck/trading-lab/tree/milestone-3) |
 | **4. AI 퀀트봇** | AI가 시장을 조사해 정해 준 종목 안에서 비중을 정하는 봇, 판단 기록, 나 카피 봇과 비교, 실제로 따라 하기 | **진행 중** · 만들기 완료, 운영에서 매일 판단하며 1~2주 지켜보는 중 |
 | 캔들분석 AI 봇 | 이름·날짜를 가린 가격 차트만 보고 판단하는 두 번째 AI 봇, 봇 종류별 AI 비용 상한, AI 봇끼리 비교 | 만들기 완료 (2026-10-08) · 운영 배포 뒤 시작 |
 | 다음 계획 | 시장분석 AI 봇에 기업 분석(실적·가치) 더하기, 서버 이전 마무리 | 계획 · [로드맵](docs/roadmap.md) |
@@ -194,8 +194,8 @@ docker compose up -d --wait db            # PostgreSQL 17
 cd backend
 uv sync
 uv run alembic upgrade head
-uv run uvicorn quant_lab.api.main:app --reload   # http://localhost:8000/api/health
-uv run python -m quant_lab.worker                # 다른 터미널
+uv run uvicorn trading_lab.api.main:app --reload   # http://localhost:8000/api/health
+uv run python -m trading_lab.worker                # 다른 터미널
 cd ../frontend
 npm install
 npm run dev                                       # http://localhost:5173
@@ -216,18 +216,18 @@ npm run dev                                       # http://localhost:5173
 
 ```bash
 cd backend
-uv run python -m quant_lab.cli sync-bars QQQ VOO                                # 토스 일봉 동기화 (처음 전체, 이후 증분)
-uv run python -m quant_lab.cli backtest QQQ --params deposit=1000,dip=15 --save    # 백테스트
-uv run python -m quant_lab.cli bot create my-copy QQQ --params deposit=1000        # DRY RUN 봇
-uv run python -m quant_lab.cli bot cmd <봇 ID> START                            # START·PAUSE·STOP·RUN_ONCE
-uv run python -m quant_lab.cli bot create-ai "시장분석 AI 봇"                   # 시장분석 AI 봇 (관심 10종목, 월 $1,000·25일)
-uv run python -m quant_lab.cli ai-judge QQQ VOO GLD --show                      # AI에 넘길 입력 보기 (--show 빼면 실제로 1번 판단, 비용 듦)
-uv run python -m quant_lab.cli ai-judge QQQ VOO GLD --candle                    # 캔들분석 판단 1번 (--show면 AI가 볼 익명 표, --effort low|medium|high)
-uv run python -m quant_lab.cli replay QQQ --start 2024-01-02 --end 2026-09-30   # 정기 평가 재생 vs 백테스트
-uv run python -m quant_lab.cli notify chat-id                                   # 텔레그램 채팅 ID 확인 (봇에게 먼저 메시지)
+uv run python -m trading_lab.cli sync-bars QQQ VOO                                # 토스 일봉 동기화 (처음 전체, 이후 증분)
+uv run python -m trading_lab.cli backtest QQQ --params deposit=1000,dip=15 --save    # 백테스트
+uv run python -m trading_lab.cli bot create my-copy QQQ --params deposit=1000        # DRY RUN 봇
+uv run python -m trading_lab.cli bot cmd <봇 ID> START                            # START·PAUSE·STOP·RUN_ONCE
+uv run python -m trading_lab.cli bot create-ai "시장분석 AI 봇"                   # 시장분석 AI 봇 (관심 10종목, 월 $1,000·25일)
+uv run python -m trading_lab.cli ai-judge QQQ VOO GLD --show                      # AI에 넘길 입력 보기 (--show 빼면 실제로 1번 판단, 비용 듦)
+uv run python -m trading_lab.cli ai-judge QQQ VOO GLD --candle                    # 캔들분석 판단 1번 (--show면 AI가 볼 익명 표, --effort low|medium|high)
+uv run python -m trading_lab.cli replay QQQ --start 2024-01-02 --end 2026-09-30   # 정기 평가 재생 vs 백테스트
+uv run python -m trading_lab.cli notify chat-id                                   # 텔레그램 채팅 ID 확인 (봇에게 먼저 메시지)
 uv run scripts/toss_probe.py                                                    # 토스 API 읽기 전용 탐색
 DATABASE_URL=postgresql+psycopg://quant:quant@localhost:5432/quant_lab_portfolio \
-  uv run python -m quant_lab.cli seed-demo                                      # 데모 DB에 예시 시세·예시 봇·예시 환율
+  uv run python -m trading_lab.cli seed-demo                                      # 데모 DB에 예시 시세·예시 봇·예시 환율
 ```
 
 ## 검사
@@ -253,7 +253,7 @@ bash deploy/deploy.sh demo              # 데모 (운영 자동 배포가 함께
 bash deploy/reset-demo.sh               # 데모 DB를 비우고 처음부터 다시 채움 (수동, 예시 봇 값을 바꿨을 때. 시세가 바뀌면 시드가 알아서)
 ```
 
-**운영은 자동 배포**입니다. `main`에 push되면(CI는 작업 PR에서 이미 돌았다) [deploy 워크플로](.github/workflows/deploy.yml)가 ① GitHub 서버에서 이미지를 빌드해 GHCR(`ghcr.io/ottuck/quant-lab`, 태그는 커밋 해시와 `latest`)에 올리고 ② 운영 서버(Lightsail 시드니)의 GitHub Actions 러너(라벨 `quant-lab`)가 그 이미지를 받아 `deploy.sh`로 띄웁니다. 서버는 빌드하지 않아 가볍고, 이전 버전으로 되돌리려면 `TAG=<커밋 해시> bash deploy/deploy.sh`입니다. 러너가 밖으로만 연결하므로 앱·DB 공개 포트는 0개이고, 봇이 판단 중(AI 판단 포함)이면 끝날 때까지만 기다렸다 배포합니다(최대 60분). 운영 다음에 데모도 같은 이미지로 다시 띄웁니다(데모가 실패해도 운영은 그대로). 서버에는 GHCR 로그인이 없어 손으로 `deploy.sh`를 부르면 이미지를 받지 못하므로, 다시 배포하려면 Actions의 deploy 워크플로를 수동 실행(Run workflow)합니다. 데모는 운영과 같은 Postgres 컨테이너 안의 별도 데이터베이스(`quant_lab_demo`)를 쓰고, 예시 봇의 값(`DEMO_BOTS`)을 바꾸면 시드가 이름이 같은 봇을 이어서 채우기만 해서 새 값이 보이지 않으므로 `deploy/reset-demo.sh`로 데모 DB를 비우고 다시 채웁니다(운영 DB에는 영향 없음, 서버에서 실행, 떠 있는 데모와 같은 이미지를 써서 로그인이 필요 없음). `deploy.sh`는 `origin/main`의 compose 파일을 `.deploy/src`에 꺼내 쓰므로 작업 폴더의 브랜치를 바꾸지 않습니다.
+**운영은 자동 배포**입니다. `main`에 push되면(CI는 작업 PR에서 이미 돌았다) [deploy 워크플로](.github/workflows/deploy.yml)가 ① GitHub 서버에서 이미지를 빌드해 GHCR(`ghcr.io/ottuck/trading-lab`, 태그는 커밋 해시와 `latest`)에 올리고 ② 운영 서버(Lightsail 시드니)의 GitHub Actions 러너(라벨 `trading-lab`)가 그 이미지를 받아 `deploy.sh`로 띄웁니다. 서버는 빌드하지 않아 가볍고, 이전 버전으로 되돌리려면 `TAG=<커밋 해시> bash deploy/deploy.sh`입니다. 러너가 밖으로만 연결하므로 앱·DB 공개 포트는 0개이고, 봇이 판단 중(AI 판단 포함)이면 끝날 때까지만 기다렸다 배포합니다(최대 60분). 운영 다음에 데모도 같은 이미지로 다시 띄웁니다(데모가 실패해도 운영은 그대로). 서버에는 GHCR 로그인이 없어 손으로 `deploy.sh`를 부르면 이미지를 받지 못하므로, 다시 배포하려면 Actions의 deploy 워크플로를 수동 실행(Run workflow)합니다. 데모는 운영과 같은 Postgres 컨테이너 안의 별도 데이터베이스(`quant_lab_demo`)를 쓰고, 예시 봇의 값(`DEMO_BOTS`)을 바꾸면 시드가 이름이 같은 봇을 이어서 채우기만 해서 새 값이 보이지 않으므로 `deploy/reset-demo.sh`로 데모 DB를 비우고 다시 채웁니다(운영 DB에는 영향 없음, 서버에서 실행, 떠 있는 데모와 같은 이미지를 써서 로그인이 필요 없음). `deploy.sh`는 `origin/main`의 compose 파일을 `.deploy/src`에 꺼내 쓰므로 작업 폴더의 브랜치를 바꾸지 않습니다.
 
 러너는 운영 서버에 systemd 서비스(Linux)로 돌고 밖으로만 연결합니다. 켜져 있는지는 GitHub 설정 → Actions → Runners에서, 배포 로그는 Actions 탭에서 봅니다.
 
@@ -261,7 +261,7 @@ bash deploy/reset-demo.sh               # 데모 DB를 비우고 처음부터 �
 ## 프로젝트 구조
 
 ```text
-backend/src/quant_lab/
+backend/src/trading_lab/
   domain/        봉·전략·체결·백테스트·실주문 규칙, 증권사 규약(broker.py), AI 판단 규약(advisor.py)·캔들 익명화(candles.py), 이벤트 형식 (외부 의존 없음)
   application/   일봉 동기화, DRY RUN 평가, AI 판단·화면, 실제로 따라 하기, 백테스트·평행세계·따라 하기, 알림, 데모 예시
   adapters/      토스 시세·계좌 클라이언트와 주문 어댑터, Claude 판단 어댑터(시장분석·캔들분석), 거래소 달력, 텔레그램

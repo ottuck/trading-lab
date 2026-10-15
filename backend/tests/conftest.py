@@ -16,7 +16,7 @@ from sqlalchemy import Engine, make_url, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
-from quant_lab.persistence.db import make_engine
+from trading_lab.persistence.db import make_engine
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 TEST_DATABASE_URL = os.environ.get(

@@ -3,10 +3,10 @@
 import json
 from decimal import Decimal
 
-from quant_lab.application.demo_advisor import DemoCandleAdvisor
-from quant_lab.domain.advisor import Unmasking, check_advice, make_request
-from quant_lab.domain.candles import unmask_text
 from tests.fakes import make_bars
+from trading_lab.application.demo_advisor import DemoCandleAdvisor
+from trading_lab.domain.advisor import Unmasking, check_advice, make_request
+from trading_lab.domain.candles import unmask_text
 
 HISTORIES = {
     "QQQ": make_bars("QQQ", [300 + i for i in range(300)]),

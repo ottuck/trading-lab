@@ -4,7 +4,7 @@ import { useSyncExternalStore } from 'react'
 export type ThemePref = 'system' | 'light' | 'dark'
 export type Theme = 'light' | 'dark'
 
-const KEY = 'quant-lab:theme'
+const KEY = 'trading-lab:theme'
 const media = window.matchMedia('(prefers-color-scheme: dark)')
 const listeners = new Set<() => void>()
 

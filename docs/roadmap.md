@@ -1,7 +1,7 @@
 # 로드맵
 
 > 설계는 [project.md](project.md), 토스 API 사실은 [tossApi.md](tossApi.md). 단계가 끝나거나 순서가 바뀌면 이 문서를 갱신한다.
-> 상태: `대기` · `진행` · `완료`. 최종 갱신: 2026-10-10.
+> 상태: `대기` · `진행` · `완료`. 최종 갱신: 2026-10-15.
 > 작업 일지(코드 목록·측정값 나열)는 적지 않는다. 결정과 그 이유, 지금의 상태만 남긴다.
 
 ## 현재 위치
@@ -179,6 +179,14 @@
 - [ ] `adapters/claude/advisor.py`의 SYSTEM에 종목 유형별로 볼 것(개별 기업·주제 ETF·나라 ETF·GLD·VOO)과 실적 발표 주간 우선을 더하고, `MAX_SEARCHES` 5 → 8, `PROMPT_VERSION` 올리기
 - [ ] 적용 뒤 판단 한 번의 비용을 재고 설명(비용 어림 $0.15~0.25)을 고치기, 비교 화면에 지침이 바뀐 날 표시
 - 개별 종목이 늘면(다종목 자동 실행) 효과가 커진다. 지금은 종목 10개 중 개별 기업이 NVDA 하나뿐이다.
+
+### 이름 바꾸기 (Quant Lab → Trading Lab)
+
+2026-10-15 사용자 결정: 퀀트 전략 연구가 아니라 "나 대신 투자해 주는 봇"이라는 쪽이 실제 모습이라 이름을 Trading Lab으로 통일한다 (도메인은 처음부터 `trading-lab.me`). 서버에서 돌고 있는 운영 데이터와 이어진 이름은 바꾸면 얻는 것 없이 위험만 있어 남긴다 (남긴 이름과 이유는 project.md 9절 "이름").
+
+- [ ] ① 코드·화면·문서: 패키지 `quant_lab` → `trading_lab`, 표시 이름 "Quant Lab" → "Trading Lab", 프런트 `localStorage` 키 `quant-lab:*` → `trading-lab:*`(테마·선택한 봇·통화·잔액 숨김이 한 번 초기화된다), 패키지 이름. PR 하나, 배포해도 DB·볼륨은 그대로
+- [ ] ② 바깥 이름: GitHub 저장소 `ottuck/trading-lab`, GHCR 이미지 `ghcr.io/ottuck/trading-lab`(compose는 워크플로가 넘기는 `IMAGE`를 먼저 쓰므로 저장소 이름을 바꾸는 순서와 무관), 서버 러너 라벨 `trading-lab`(새 라벨을 먼저 달고 워크플로를 바꾼 뒤 옛 라벨 제거). GHCR의 옛 `quant-lab` 이미지는 롤백 범위 확인 뒤 지운다
+- 하지 않는다: DB 이름·계정(`quant_lab`·`quant_lab_demo`·`quant`), Compose 프로젝트·네트워크 이름(`quant-lab-prod`·`quant-lab-demo`·`quant-lab-edge`·`quant-lab-dbnet`, 이름이 바뀌면 데이터 볼륨이 새로 생겨 DB가 빈 것처럼 보인다), 서버의 폴더·백업 경로·Terraform 인스턴스 이름(`quant-lab-02`, Lightsail에서 못 바꾼다)
 
 ### 서버 이전 (Lightsail 시드니)
 

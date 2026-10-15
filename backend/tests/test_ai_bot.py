@@ -7,26 +7,26 @@ from decimal import Decimal
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from quant_lab.application.ai_judge import AiConfig
-from quant_lab.application.ai_view import ai_compare
-from quant_lab.application.replay import replay_bot
-from quant_lab.domain.advisor import (
+from tests.fakes import WeekdayCalendar, make_bars
+from trading_lab.application.ai_judge import AiConfig
+from trading_lab.application.ai_view import ai_compare
+from trading_lab.application.replay import replay_bot
+from trading_lab.domain.advisor import (
     Advice,
     AdviceRequest,
     AdviceResult,
     AdviceUsage,
     AdvisorError,
 )
-from quant_lab.domain.backtest import run_backtest
-from quant_lab.domain.bot import BotState
-from quant_lab.domain.candles import CandleRequest
-from quant_lab.domain.portfolio import CostModel, Portfolio, RiskLimits
-from quant_lab.domain.strategy import AiCandle, AiJudge
-from quant_lab.domain.trading import Action, rebalance
-from quant_lab.persistence.bars import upsert_daily_bars
-from quant_lab.persistence.bots import create_bot
-from quant_lab.persistence.models import AiJudgmentRow, EventRow, SimOrderRow
-from tests.fakes import WeekdayCalendar, make_bars
+from trading_lab.domain.backtest import run_backtest
+from trading_lab.domain.bot import BotState
+from trading_lab.domain.candles import CandleRequest
+from trading_lab.domain.portfolio import CostModel, Portfolio, RiskLimits
+from trading_lab.domain.strategy import AiCandle, AiJudge
+from trading_lab.domain.trading import Action, rebalance
+from trading_lab.persistence.bars import upsert_daily_bars
+from trading_lab.persistence.bots import create_bot
+from trading_lab.persistence.models import AiJudgmentRow, EventRow, SimOrderRow
 
 COSTS = CostModel()
 QQQ = make_bars("QQQ", [100 + (i % 9) * 2 - (i % 4) * 3 for i in range(45)])

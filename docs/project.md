@@ -1,7 +1,7 @@
-# Quant Lab 설계
+# Trading Lab 설계
 
 > **이 문서가 설계의 단일 출처다.** 일정과 진행 상태는 [roadmap.md](roadmap.md), 토스 API 조사 결과는 [tossApi.md](tossApi.md)에 둔다.
-> 결정이 바뀌면 그 변경을 담은 PR에서 이 문서도 함께 고친다. 최종 갱신: 2026-10-10.
+> 결정이 바뀌면 그 변경을 담은 PR에서 이 문서도 함께 고친다. 최종 갱신: 2026-10-15.
 
 ## 1. 한 줄 정의
 
@@ -56,7 +56,7 @@
 
 시드니 Lightsail VM 한 대에서 Docker Compose로 DB·API·Worker·Cloudflare Tunnel을 실행한다. 운영 화면은 Cloudflare Access로 본인만 접속하고, SSH 관리·예비 화면 경로는 Tailscale을 쓴다. 앱·DB 공개 인바운드 포트는 없다. 서버 준비 때 연 콘솔 SSH(22번) 차단은 아직 확인하지 않았으며 roadmap의 남은 작업이다. 데모는 같은 서버의 별도 API·DB 계정으로 공개한다.
 
-**서버 자원 (2026-10-14 측정):** 2 vCPU, RAM 1906MB, 스왑 2GB(`bootstrap.sh`가 만든 `/swapfile`), 디스크 58GB 중 11GB 사용. 같은 서버에 ur-check와 puny-chat도 돈다. RAM은 컨테이너가 약 870MB, 시스템(dockerd·Tailscale·CI 러너 등)이 약 450MB를 쓰고 가용은 약 590MB, 스왑은 약 770MB를 쓰는 중이다 (메모리 압박 지표는 0, 로드 평균 0.1). 프로젝트별 RAM은 Quant Lab 운영 약 245MB·데모 약 200MB, puny-chat 약 310MB, ur-check 약 115MB이고, 스왑으로 밀려난 양은 Quant Lab이 약 580MB로 대부분이다 (worker가 평가 때 최대 303MB까지 올랐다가 밀려난다). `docker stats`는 스왑에 나간 메모리를 세지 않아 실제보다 작게 보이므로, 크기를 볼 때는 cgroup의 `memory.current`+`memory.swap.current`를 함께 본다. 여유가 모자라면 서버를 4GB 플랜으로 올리는 것이 가장 단순하다.
+**서버 자원 (2026-10-14 측정):** 2 vCPU, RAM 1906MB, 스왑 2GB(`bootstrap.sh`가 만든 `/swapfile`), 디스크 58GB 중 11GB 사용. 같은 서버에 ur-check와 puny-chat도 돈다. RAM은 컨테이너가 약 870MB, 시스템(dockerd·Tailscale·CI 러너 등)이 약 450MB를 쓰고 가용은 약 590MB, 스왑은 약 770MB를 쓰는 중이다 (메모리 압박 지표는 0, 로드 평균 0.1). 프로젝트별 RAM은 Trading Lab 운영 약 245MB·데모 약 200MB, puny-chat 약 310MB, ur-check 약 115MB이고, 스왑으로 밀려난 양은 Trading Lab이 약 580MB로 대부분이다 (worker가 평가 때 최대 303MB까지 올랐다가 밀려난다). `docker stats`는 스왑에 나간 메모리를 세지 않아 실제보다 작게 보이므로, 크기를 볼 때는 cgroup의 `memory.current`+`memory.swap.current`를 함께 본다. 여유가 모자라면 서버를 4GB 플랜으로 올리는 것이 가장 단순하다.
 
 ```mermaid
 flowchart LR
@@ -91,7 +91,7 @@ API와 Worker는 같은 Python 패키지를 다른 진입점으로 실행한다.
 
 ```text
 backend/
-  src/quant_lab/
+  src/trading_lab/
     domain/          # 순수 로직: 봉, 지표, 전략, 위험 규칙, 모의 체결 규칙 (외부 의존 없음)
       broker.py      # 증권사 연결 규약(Broker)과 증권사와 무관한 시세·계좌 형식, 오류 2종
       advisor.py     # AI 판단 규약(Advisor)과 입력 요약·규칙 검사 (AI 공급자와 무관)
@@ -216,7 +216,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | 방화벽 | 처음엔 Lightsail 콘솔 브라우저 SSH(22번, 콘솔 대역만)만 허용. Tailscale SSH가 동작하면 인바운드 전부 차단 |
 | 비밀값 | **저장소 안 `.secrets/`** (`.gitignore`·`.dockerignore`로 제외, 로컬·서버 같은 위치): `env`(DB 비밀번호·`DATABASE_URL`, 부트스트랩이 생성)와 `worker.env`(토스 키·`TOSS_ACCOUNT_ENABLED`·`LIVE_TRADING`·Claude 키 `ANTHROPIC_API_KEY`·텔레그램·`HEARTBEAT_PING_URL`, **worker 컨테이너에만** 주입). 둘 다 권한 600. 개발용 실행은 루트 `.env`를 쓴다. **토스 키 만료 2027-09-28** (발급 2026-09-28, 1년). 만료 전 WTS에서 재발급하고 `worker.env` 교체 |
 | 서버 생성 | Terraform(`infra/lightsail`). 콘솔에서 손으로 만들지 않는다 |
-| 배포 | **이미지는 CI가 만든다 (2026-10-08, GHCR):** `main`에 push되면(CI는 작업 PR에서 이미 돌았으므로 다시 돌지 않는다, 2026-10-14) `.github/workflows/deploy.yml`이 ① GitHub 호스팅 러너에서 이미지를 빌드해(프론트 포함 단일 이미지, `linux/amd64`) `ghcr.io/ottuck/quant-lab`에 커밋 해시와 `latest` 태그로 올리고 ② 운영 서버(Lightsail 시드니)의 self-hosted 러너(Linux, 라벨 `quant-lab`, systemd 서비스, 밖으로만 연결)가 받아 둔 코드(`SRC`)와 비밀값 폴더(저장소 변수 `DEPLOY_SECRETS_DIR` → `SECRETS_DIR`, Compose의 `env_file`이 이것을 읽음)로 `bash deploy/deploy.sh`를 실행한다. `deploy.sh`는 이미지를 `pull`해서 `compose up -d`만 한다 (서버에서 빌드하지 않는다. 서버는 `TAG`로 받을 버전을 정하고, 롤백은 `TAG=<이전 커밋 해시> bash deploy/deploy.sh`). 비공개 이미지라 받기 전에 작업 안에서 `GITHUB_TOKEN`으로 `docker login ghcr.io`를 하고 끝나면 로그아웃한다 (서버에 토큰을 남기지 않는다). 그다음 `/api/health`를 확인한다. 봇이 판단 중(AI 판단 포함)이면 `deploy.sh`가 Worker를 다시 띄우기 직전에 `/api/health`의 `evaluating`(30분 안에 시작한 `RUNNING` 실행이 있는지)을 보고 끝날 때까지 기다린다 (최대 60분, 2026-10-09에 시간대 기준 17:45~19:30 대기를 바꿨다). 문서·인프라만 바뀐 push는 배포도 건너뛴다 (2026-10-14). 서버의 안 쓰는 옛 이미지는 `deploy.sh`가 운영 배포 끝에 `docker image prune`으로 지운다 (하루 안에 받은 것은 남김). GHCR의 오래된 이미지는 배포 뒤 `cleanup` 작업(`actions/delete-package-versions`, 분을 아끼려고 서버 러너에서 돈다)이 최근 30개 버전(약 10번 배포)만 남기고 지운다 (실패해도 배포는 그대로, 롤백은 이 범위 안에서만 된다). ARM 서버로 옮길 때의 문제는 6절 "이전 계획"에 적어 두었다. 운영 배포 다음에 데모도 **같은 커밋의 이미지로 자동 배포**한다 (2026-10-09). 데모 배포가 실패해도 운영은 유지되므로 데모 단계 결과는 따로 확인한다. `bash deploy/deploy.sh demo`는 수동 재배포 경로다. `index.html`은 `no-cache`, 해시 붙은 `assets/`는 오래 캐시해 배포 뒤 바로 새 화면이 보인다. Actions는 체크아웃한 코드 경로(`SRC`)를 배포 스크립트에 넘긴다. Compose 프로젝트 이름은 `quant-lab-prod` |
+| 배포 | **이미지는 CI가 만든다 (2026-10-08, GHCR):** `main`에 push되면(CI는 작업 PR에서 이미 돌았으므로 다시 돌지 않는다, 2026-10-14) `.github/workflows/deploy.yml`이 ① GitHub 호스팅 러너에서 이미지를 빌드해(프론트 포함 단일 이미지, `linux/amd64`) `ghcr.io/ottuck/trading-lab`에 커밋 해시와 `latest` 태그로 올리고 ② 운영 서버(Lightsail 시드니)의 self-hosted 러너(Linux, 라벨 `trading-lab`, systemd 서비스, 밖으로만 연결)가 받아 둔 코드(`SRC`)와 비밀값 폴더(저장소 변수 `DEPLOY_SECRETS_DIR` → `SECRETS_DIR`, Compose의 `env_file`이 이것을 읽음)로 `bash deploy/deploy.sh`를 실행한다. `deploy.sh`는 이미지를 `pull`해서 `compose up -d`만 한다 (서버에서 빌드하지 않는다. 서버는 `TAG`로 받을 버전을 정하고, 롤백은 `TAG=<이전 커밋 해시> bash deploy/deploy.sh`). 비공개 이미지라 받기 전에 작업 안에서 `GITHUB_TOKEN`으로 `docker login ghcr.io`를 하고 끝나면 로그아웃한다 (서버에 토큰을 남기지 않는다). 그다음 `/api/health`를 확인한다. 봇이 판단 중(AI 판단 포함)이면 `deploy.sh`가 Worker를 다시 띄우기 직전에 `/api/health`의 `evaluating`(30분 안에 시작한 `RUNNING` 실행이 있는지)을 보고 끝날 때까지 기다린다 (최대 60분, 2026-10-09에 시간대 기준 17:45~19:30 대기를 바꿨다). 문서·인프라만 바뀐 push는 배포도 건너뛴다 (2026-10-14). 서버의 안 쓰는 옛 이미지는 `deploy.sh`가 운영 배포 끝에 `docker image prune`으로 지운다 (하루 안에 받은 것은 남김). GHCR의 오래된 이미지는 배포 뒤 `cleanup` 작업(`actions/delete-package-versions`, 분을 아끼려고 서버 러너에서 돈다)이 최근 30개 버전(약 10번 배포)만 남기고 지운다 (실패해도 배포는 그대로, 롤백은 이 범위 안에서만 된다). ARM 서버로 옮길 때의 문제는 6절 "이전 계획"에 적어 두었다. 운영 배포 다음에 데모도 **같은 커밋의 이미지로 자동 배포**한다 (2026-10-09). 데모 배포가 실패해도 운영은 유지되므로 데모 단계 결과는 따로 확인한다. `bash deploy/deploy.sh demo`는 수동 재배포 경로다. `index.html`은 `no-cache`, 해시 붙은 `assets/`는 오래 캐시해 배포 뒤 바로 새 화면이 보인다. Actions는 체크아웃한 코드 경로(`SRC`)를 배포 스크립트에 넘긴다. Compose 프로젝트 이름은 `quant-lab-prod` |
 | 마이그레이션 | `migrate` 일회성 서비스가 성공해야 api·worker가 시작 (`depends_on: service_completed_successfully`) |
 | 백업 | `deploy/backup.sh`를 cron이 매일 03:00 UTC(12:00 KST, 평가 시각과 겹치지 않음)에 실행, `pg_dump` 7일 보관 + Lightsail 자동 스냅샷. 파괴적 마이그레이션 전에는 수동 덤프 |
 | 모니터링 | 화면의 Worker 상태: 마지막 heartbeat가 45초 안이면 살아 있다. **잘 돌 때는 아무것도 보이지 않고, 멈췄거나 서버에 닿지 않을 때만** 위 점과 화면 맨 위 한 줄("프로그램이 멈췄어요 (3분 전)")로 알린다. 그 밖에 마지막 실행 표시, `docker compose logs`, 앱의 기록(최근 활동·전체 기록 서랍). **텔레그램 알림**은 화면 설정에서 켜고 범위를 고른다 (9절). 켜면 Worker가 `events` 테이블을 따라가며 보내고, 매주 마지막 거래일 판단 뒤에는 **주간 리포트**(이번 주 자산 변화(입금 제외), 그냥 보유 대비, 거래 횟수)를 보낸다. 아무것도 하지 않는 날의 일일 점검과 월급 입금은 앱 기록에만 남긴다. 한 번에 생긴 소식은 한 통으로 묶는다(3,800자 넘으면 나눔). 알림 실패는 판단에 영향이 없다. **외부 heartbeat**: `HEARTBEAT_PING_URL`(Healthchecks.io 등)에 5분마다 신호를 보내 Worker·서버가 멈추면 외부 서비스가 알린다 |
@@ -227,8 +227,8 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | --- | --- |
 | URL (down·up 공통) | `https://api.telegram.org/bot<봇 토큰>/sendMessage`, 방식 `POST` |
 | 헤더 | `Content-Type: application/json` |
-| down 본문 | `{"chat_id": "<채팅 ID>", "text": "⚠️ Quant Lab 프로그램이 응답하지 않아요\n20분 넘게 신호가 없어요. 서버가 꺼졌는지 확인해 주세요."}` |
-| up 본문 | `{"chat_id": "<채팅 ID>", "text": "✅ Quant Lab 프로그램이 다시 응답해요"}` |
+| down 본문 | `{"chat_id": "<채팅 ID>", "text": "⚠️ Trading Lab 프로그램이 응답하지 않아요\n20분 넘게 신호가 없어요. 서버가 꺼졌는지 확인해 주세요."}` |
+| up 본문 | `{"chat_id": "<채팅 ID>", "text": "✅ Trading Lab 프로그램이 다시 응답해요"}` |
 
 서버 리소스는 처음부터 Terraform으로 관리한다. 이미지는 CI가 GHCR에 올리고, 운영 배포는 위 "배포" 항목처럼 서버의 self-hosted 러너가 받아서 띄운다. 서버를 옮기면 그 서버에 러너만 다시 등록한다.
 
@@ -243,7 +243,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | 5. 원격 작업 | Claude (개발 PC → `tailscale ssh ubuntu@quant-lab`) | deploy key 생성 → `gh repo deploy-key add`(읽기 전용) → `git clone` → `sudo bash deploy/bootstrap.sh` → `sudo tailscale serve --bg 8000` |
 | 6. 토스 키·알림 | 사용자 | `.secrets/worker.env`에 토스 키, 텔레그램 토큰·채팅 ID, `HEARTBEAT_PING_URL` 입력 (`tailscale ssh` 또는 브라우저 SSH, 키는 대화에 붙이지 않음) |
 | 7. Tailscale 접근 제한 | 사용자 | 필요하면 Tailscale ACL에서 서버 접근을 본인 기기로만 제한 (개인 tailnet이면 기본값으로 충분) |
-| 8. 배포·봇 시작 | 서버 | 로컬에서 토스를 호출하는 프로세스를 모두 멈춘 뒤 `bash deploy/deploy.sh` → `docker compose -f deploy/compose.prod.yaml exec api python -m quant_lab.cli bot create my-copy QQQ --params deposit=1000 --cash 1000` → 화면에서 시작 |
+| 8. 배포·봇 시작 | 서버 | 로컬에서 토스를 호출하는 프로세스를 모두 멈춘 뒤 `bash deploy/deploy.sh` → `docker compose -f deploy/compose.prod.yaml exec api python -m trading_lab.cli bot create my-copy QQQ --params deposit=1000 --cash 1000` → 화면에서 시작 |
 
 브라우저 SSH용 22번 포트(Lightsail 콘솔 대역만)는 Tailscale SSH가 동작하면 `aws_lightsail_instance_public_ports`에서 지워 인바운드를 모두 닫는다. Terraform 상태 파일(`*.tfstate`)은 개발 PC에만 두고 Git에 넣지 않는다.
 
@@ -278,8 +278,8 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 ```bash
 docker compose up -d db
 uv run alembic upgrade head
-uv run uvicorn quant_lab.api.main:app --reload
-uv run python -m quant_lab.worker
+uv run uvicorn trading_lab.api.main:app --reload
+uv run python -m trading_lab.worker
 npm --prefix frontend run dev
 ```
 
@@ -325,7 +325,7 @@ npm --prefix frontend run dev
 
 ## 8. 화면
 
-**원칙: 주식을 잘 모르는 사람도 쓸 수 있게 한다 (토스 스타일).** 전문 용어 대신 쉬운 말을 쓰고, 꼭 필요한 용어는 ⓘ와 도움말(용어 설명)로 풀어 준다. 파라미터는 직접 입력하지 않고 선택지로 고른다. 판단 이유·알림·활동 문장은 `application/messages.py` 한곳에서 만들어 텔레그램과 화면이 같은 말을 쓴다. 디자인은 Robinhood식 구성(큰 숫자 하나와 자산 그래프가 먼저)에 Vercel·Raycast식 톤을 따른다: 회색 단계와 가는 선으로 구획을 나누고, 카드는 요약 패널과 봇 목록에만 쓰며, 상태는 칩 대신 색 점과 글자로, 주 버튼은 검정(어두운 테마는 흰색) 하나에 나머지 동작은 ⋯ 메뉴로 둔다. 글꼴은 숫자·영문 Geist, 한글 Pretendard다. 밝은 테마와 어두운 테마를 둘 다 지원한다. 기본은 시스템 설정을 따르고 헤더의 밝기 메뉴로 바꾸며, 고른 값은 브라우저에만 저장한다. 색은 `index.css` 토큰에서만 가져오고 차트도 같은 토큰을 읽어 테마가 바뀌면 다시 그린다. 로고는 글자색 사각형 위의 상승선 마크 + "Quant Lab" 워드마크이고, "모의 투자" 안내는 자산 그래프 아래 한 줄과 도움말에서 한다. 가격·손익 색은 국내 관례대로 **오르면 빨강, 내리면 파랑**(매수 빨강, 매도 파랑)이고, 상태 색(정상 초록, 오류 빨강)과는 토큰을 나눠 쓴다(`--rise`/`--fall` vs `--ok`/`--bad`). PWA 매니페스트와 아이콘이 있어 폰에서 "홈 화면에 추가"하면 주소창 없이 앱처럼 열린다 (서비스 워커·오프라인 캐시는 없음: 항상 최신 데이터를 본다). 봇 화면은 1개씩 본다. 홈 오른쪽(폰에서는 맨 위) 봇 목록(상태·최근 3개월 자산 미니 그래프·수익률)에서 고르고, 고른 봇은 브라우저에 기억한다. 홈 첫 화면의 자산 그래프는 `GET /api/bots/{id}/equity`가 첫 판단일부터 체결 기록을 장 마감 가격에 다시 적용해 만든 하루 단위 값이며, 마우스를 올리면 큰 숫자가 그날 값으로 바뀐다. 최근 활동은 첫 화면에서 빼고 거래 내역의 "전체 기록 보기" 서랍으로 옮겼다 (2026-10-02). 가격 차트는 확정 봉이 바뀔 때만 다시 그리고 오늘 진행 중 봉은 제자리에서 갱신해 확대·이동 상태를 유지한다.
+**원칙: 주식을 잘 모르는 사람도 쓸 수 있게 한다 (토스 스타일).** 전문 용어 대신 쉬운 말을 쓰고, 꼭 필요한 용어는 ⓘ와 도움말(용어 설명)로 풀어 준다. 파라미터는 직접 입력하지 않고 선택지로 고른다. 판단 이유·알림·활동 문장은 `application/messages.py` 한곳에서 만들어 텔레그램과 화면이 같은 말을 쓴다. 디자인은 Robinhood식 구성(큰 숫자 하나와 자산 그래프가 먼저)에 Vercel·Raycast식 톤을 따른다: 회색 단계와 가는 선으로 구획을 나누고, 카드는 요약 패널과 봇 목록에만 쓰며, 상태는 칩 대신 색 점과 글자로, 주 버튼은 검정(어두운 테마는 흰색) 하나에 나머지 동작은 ⋯ 메뉴로 둔다. 글꼴은 숫자·영문 Geist, 한글 Pretendard다. 밝은 테마와 어두운 테마를 둘 다 지원한다. 기본은 시스템 설정을 따르고 헤더의 밝기 메뉴로 바꾸며, 고른 값은 브라우저에만 저장한다. 색은 `index.css` 토큰에서만 가져오고 차트도 같은 토큰을 읽어 테마가 바뀌면 다시 그린다. 로고는 글자색 사각형 위의 상승선 마크 + "Trading Lab" 워드마크이고, "모의 투자" 안내는 자산 그래프 아래 한 줄과 도움말에서 한다. 가격·손익 색은 국내 관례대로 **오르면 빨강, 내리면 파랑**(매수 빨강, 매도 파랑)이고, 상태 색(정상 초록, 오류 빨강)과는 토큰을 나눠 쓴다(`--rise`/`--fall` vs `--ok`/`--bad`). PWA 매니페스트와 아이콘이 있어 폰에서 "홈 화면에 추가"하면 주소창 없이 앱처럼 열린다 (서비스 워커·오프라인 캐시는 없음: 항상 최신 데이터를 본다). 봇 화면은 1개씩 본다. 홈 오른쪽(폰에서는 맨 위) 봇 목록(상태·최근 3개월 자산 미니 그래프·수익률)에서 고르고, 고른 봇은 브라우저에 기억한다. 홈 첫 화면의 자산 그래프는 `GET /api/bots/{id}/equity`가 첫 판단일부터 체결 기록을 장 마감 가격에 다시 적용해 만든 하루 단위 값이며, 마우스를 올리면 큰 숫자가 그날 값으로 바뀐다. 최근 활동은 첫 화면에서 빼고 거래 내역의 "전체 기록 보기" 서랍으로 옮겼다 (2026-10-02). 가격 차트는 확정 봉이 바뀔 때만 다시 그리고 오늘 진행 중 봉은 제자리에서 갱신해 확대·이동 상태를 유지한다.
 
 | 화면 | 내용 |
 | --- | --- |
@@ -342,6 +342,7 @@ npm --prefix frontend run dev
 | 첫 종목 | **결정: `QQQ`** (2026-10-01) | 이력이 가장 길고(1999~) 하락장 표본이 많다. VOO는 두 번째 후보 |
 | 유명 전략 4종 제거 (2026-10-08) | **결정: 이동평균 교차·200일선·RSI2·돈치안을 없앴다. 남기는 전략은 나처럼 투자(나 카피 봇)와 AI 봇뿐이다** (사용자 결정) | 서비스 색깔을 "나를 대신해 투자하는 앱"으로 굳히려고 남의 공식을 돌려 보는 기능을 뺐다. 과거 비교는 평행세계의 나가 맡고, 4종을 평행세계에 옮기지도 않는다 (평행세계는 내 규칙을 한 가지씩만 바꾼다). 시험해 보기 화면은 지우지 않고 나처럼 투자 하나만 시험하게 줄였다. 데모의 예시 봇은 나 카피 봇·시장분석 AI 봇이다. 저장해 둔 4종 시험 결과는 마이그레이션 0021이 지우고, `seed-demo`는 없어진 전략의 예시 봇을 지운다. 사고팔기 봇만 쓰던 코드(보통 전략 판단·실거래 한 건 한도·화면의 모으기 아닌 갈래·왕복 거래/승률 지표)도 함께 지웠다. 이제 모든 전략 신호는 쓸 돈(`Spend`)을 갖고 매달 입금한다. **남은 정리:** `Signal.long`·`DecisionRecord.target_long`은 나 카피 봇에서 항상 true인데, DB 컬럼(`decisions.target_long`)과 화면 표시가 얽혀 있어 두었다 (지우려면 마이그레이션 필요, roadmap "앞으로 계획") |
 | 봉 주기 | **결정: 일봉** (2026-10-01) | 정규장 마감 + 2시간 뒤 평가 |
+| 이름 | **결정: Trading Lab** (2026-10-15, 사용자) | 퀀트 연구가 아니라 나를 대신해 투자하는 봇이라 도메인(`trading-lab.me`)에 맞춰 통일. **바꾼 것:** 패키지 `trading_lab`, 화면 이름, `localStorage` 키 `trading-lab:*`, 패키지 이름, GitHub 저장소·GHCR 이미지(`ghcr.io/ottuck/trading-lab`, compose는 워크플로의 `IMAGE`를 먼저 쓰고 없으면 이 이름)·러너 라벨 `trading-lab`. **남긴 것:** DB 이름·계정(`quant_lab`·`quant_lab_demo`·`quant`), Compose 프로젝트·네트워크 이름(`quant-lab-prod`·`quant-lab-demo`·`quant-lab-edge`·`quant-lab-dbnet`: 프로젝트 이름이 바뀌면 데이터 볼륨(`db-data`)이 새로 생겨 DB가 비어 보인다), 서버의 폴더·백업 경로·cron 이름, Terraform 인스턴스 이름 `quant-lab-02`(Lightsail에서 못 바꾼다)·`project` 태그, 터널 이름, Tailscale 호스트 이름. 모두 서버 안에서만 쓰이고 화면에 보이지 않는다 |
 | 초기 모의 현금 | **결정: $10,000** | |
 | 수수료·슬리피지 | **결정: 0.1% + 매도 SEC Fee · 5bp** | 2026-10-02 계좌 수수료 조회 API와 토스증권 공지(2025-12-01 표준 요율 0.1%)로 확인 |
 | 제품의 중심 아이디어 | **결정: 나 카피 봇** (2026-10-02, 사용자 확인) | 1절. 나 카피 봇 vs 매달 그냥 사기와 평행세계의 나를 핵심 화면으로 (2026-10-02 수정). 재미있게 나오면 홈 첫 화면 |

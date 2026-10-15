@@ -68,7 +68,7 @@ export function liveStatus(o: LiveOrder) {
 }
 
 // 홈 잔액 카드의 "금액 가리기". 이 브라우저에만 기억한다.
-const HIDE_KEY = 'quant-lab:hide-balance'
+const HIDE_KEY = 'trading-lab:hide-balance'
 const hideListeners = new Set<() => void>()
 let hidden = (() => {
   try {

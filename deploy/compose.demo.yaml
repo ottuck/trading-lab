@@ -8,7 +8,7 @@
 name: quant-lab-demo
 
 x-app: &app
-  image: ghcr.io/ottuck/quant-lab:${TAG:-latest}
+  image: ${IMAGE:-ghcr.io/ottuck/trading-lab}:${TAG:-latest}
   env_file: ${SECRETS_DIR:-../.secrets}/demo.env
   environment:
     DEMO_MODE: "true"
@@ -24,7 +24,7 @@ services:
   # 예시 시세를 오늘까지 늘리고 예시 봇을 이어서 평가한다 (6시간마다, 처음엔 2년치라 몇 분 걸린다)
   demo-seeder:
     <<: *app
-    command: ["sh", "-c", "while true; do python -m quant_lab.cli seed-demo; sleep 21600; done"]
+    command: ["sh", "-c", "while true; do python -m trading_lab.cli seed-demo; sleep 21600; done"]
     # 서버(2GB)를 운영과 나눠 쓴다. 측정(2026-10-14): 평소 약 20MiB, 최대 375MiB (처음 2년치 채울 때 포함)
     mem_limit: 512m
     depends_on:

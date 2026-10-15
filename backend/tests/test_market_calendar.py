@@ -1,6 +1,6 @@
 from datetime import UTC, date, datetime
 
-from quant_lab.adapters.market_calendar import get_calendar
+from trading_lab.adapters.market_calendar import get_calendar
 
 
 def test_regular_and_early_close_in_utc() -> None:

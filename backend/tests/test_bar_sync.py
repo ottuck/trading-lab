@@ -4,9 +4,9 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from quant_lab.application.bar_sync import sync_daily_bars
-from quant_lab.persistence.bars import load_daily_bars
 from tests.fakes import FakeBarSource, WeekdayCalendar, make_bars
+from trading_lab.application.bar_sync import sync_daily_bars
+from trading_lab.persistence.bars import load_daily_bars
 
 CAL = WeekdayCalendar()
 
