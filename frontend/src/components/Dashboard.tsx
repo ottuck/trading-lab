@@ -1024,7 +1024,8 @@ function MonthDigest({ bot }: { bot: Bot }) {
   const at = worlds.some((w) => Number(w.recent[1].bought) > 0) ? 1 : 0
   const amount = (w: World) => Number(w.recent[at].bought)
   const did = (w: World) => (amount(w) > 0 ? `${roundMoney(amount(w))}어치 샀어요` : '사지 않고 모아 뒀어요')
-  const others = worlds.filter((w) => w.key !== 'me')
+  // 2배 종목을 산 나는 규칙이 아니라 종목이 달라 사는 때 비교에서 뺀다
+  const others = worlds.filter((w) => w.key !== 'me' && w.key !== 'double')
   // 나와 다르게 한 나: 사고 안 사고가 다른 나, 없으면 금액이 다른 나
   const other =
     others.find((w) => amount(w) > 0 !== amount(me) > 0) ?? others.find((w) => Math.abs(amount(w) - amount(me)) >= 1)
