@@ -4,7 +4,7 @@
 나처럼 투자(dip_saver) 전용이다.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 from itertools import pairwise
@@ -13,8 +13,12 @@ from sqlalchemy.orm import Session
 
 from trading_lab.application.backtesting import load_series
 from trading_lab.domain.backtest import BacktestResult, run_backtest
+from trading_lab.domain.bars import DailyBar
 from trading_lab.domain.portfolio import CostModel, RiskLimits
 from trading_lab.domain.strategy import DipSaver
+
+LEVERAGE = 2
+LEVERAGE_COST = Decimal("0.02")  # 2배 종목의 보수·빌린 돈 이자를 합친 연 비용 (근삿값)
 
 
 @dataclass(frozen=True)
@@ -55,6 +59,25 @@ def variants(params: dict[str, int], multi: bool = False) -> list[tuple[str, str
     add("eager", "-5%에 바로 사는 나", dip=5)
     if multi and not params.get("rebalance"):
         add("rebalance", "비율 맞추는 나", rebalance=1)
+    return out
+
+
+def doubled(bars: list[DailyBar]) -> list[DailyBar]:
+    """날마다 전날 종가 대비 움직임을 2배로 하는 가상 종목 (2배 레버리지 ETF 근삿값).
+
+    첫날 가격에서 시작하고 연 비용을 날마다 나눠 뺀다. 습관은 그대로, 사는 종목만 바꾼 나에 쓴다.
+    """
+    cost = LEVERAGE_COST / 252
+    out = bars[:1]
+    for prev, bar in pairwise(bars):
+        base = out[-1].close
+
+        def move(price: Decimal, base: Decimal = base, prev: Decimal = prev.close) -> Decimal:
+            change = LEVERAGE * (price / prev - 1) - cost
+            return max(base * (1 + change), base / 100).quantize(Decimal("0.0001"))
+
+        o, h, lo, c = (move(p) for p in (bar.open, bar.high, bar.low, bar.close))
+        out.append(replace(bar, open=o, high=h, low=lo, close=c))
     return out
 
 
@@ -149,9 +172,10 @@ def parallel_worlds(
     initial_cash: Decimal,
     costs: CostModel,
 ) -> list[World]:
-    """[나, 매달 그냥 사는 나, 다른 나들...]. 일봉은 한 번만 읽는다.
+    """[나, 매달 그냥 사는 나, 다른 나들..., 2배 종목을 산 나]. 일봉은 한 번만 읽는다.
 
     모든 나는 같은 날 같은 돈을 넣는다 (넣는 돈을 바꾸면 수익률 비교가 어려워 바꾸지 않는다).
+    2배 종목을 산 나는 규칙이 아니라 종목을 바꾼 나라서 params가 없다 (그 나로 바꿀 수 없다).
     """
     me = DipSaver(**params)
     series = load_series(session, weights, me.warmup, start, end)
@@ -161,4 +185,7 @@ def parallel_worlds(
         strategy = DipSaver(**other)
         result = run_backtest(series, strategy, initial_cash, costs, RiskLimits(), weights=weights)
         worlds.append(world(key, title, strategy.params, result))
+    double = {s: doubled(bars) for s, bars in series.items()}
+    result = run_backtest(double, me, initial_cash, costs, RiskLimits(), weights=weights)
+    worlds.append(world("double", "2배로 움직이는 종목을 산 나", None, result))
     return worlds

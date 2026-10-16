@@ -10,8 +10,9 @@ import { cssVar, useTheme } from '../theme'
    점수·등수·"잘했다" 문장은 붙이지 않고, 순서도 결과와 상관없이 늘 같다 (project.md 1절). */
 
 /** 나와 무엇이 다른지 한 줄로: "고점에 쉬기 +15% → 안 쉼" */
-function diff(me: Record<string, number>, other: Record<string, number> | null): string {
-  if (!other) return '규칙 없이 넣을 때마다 바로 사요'
+function diff(me: Record<string, number>, other: World): string {
+  if (other.key === 'double') return '같은 규칙, 하루에 2배씩 오르내리는 종목'
+  if (!other.params) return '규칙 없이 넣을 때마다 바로 사요'
   const said: Record<string, (v: number) => string> = {
     regular: (v) => (v ? '매달 사기' : '떨어졌을 때만 사기'),
     hot: (v) => (v ? `+${v}%에 쉬기` : '고점에도 사기'),
@@ -20,8 +21,9 @@ function diff(me: Record<string, number>, other: Record<string, number> | null):
   }
   const base: Record<string, number> = { regular: 1, rebalance: 0 } // 예전 봇에 없는 값의 기본
   const of = (p: Record<string, number>, k: string) => p[k] ?? base[k] ?? 1
-  const key = Object.keys(said).find((k) => of(me, k) !== of(other, k))
-  return key ? `${said[key](of(me, key))} → ${said[key](of(other, key))}` : ''
+  const params = other.params
+  const key = Object.keys(said).find((k) => of(me, k) !== of(params, k))
+  return key ? `${said[key](of(me, key))} → ${said[key](of(params, key))}` : ''
 }
 
 export function Chart({ me, other }: { me: World; other: World }) {
@@ -118,7 +120,7 @@ export function ParallelWorlds({ queryKey, fetch, sub, chooseLabel, confirm, onC
                   <div>
                     <div className="title">{w.title}</div>
                     <div className="sub">
-                      {w.key === 'me' ? '지금 규칙 그대로' : w.same_as_me ? '이 기간엔 나와 같았어요' : diff(me.params ?? {}, w.params)}
+                      {w.key === 'me' ? '지금 규칙 그대로' : w.same_as_me ? '이 기간엔 나와 같았어요' : diff(me.params ?? {}, w)}
                     </div>
                   </div>
                   <div className="r">

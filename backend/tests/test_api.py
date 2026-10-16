@@ -250,8 +250,11 @@ def test_parallel_worlds(client: TestClient, bot_id: int) -> None:
     body = client.post("/api/parallel", json={"symbol": "QQQ", "params": params}).json()
     worlds = {w["key"]: w for w in body["worlds"]}
     assert list(worlds)[:2] == ["me", "dca"]
-    assert set(worlds) == {"me", "dca", "no_rest", "dip_only", "patient", "eager"}
+    assert set(worlds) == {"me", "dca", "no_rest", "dip_only", "patient", "eager", "double"}
     assert {w["contributed"] for w in worlds.values()} == {worlds["me"]["contributed"]}
+    # 2배 종목을 산 나: 규칙은 같고 종목만 달라 바꿀 수 없다 (params 없음)
+    assert worlds["double"]["params"] is None
+    assert worlds["double"]["final_equity"] != worlds["me"]["final_equity"]
     assert not worlds["me"]["same_as_me"] and worlds["me"]["equity"]
     # 월간 정리: 지난달·이번 달에 산 금액 (매달 그냥 사기는 넣은 만큼 산다)
     assert [len(w["recent"]) for w in worlds.values()] == [2] * len(worlds)
