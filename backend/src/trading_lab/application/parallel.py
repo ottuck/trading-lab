@@ -21,6 +21,9 @@ LEVERAGE = 2
 LEVERAGE_COST = Decimal("0.02")  # 2배 종목의 보수·빌린 돈 이자를 합친 연 비용 (근삿값)
 
 
+type Point = tuple[date, Decimal, Decimal]  # (날짜, 가치, 그날까지 넣은 돈)
+
+
 @dataclass(frozen=True)
 class World:
     key: str
@@ -31,7 +34,7 @@ class World:
     final_equity: Decimal
     contributed: Decimal
     cagr: Decimal  # 넣은 시점을 반영한 연 수익률 (XIRR)
-    equity: list[tuple[date, Decimal]]  # 달마다 마지막 날 (그래프용)
+    equity: list[Point]  # 달마다 마지막 날 (그래프용)
     recent: list[tuple[str, Decimal]]  # 지난달·이번 달("YYYY-MM")에 산 금액 (월간 정리용)
 
 
@@ -81,7 +84,7 @@ def doubled(bars: list[DailyBar]) -> list[DailyBar]:
     return out
 
 
-def _monthly(points: list[tuple[date, Decimal]]) -> list[tuple[date, Decimal]]:
+def _monthly(points: list[Point]) -> list[Point]:
     """달마다 마지막 거래일만 남긴다 (마지막 날은 항상 남긴다)."""
     out = [p for p, q in pairwise(points) if p[0].month != q[0].month]
     return [*out, points[-1]] if points else out
@@ -107,7 +110,7 @@ def world(
 ) -> World:
     """daily면 그래프를 날마다 (시작한 지 얼마 안 된 봇), 아니면 달마다 마지막 날."""
     m = result.metrics
-    points = [(p.session_date, p.equity) for p in result.equity]
+    points = [(p.session_date, p.equity, p.contributed) for p in result.equity]
     return World(
         key,
         title,
@@ -127,7 +130,7 @@ def dca_world(
 ) -> World:
     """같은 날 같은 돈을 넣자마자 비율대로 사는 비교 기준 (백테스트의 benchmark)."""
     m = result.metrics
-    points = [(p.session_date, p.benchmark) for p in result.equity]
+    points = [(p.session_date, p.benchmark, p.contributed) for p in result.equity]
     return World(
         "dca",
         title,

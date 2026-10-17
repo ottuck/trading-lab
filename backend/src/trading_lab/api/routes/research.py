@@ -43,7 +43,7 @@ def parallel_view(worlds: list[World]) -> ParallelView:
                 contributed=w.contributed,
                 cagr=w.cagr,
                 same_as_me=w.key != "me" and w.final_equity == me,
-                equity=[WorldPoint(date=d, equity=e) for d, e in w.equity],
+                equity=[WorldPoint(date=d, equity=e, contributed=c) for d, e, c in w.equity],
                 recent=[MonthBuy(month=k, bought=v) for k, v in w.recent],
             )
             for w in worlds
