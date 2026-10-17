@@ -2,8 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { ColorType, createChart, LineSeries, type Time } from 'lightweight-charts'
 import { useEffect, useRef, useState } from 'react'
 import type { Parallel, World } from '../api'
-import { useCurrency } from '../currency'
-import { money, percent, roundMoney } from '../format'
+import { money, percent } from '../format'
 import { cssVar, useTheme } from '../theme'
 
 /* 평행세계의 나 (N4): 내 규칙을 하나씩 바꾼 나들을 같은 기간에 나란히 본다.
@@ -26,10 +25,10 @@ function diff(me: Record<string, number>, other: World): string {
   return key ? `${said[key](of(me, key))} → ${said[key](of(params, key))}` : ''
 }
 
+/** 넣은 돈 대비 수익률(%)로 그린다. 가치 그대로 그리면 입금으로 늘어나는 몫이 커서 나들이 거의 겹쳐 보인다. */
 export function Chart({ me, other }: { me: World; other: World }) {
   const el = useRef<HTMLDivElement>(null)
   const { theme } = useTheme()
-  const { currency, rate } = useCurrency()
   useEffect(() => {
     if (!el.current) return
     const chart = createChart(el.current, {
@@ -38,20 +37,27 @@ export function Chart({ me, other }: { me: World; other: World }) {
       crosshair: { vertLine: { color: cssVar('--chart-cross') }, horzLine: { color: cssVar('--chart-cross') } },
       grid: { vertLines: { visible: false }, horzLines: { color: cssVar('--chart-grid') } },
       timeScale: { borderVisible: false, minBarSpacing: 0.01 },
-      rightPriceScale: { mode: 1, borderVisible: false },
-      localization: { locale: 'ko-KR', priceFormatter: roundMoney },
+      rightPriceScale: { borderVisible: false },
+      localization: { locale: 'ko-KR', priceFormatter: (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(0)}%` },
       handleScroll: false,
       handleScale: false,
     })
-    const line = (w: World, color: string, width: 1 | 2) =>
-      chart
-        .addSeries(LineSeries, { color, lineWidth: width, priceLineVisible: false, lastValueVisible: false })
-        .setData(w.equity.map((p) => ({ time: p.date as Time, value: Number(p.equity) })))
-    line(other, cssVar('--accent'), 2)
-    line(me, cssVar('--text'), 2)
+    const line = (w: World, color: string) => {
+      const series = chart.addSeries(LineSeries, { color, lineWidth: 2, priceLineVisible: false, lastValueVisible: false })
+      series.setData(
+        w.equity.map((p) => ({
+          time: p.date as Time,
+          value: Number(p.contributed) ? (Number(p.equity) / Number(p.contributed) - 1) * 100 : 0,
+        })),
+      )
+      return series
+    }
+    line(other, cssVar('--accent'))
+    // 0% 선: 넣은 돈 그대로
+    line(me, cssVar('--text')).createPriceLine({ price: 0, color: cssVar('--chart-grid'), lineWidth: 1, axisLabelVisible: false })
     chart.timeScale().fitContent()
     return () => chart.remove()
-  }, [me, other, theme, currency, rate])
+  }, [me, other, theme])
   return <div ref={el} className="pw-chart" />
 }
 
@@ -102,6 +108,7 @@ export function ParallelWorlds({ queryKey, fetch, sub, chooseLabel, confirm, onC
               <i className="other" />
               {other.title}
             </span>
+            <span className="small">넣은 돈 대비</span>
           </div>
           <div className="pw-list" role="listbox" aria-label="평행세계의 나">
             {worlds.map((w) => {

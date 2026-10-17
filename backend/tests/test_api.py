@@ -256,6 +256,8 @@ def test_parallel_worlds(client: TestClient, bot_id: int) -> None:
     assert worlds["double"]["params"] is None
     assert worlds["double"]["final_equity"] != worlds["me"]["final_equity"]
     assert not worlds["me"]["same_as_me"] and worlds["me"]["equity"]
+    # 그래프는 넣은 돈 대비로 그리므로 점마다 그날까지 넣은 돈이 있다
+    assert worlds["me"]["equity"][-1]["contributed"] == worlds["me"]["contributed"]
     # 월간 정리: 지난달·이번 달에 산 금액 (매달 그냥 사기는 넣은 만큼 산다)
     assert [len(w["recent"]) for w in worlds.values()] == [2] * len(worlds)
     assert sum(Decimal(r["bought"]) for r in worlds["me"]["recent"]) > 0

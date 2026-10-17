@@ -268,7 +268,7 @@ export type World = {
   contributed: string
   cagr: string
   same_as_me: boolean
-  equity: { date: string; equity: string }[]
+  equity: { date: string; equity: string; contributed: string }[] // contributed: 이날까지 넣은 돈
   recent: { month: string; bought: string }[] // 지난달·이번 달에 산 금액 (월간 정리)
 }
 export type Parallel = { start: string | null; end: string | null; worlds: World[]; note: string | null }

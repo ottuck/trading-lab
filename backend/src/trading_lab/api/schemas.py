@@ -418,6 +418,7 @@ class ParallelRequest(BaseModel):
 class WorldPoint(BaseModel):
     date: date
     equity: Decimal
+    contributed: Decimal  # 이날까지 넣은 돈 (그래프는 넣은 돈 대비로 그린다)
 
 
 class MonthBuy(BaseModel):
