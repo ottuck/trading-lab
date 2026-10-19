@@ -231,3 +231,18 @@ def test_heartbeat_beats_apart_from_long_ticks_but_not_when_stuck(
     assert not heart.beat()
     heart.loop_started()
     assert heart.beat()
+
+
+def test_unknown_command_is_rejected_instead_of_blocking_every_tick(
+    worker: Worker, session: Session
+) -> None:
+    bot_id = new_bot(session)
+    session.add(CommandRow(bot_id=bot_id, kind="BOGUS", created_at=NOW))
+    session.commit()
+
+    worker.tick()
+    worker.tick()  # 다시 멈추지 않고 넘어간다
+
+    session.expire_all()
+    cmd = session.scalars(select(CommandRow)).one()
+    assert cmd.processed_at is not None and cmd.result == "REJECTED"

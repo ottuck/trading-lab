@@ -145,6 +145,24 @@ def test_run_backtest_and_list(client: TestClient, bot_id: int) -> None:
     assert bad.status_code == 400
 
 
+def test_errors_come_back_as_readable_detail(
+    client: TestClient, bot_id: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    body = {"symbol": "ZZZ", "strategy": "dip_saver", "params": RULE}
+    no_data = client.post("/api/backtests", json=body)  # 일봉이 없는 종목
+    assert no_data.status_code == 400 and "sync-bars" not in no_data.json()["detail"]
+
+    def boom(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("secret internal detail")
+
+    monkeypatch.setattr("trading_lab.api.routes.research.research.run_backtest", boom)
+    broken = TestClient(app, raise_server_exceptions=False).post(
+        "/api/backtests", json={**body, "symbol": "QQQ"}
+    )
+    assert broken.status_code == 500
+    assert "secret" not in broken.json()["detail"]  # 안쪽 사정은 화면에 내보내지 않는다
+
+
 def test_bot_management(client: TestClient, session: Session, bot_id: int) -> None:
     # 실행 중에도 설정을 바꾸고, 다음 판단부터 적용된다
     config = {"strategy": "dip_saver", "params": {**RULE, "dip": 15}, "max_order_value": "5000"}

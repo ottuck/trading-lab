@@ -154,6 +154,10 @@ def run(stop: threading.Event) -> None:
         except SQLAlchemyError:
             # DB 오류 중에는 판단·주문을 만들지 않는다 (project.md 3절 원칙 5).
             log.exception("DB 오류, 다음 주기에 다시 시도")
+        except Exception:
+            # 예상 못 한 오류로 Worker 전체가 죽지 않게 한다. 이번 주기의 외부 생존 신호는
+            # 건너뛰므로 오류가 계속되면 heartbeat 감시가 알린다.
+            log.exception("예상하지 못한 오류, 다음 주기에 다시 시도")
         stop.wait(interval)
 
     release_worker_lock(lock_conn)

@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from trading_lab.application.errors import NoData
 from trading_lab.domain.backtest import BacktestResult, run_backtest
 from trading_lab.domain.bars import DailyBar
 from trading_lab.domain.portfolio import CostModel, RiskLimits
@@ -26,7 +27,7 @@ def load_series(
             first = next((i for i, b in enumerate(bars) if b.session_date >= start), len(bars))
             bars = bars[max(0, first - warmup + 1) :]
         if not bars:
-            raise ValueError(f"{s} 일봉이 없습니다. 먼저 sync-bars를 실행하세요.")
+            raise NoData(f"{s} 일봉이 아직 없어요. 가격 기록을 받아 오면 계산할 수 있어요.")
         series[s] = bars
     return series
 
