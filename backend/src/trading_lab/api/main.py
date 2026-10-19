@@ -67,6 +67,20 @@ async def demo_read_only(request: Request, call_next: RequestResponseEndpoint) -
 
 
 @app.middleware("http")
+async def same_origin_writes(request: Request, call_next: RequestResponseEndpoint) -> Response:
+    """다른 사이트가 사용자의 브라우저로 보낸 바꾸기 요청을 거절한다 (주문 승인·비상 중지 등).
+
+    브라우저는 Sec-Fetch-Site를 꼭 붙인다. 이 화면에서 보낸 요청은 same-origin이고, 헤더가
+    없으면 브라우저가 아닌 도구(curl·서버끼리)라 통과시킨다. 접근 제어는 그대로
+    Tailscale·Cloudflare Access다.
+    """
+    own_site = request.headers.get("sec-fetch-site") in (None, "same-origin", "none")
+    if request.method not in ("GET", "HEAD", "OPTIONS") and not own_site:
+        return JSONResponse({"detail": "다른 사이트에서 보낸 요청은 받지 않아요"}, status_code=403)
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def cloudflare_access(request: Request, call_next: RequestResponseEndpoint) -> Response:
     """도메인(Cloudflare)으로 온 요청은 Access 로그인 토큰이 있어야 한다 (Tailscale은 그대로)."""
     if access is not None and "cf-ray" in request.headers:

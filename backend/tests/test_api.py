@@ -95,6 +95,20 @@ def test_command_is_queued_for_worker(client: TestClient, session: Session, bot_
     assert client.post("/api/bots/999/commands", json={"kind": "START"}).status_code == 404
 
 
+def test_writes_from_other_sites_are_refused(
+    client: TestClient, session: Session, bot_id: int
+) -> None:
+    url, body = f"/api/bots/{bot_id}/commands", {"kind": "PAUSE"}
+    for site in ("cross-site", "same-site"):  # 다른 사이트·같은 도메인의 다른 서브도메인
+        assert client.post(url, json=body, headers={"Sec-Fetch-Site": site}).status_code == 403
+    assert session.scalars(select(CommandRow.kind)).all() == []
+    own = {"Sec-Fetch-Site": "same-origin"}
+    assert client.post(url, json=body, headers=own).status_code == 202
+    # 읽기는 막지 않는다
+    other = {"Sec-Fetch-Site": "cross-site"}
+    assert client.get(f"/api/bots/{bot_id}", headers=other).status_code == 200
+
+
 def test_health_says_bots_are_evaluating_only_for_recent_running_runs(
     client: TestClient, session: Session
 ) -> None:
