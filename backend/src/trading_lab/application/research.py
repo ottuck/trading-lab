@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from trading_lab.application.backtesting import backtest_symbol
@@ -17,8 +16,9 @@ from trading_lab.application.plan import Plan, follow_plan
 from trading_lab.domain.bars import TradingCalendar
 from trading_lab.domain.portfolio import CostModel, RiskLimits
 from trading_lab.domain.strategy import DipSaver
-from trading_lab.persistence.bots import active_weights, bot_costs
-from trading_lab.persistence.models import BacktestRow, BotRow, DecisionRow
+from trading_lab.persistence.backtests import keep_latest_backtests
+from trading_lab.persistence.bots import active_weights, bot_costs, first_decision_date
+from trading_lab.persistence.models import BotRow
 
 COPY_STRATEGY = "dip_saver"  # 따라 하기·평행세계는 나 카피 봇(나처럼 투자) 전용
 
@@ -61,9 +61,7 @@ def run_backtest(
         raise Invalid(str(exc)) from exc
     assert run.saved_id is not None
     if keep_latest is not None:
-        keep = select(BacktestRow.id).order_by(BacktestRow.created_at.desc()).limit(keep_latest)
-        session.execute(delete(BacktestRow).where(BacktestRow.id.not_in(keep)))
-        session.commit()
+        keep_latest_backtests(session, keep_latest)
     return run.saved_id
 
 
@@ -114,9 +112,7 @@ def _copy_bot(session: Session, bot_id: int) -> BotRow:
 def bot_parallel(session: Session, bot_id: int) -> BotParallel:
     """운영 중인 나처럼 투자 봇의 평행세계: 첫 판단일부터 지금 규칙으로 다시 계산한다."""
     bot = _copy_bot(session, bot_id)
-    first = session.scalar(
-        select(func.min(DecisionRow.session_date)).where(DecisionRow.bot_id == bot_id)
-    )
+    first = first_decision_date(session, bot_id)
     if first is None:
         return BotParallel(None, note="아직 첫 판단 전이에요.")
     try:

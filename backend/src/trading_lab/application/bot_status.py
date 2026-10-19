@@ -9,22 +9,32 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from trading_lab.application.messages import action_phrase, decision_reason
 from trading_lab.domain.portfolio import Portfolio, RiskLimits, affordable_qty
-from trading_lab.persistence.bots import bot_costs, bot_weights, list_bots
+from trading_lab.persistence.bars import bar_range, bar_rows_since, last_bar
+from trading_lab.persistence.bots import (
+    bot_costs,
+    bot_weights,
+    decisions_on,
+    deposits_by_date,
+    filled_sim_orders,
+    first_decision_date,
+    last_decision,
+    last_run,
+    list_bots,
+    pending_command_kind,
+    pending_orders,
+    positions_of,
+    real_fill_count,
+)
 from trading_lab.persistence.models import (
     BotAccountRow,
-    BotDepositRow,
-    BotPositionRow,
     BotRow,
-    CommandRow,
     DailyBarRow,
     DecisionRow,
     LiveBarRow,
-    LiveOrderRow,
     QuoteRow,
     RunRow,
     SimOrderRow,
@@ -122,22 +132,10 @@ class EquityPoint:
     live: bool = field(default=False)
 
 
-def _last_bar(session: Session, symbol: str) -> DailyBarRow | None:
-    return session.scalars(
-        select(DailyBarRow)
-        .where(DailyBarRow.symbol == symbol)
-        .order_by(DailyBarRow.session_date.desc())
-        .limit(1)
-    ).first()
-
-
 def account_status(session: Session, bot: BotRow) -> AccountStatus:
     """종목별 보유를 장 마감 가격(+ 있으면 실시간 가격)으로 평가하고 합계를 낸다."""
     acc = session.get_one(BotAccountRow, bot.id)
-    held = {
-        p.symbol: p
-        for p in session.scalars(select(BotPositionRow).where(BotPositionRow.bot_id == bot.id))
-    }
+    held = {p.symbol: p for p in positions_of(session, bot.id)}
     weights = bot_weights(bot)
     positions: list[PositionStatus] = []
     complete = True
@@ -147,7 +145,7 @@ def account_status(session: Session, bot: BotRow) -> AccountStatus:
         pos = held.get(symbol)
         qty = pos.qty if pos else Decimal(0)
         avg = pos.avg_cost if pos else Decimal(0)
-        last = _last_bar(session, symbol)
+        last = last_bar(session, symbol)
         quote = session.get(QuoteRow, symbol)
         if last is None:
             complete = False
@@ -241,55 +239,15 @@ def decision_status(row: DecisionRow, bot: BotRow | None = None) -> DecisionStat
 
 
 def bot_status(session: Session, bot: BotRow) -> BotStatus:
-    last_decision = session.scalars(
-        select(DecisionRow)
-        .where(DecisionRow.bot_id == bot.id)
-        .order_by(DecisionRow.session_date.desc())
-        .limit(1)
-    ).first()
-    last_decisions = (
-        list(
-            session.scalars(
-                select(DecisionRow).where(
-                    DecisionRow.bot_id == bot.id,
-                    DecisionRow.session_date == last_decision.session_date,
-                )
-            )
-        )
-        if last_decision
-        else []
-    )
+    latest = last_decision(session, bot.id)
+    last_decisions = decisions_on(session, bot.id, latest.session_date) if latest else []
     weights = bot_weights(bot)
     order = {s: i for i, s in enumerate(weights)}
     last_decisions.sort(key=lambda d: order.get(d.symbol, len(order)))
-    main = next((d for d in last_decisions if d.symbol == bot.symbol), last_decision)
-    pending = list(
-        session.scalars(
-            select(SimOrderRow)
-            .where(SimOrderRow.bot_id == bot.id, SimOrderRow.status == "PENDING")
-            .order_by(SimOrderRow.id)
-        )
-    )
-    last_run = session.scalars(
-        select(RunRow).where(RunRow.bot_id == bot.id).order_by(RunRow.started_at.desc()).limit(1)
-    ).first()
-    data_latest, data_fetched = session.execute(
-        select(func.max(DailyBarRow.session_date), func.max(DailyBarRow.fetched_at)).where(
-            DailyBarRow.symbol == bot.symbol
-        )
-    ).one()
-    last_bar = _last_bar(session, bot.symbol)
-    command = session.scalars(
-        select(CommandRow.kind)
-        .where(CommandRow.bot_id == bot.id, CommandRow.processed_at.is_(None))
-        .order_by(CommandRow.created_at.desc())
-        .limit(1)
-    ).first()
-    real_fills = session.scalar(
-        select(func.count())
-        .select_from(LiveOrderRow)
-        .where(LiveOrderRow.bot_id == bot.id, LiveOrderRow.filled_qty > 0)
-    )
+    main = next((d for d in last_decisions if d.symbol == bot.symbol), latest)
+    pending = pending_orders(session, bot.id)
+    data_latest, data_fetched = bar_range(session, bot.symbol)
+    bar = last_bar(session, bot.symbol)
     return BotStatus(
         id=bot.id,
         name=bot.name,
@@ -308,13 +266,13 @@ def bot_status(session: Session, bot: BotRow) -> BotStatus:
         last_decisions=[decision_status(d, bot) for d in last_decisions],
         pending_order=pending[0] if pending else None,
         pending_orders=pending,
-        last_run=last_run,
+        last_run=last_run(session, bot.id),
         data_latest_date=data_latest,
         data_fetched_at=data_fetched,
-        data_source=last_bar.source if last_bar else None,
+        data_source=bar.source if bar else None,
         live_ratio=bot.live_ratio,
-        has_real_fills=bool(real_fills),
-        pending_command=command,
+        has_real_fills=bool(real_fill_count(session, bot.id)),
+        pending_command=pending_command_kind(session, bot.id),
     )
 
 
@@ -331,9 +289,7 @@ def equity_curve(session: Session, bot: BotRow) -> list[EquityPoint]:
     여러 종목은 모든 종목에 봉이 있는 날만 그린다. 오늘 진행 중인 장이 있으면 실시간 한 점을 더한다.
     """
     weights = bot_weights(bot)
-    first = session.scalar(
-        select(func.min(DecisionRow.session_date)).where(DecisionRow.bot_id == bot.id)
-    )
+    first = first_decision_date(session, bot.id)
     start = first or bot.created_at.date()
     fills = [
         (
@@ -344,27 +300,12 @@ def equity_curve(session: Session, bot: BotRow) -> list[EquityPoint]:
             (o.qty or 0) * (o.price or 0),
             o.commission or 0,
         )
-        for o in session.scalars(
-            select(SimOrderRow)
-            .where(SimOrderRow.bot_id == bot.id, SimOrderRow.status == "FILLED")
-            .order_by(SimOrderRow.fill_date, SimOrderRow.id)
-        )
+        for o in filled_sim_orders(session, bot.id)
         if o.fill_date is not None
     ]
-    deposits = {
-        d.session_date: d.amount
-        for d in session.scalars(select(BotDepositRow).where(BotDepositRow.bot_id == bot.id))
-    }
+    deposits = {day: d.amount for day, d in deposits_by_date(session, bot.id).items()}
     bars: dict[str, dict[date, DailyBarRow]] = {
-        s: {
-            r.session_date: r
-            for r in session.scalars(
-                select(DailyBarRow).where(
-                    DailyBarRow.symbol == s, DailyBarRow.session_date >= start
-                )
-            )
-        }
-        for s in weights
+        s: bar_rows_since(session, s, start) for s in weights
     }
     days = sorted(set.intersection(*(set(b) for b in bars.values())))
     costs = bot_costs(bot)

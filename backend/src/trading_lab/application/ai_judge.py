@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from trading_lab.domain.advisor import (
@@ -22,9 +21,13 @@ from trading_lab.domain.advisor import (
 )
 from trading_lab.domain.events import AiJudgmentData, EventKind
 from trading_lab.domain.strategy import AI_STRATEGY, CANDLE_STRATEGY
-from trading_lab.persistence.ai_judgments import save_judgment, spent
+from trading_lab.persistence.ai_judgments import (
+    has_judgment,
+    over_budget_since,
+    save_judgment,
+    spent,
+)
 from trading_lab.persistence.bots import add_event
-from trading_lab.persistence.models import AiJudgmentRow
 
 
 @dataclass(frozen=True)
@@ -86,12 +89,7 @@ def judge_bot(
     이번 달(UTC) 그 전략의 비용이 상한 이상이면 부르지 않는다. 같은 판단일은 다시 부르지 않는다
     (매번 비용이 들고 결과가 달라질 수 있어서): 기록이 있으면 아무것도 하지 않는다.
     """
-    exists = session.scalar(
-        select(AiJudgmentRow.id).where(
-            AiJudgmentRow.bot_id == bot_id, AiJudgmentRow.session_date == request.session_date
-        )
-    )
-    if exists is not None:
+    if has_judgment(session, bot_id, request.session_date):
         return
     candles = request.candles is not None
     strategy = CANDLE_STRATEGY if candles else AI_STRATEGY
@@ -109,18 +107,12 @@ def judge_bot(
         data["spent"], data["budget"] = str(used.quantize(Decimal("0.01"))), str(budget)
     else:
         judgment = judge(advisor, request)
-    already_over = session.scalar(
-        select(AiJudgmentRow.id).where(
-            AiJudgmentRow.bot_id == bot_id,
-            AiJudgmentRow.status == JudgmentStatus.OVER_BUDGET,
-            AiJudgmentRow.created_at >= start,
-        )
-    )
+    already_over = over_budget_since(session, bot_id, start)
     save_judgment(session, bot_id, judgment, now, strategy)
     if judgment.status is not JudgmentStatus.OK:
         data["status"] = judgment.status.value
         # 비용 상한은 그달 처음 한 번만 알린다
-        quiet = judgment.status is JudgmentStatus.OVER_BUDGET and already_over is not None
+        quiet = judgment.status is JudgmentStatus.OVER_BUDGET and already_over
         add_event(
             session,
             now,

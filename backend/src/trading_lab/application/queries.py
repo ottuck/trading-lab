@@ -8,20 +8,23 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from trading_lab.application.messages import event_message
-from trading_lab.persistence.bots import bot_weights, list_bots
+from trading_lab.persistence.bars import recent_bar_rows
+from trading_lab.persistence.bots import (
+    bot_weights,
+    latest_decisions,
+    latest_sim_orders,
+    list_bots,
+)
+from trading_lab.persistence.events import event_log, latest_events
+from trading_lab.persistence.market_info import instrument_map, quote_map
 from trading_lab.persistence.models import (
-    BotRow,
-    DailyBarRow,
     DecisionRow,
     EventRow,
     ExchangeRateRow,
-    InstrumentRow,
     LiveBarRow,
-    QuoteRow,
     SimOrderRow,
 )
 
@@ -68,10 +71,7 @@ class Activity:
 def price_bars(session: Session, symbol: str, start: date | None, limit: int) -> list[Bar]:
     """완료 봉, 그리고 그보다 새 날짜의 진행 중 봉이 있으면 끝에 붙인다 (차트 표시용)."""
     symbol = symbol.upper()
-    stmt = select(DailyBarRow).where(DailyBarRow.symbol == symbol)
-    if start:
-        stmt = stmt.where(DailyBarRow.session_date >= start)
-    rows = list(session.scalars(stmt.order_by(DailyBarRow.session_date.desc()).limit(limit)))
+    rows = recent_bar_rows(session, symbol, start, limit)
     out = [Bar(r.session_date, r.open, r.high, r.low, r.close, r.volume) for r in reversed(rows)]
     lb = session.get(LiveBarRow, symbol)
     if lb is not None and (not out or lb.session_date > out[-1].date):
@@ -82,10 +82,10 @@ def price_bars(session: Session, symbol: str, start: date | None, limit: int) ->
 def instruments(session: Session, watchlist: Sequence[str]) -> list[InstrumentInfo]:
     """관심 종목 + 봇 종목 (종목 버튼·레버리지 표시). 레버리지 배수는 Worker가 채운다."""
     symbols = list(watchlist)
-    for bot in session.scalars(select(BotRow)):
+    for bot in list_bots(session):
         symbols += [s for s in bot_weights(bot) if s not in symbols]
-    infos = {r.symbol: r for r in session.scalars(select(InstrumentRow))}
-    quotes = {q.symbol: q for q in session.scalars(select(QuoteRow))}
+    infos = instrument_map(session)
+    quotes = quote_map(session)
     return [
         InstrumentInfo(
             symbol=s,
@@ -109,13 +109,8 @@ def usd_krw(session: Session) -> FxInfo | None:
 def activity(session: Session, bot_id: int | None, kind: str | None, limit: int) -> list[Activity]:
     """최근 활동을 쉬운 말로. 내부 기록(재시작, 중복 평가 등)은 빼고 보여준다."""
     bots = {b.id: b for b in list_bots(session)}
-    stmt = select(EventRow).order_by(EventRow.id.desc()).limit(limit * 5)
-    if bot_id is not None:
-        stmt = stmt.where(EventRow.bot_id == bot_id)
-    if kind:
-        stmt = stmt.where(EventRow.kind == kind)
     items: list[Activity] = []
-    for e in session.scalars(stmt):
+    for e in latest_events(session, limit * 5, bot_id=bot_id, kind=kind):
         bot = bots.get(e.bot_id) if e.bot_id else None
         msg = event_message(
             e.kind,
@@ -136,33 +131,12 @@ def events(
     session: Session, bot_id: int | None, level: str | None, kind: str | None, limit: int
 ) -> list[EventRow]:
     """원시 이벤트 기록 (화면에는 쓰지 않고 확인·디버깅용)."""
-    stmt = select(EventRow).order_by(EventRow.at.desc(), EventRow.id.desc()).limit(limit)
-    if bot_id is not None:
-        stmt = stmt.where(EventRow.bot_id == bot_id)
-    if level:
-        stmt = stmt.where(EventRow.level == level.upper())
-    if kind:
-        stmt = stmt.where(EventRow.kind == kind)
-    return list(session.scalars(stmt))
+    return event_log(session, limit, bot_id=bot_id, level=level, kind=kind)
 
 
 def decisions(session: Session, bot_id: int, limit: int) -> list[DecisionRow]:
-    return list(
-        session.scalars(
-            select(DecisionRow)
-            .where(DecisionRow.bot_id == bot_id)
-            .order_by(DecisionRow.session_date.desc())
-            .limit(limit)
-        )
-    )
+    return latest_decisions(session, bot_id, limit)
 
 
 def orders(session: Session, bot_id: int, limit: int) -> list[SimOrderRow]:
-    return list(
-        session.scalars(
-            select(SimOrderRow)
-            .where(SimOrderRow.bot_id == bot_id)
-            .order_by(SimOrderRow.id.desc())
-            .limit(limit)
-        )
-    )
+    return latest_sim_orders(session, bot_id, limit)

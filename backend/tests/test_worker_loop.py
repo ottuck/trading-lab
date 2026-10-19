@@ -32,8 +32,9 @@ from trading_lab.persistence.models import (
     LiveBarRow,
     QuoteRow,
 )
+from trading_lab.persistence.worker_lock import release_worker_lock, try_acquire_worker_lock
 from trading_lab.worker.heartbeat import HeartbeatThread
-from trading_lab.worker.loop import Worker, release_worker_lock, try_acquire_worker_lock
+from trading_lab.worker.loop import Worker
 
 CAL = WeekdayCalendar()
 BARS = make_bars("QQQ", [100 + (i % 7) for i in range(30)])

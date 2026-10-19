@@ -32,8 +32,9 @@ from trading_lab.config import Settings, get_settings
 from trading_lab.domain.events import EventKind
 from trading_lab.persistence.bots import add_event
 from trading_lab.persistence.db import get_engine
+from trading_lab.persistence.worker_lock import release_worker_lock, try_acquire_worker_lock
 from trading_lab.worker.heartbeat import HeartbeatThread
-from trading_lab.worker.loop import Worker, release_worker_lock, try_acquire_worker_lock
+from trading_lab.worker.loop import Worker
 
 log = logging.getLogger("trading_lab.worker")
 

@@ -112,7 +112,7 @@ backend/
     adapters/toss/   # 토스 HTTP 클라이언트, 토큰 관리, 응답 → domain/broker 형식 변환
     adapters/claude/ # Claude API 판단 (웹 검색·구조화 출력·요금) → domain/advisor 형식
     adapters/sim/    # 모의 브로커
-    persistence/     # SQLAlchemy 모델, 리포지토리
+    persistence/     # SQLAlchemy 모델과 이름 붙인 조회·저장 함수 (쿼리는 여기서만 만든다)
     api/             # FastAPI 진입점. routes/는 요청 해석 → 서비스 호출 → 응답 변환만 한다
     worker/          # Worker 진입점과 루프
   migrations/        # Alembic
@@ -123,7 +123,7 @@ infra/lightsail/     # Terraform: Lightsail 인스턴스·Static IP·방화벽·
 compose.yaml         # 로컬 개발용 (PostgreSQL)
 ```
 
-`domain`은 FastAPI, httpx, SQLAlchemy를 import하지 않는다. 토스 어댑터(`adapters/toss`)는 조립 지점(`worker/__main__.py`, `cli.py`)만 import하고, 엔진·저장소·API는 `domain/broker.py`의 규약과 형식만 안다. 두 규칙 모두 테스트(import 검사)로 강제한다. 그래서 증권사를 바꾸려면 `Broker` 규약을 지키는 어댑터 하나를 만들고 조립 지점만 바꾸면 된다. **이름과 개념도 나눈다 (2026-10-04, 사용자 결정):** 엔진·저장소·API·화면 코드의 표·함수·경로 이름에 증권사 이름(toss)을 쓰지 않는다 (`broker_account`, `/api/broker-account`). 증권사별 규칙(토스 멱등 키 10분, 금액 주문 접수 시간, 오류 코드, 계좌 헤더 등)은 어댑터 안에만 두고, 엔진에는 규약의 값(접수 시간대, 멱등 유효 시간, 증권사 무관 거절 이유 코드)으로만 넘긴다. 저장 데이터에 남는 것은 출처 코드(`source`)뿐이고, 사람이 읽는 증권사 이름은 프론트엔드 `source.ts`가 정한다. 증권사 이름이 남아도 되는 곳은 어댑터, 조립 지점(Worker 진입점·CLI·설정 `TOSS_*`), 문서뿐이다.
+`domain`은 FastAPI, httpx, SQLAlchemy를 import하지 않는다. **쿼리는 `persistence`에서만 만든다 (2026-10-19):** `application`·`api`·`worker`는 `sqlalchemy` 본체(`select`·`func` 등)를 import하지 않고, `persistence`의 이름 붙인 함수(`first_decision_date`, `pending_orders`, `month_bought` …)를 부른다. `Session`(`sqlalchemy.orm`)과 오류(`sqlalchemy.exc`)는 쓸 수 있고, `session.get`·`add`·`commit`은 작업 단위로서 서비스가 직접 부른다. Spring식 Repository 인터페이스는 두지 않는다 (DB를 바꿀 계획이 없고 테스트도 실제 PostgreSQL로 한다). `cli.py`(운영 도구)는 예외다. 계층의 방향(`persistence`·`adapters`는 위 계층을 모르고, `application`은 `adapters`·`api`·`worker`를 모른다)도 함께 테스트한다. 토스 어댑터(`adapters/toss`)는 조립 지점(`worker/__main__.py`, `cli.py`)만 import하고, 엔진·저장소·API는 `domain/broker.py`의 규약과 형식만 안다. 두 규칙 모두 테스트(import 검사)로 강제한다. 그래서 증권사를 바꾸려면 `Broker` 규약을 지키는 어댑터 하나를 만들고 조립 지점만 바꾸면 된다. **이름과 개념도 나눈다 (2026-10-04, 사용자 결정):** 엔진·저장소·API·화면 코드의 표·함수·경로 이름에 증권사 이름(toss)을 쓰지 않는다 (`broker_account`, `/api/broker-account`). 증권사별 규칙(토스 멱등 키 10분, 금액 주문 접수 시간, 오류 코드, 계좌 헤더 등)은 어댑터 안에만 두고, 엔진에는 규약의 값(접수 시간대, 멱등 유효 시간, 증권사 무관 거절 이유 코드)으로만 넘긴다. 저장 데이터에 남는 것은 출처 코드(`source`)뿐이고, 사람이 읽는 증권사 이름은 프론트엔드 `source.ts`가 정한다. 증권사 이름이 남아도 되는 곳은 어댑터, 조립 지점(Worker 진입점·CLI·설정 `TOSS_*`), 문서뿐이다.
 
 ### Worker 평가 1회의 흐름
 

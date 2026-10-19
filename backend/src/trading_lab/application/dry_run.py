@@ -11,7 +11,6 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
 
-from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -71,16 +70,20 @@ from trading_lab.persistence.bots import (
     bot_limits,
     bot_weights,
     deposited_month,
+    find_decision,
     get_bot,
+    held_symbols,
+    last_decision_date,
+    last_fill,
     load_account,
     pending_orders,
+    previous_finished_run,
     save_account,
     set_bot_state,
 )
 from trading_lab.persistence.market_info import leverage_of
 from trading_lab.persistence.models import (
     BotDepositRow,
-    BotPositionRow,
     BotRow,
     DecisionRow,
     RunRow,
@@ -239,22 +242,8 @@ def _stop_if_split(session: Session, bot_id: int, series: dict[str, list[DailyBa
     분할이 일어나면 일봉은 수정주가로 다시 받아 바뀌지만, 봇의 보유 수량은 예전 기준 그대로라
     평가금액과 판단이 틀어진다. 다시 시작하면 새 기준으로 처음부터 계산하므로 풀린다.
     """
-    held = session.scalars(
-        select(BotPositionRow.symbol).where(BotPositionRow.bot_id == bot_id, BotPositionRow.qty > 0)
-    )
-    for symbol in held:
-        fill = session.scalars(
-            select(SimOrderRow)
-            .where(
-                SimOrderRow.bot_id == bot_id,
-                SimOrderRow.symbol == symbol,
-                SimOrderRow.status == "FILLED",
-                SimOrderRow.price.is_not(None),
-                SimOrderRow.fill_date.is_not(None),
-            )
-            .order_by(SimOrderRow.fill_date.desc(), SimOrderRow.id.desc())
-            .limit(1)
-        ).first()
+    for symbol in held_symbols(session, bot_id):
+        fill = last_fill(session, bot_id, symbol)
         if fill is None or fill.price is None:
             continue
         bar = next((b for b in series.get(symbol, []) if b.session_date == fill.fill_date), None)
@@ -307,14 +296,7 @@ def _finish(
 
 
 def _same_as_previous_run(session: Session, bot_id: int, outcome: EvaluationOutcome) -> bool:
-    previous = session.scalars(
-        select(RunRow)
-        .where(
-            RunRow.bot_id == bot_id, RunRow.id != outcome.run_id, RunRow.finished_at.is_not(None)
-        )
-        .order_by(RunRow.started_at.desc())
-        .limit(1)
-    ).first()
+    previous = previous_finished_run(session, bot_id, outcome.run_id)
     return (
         previous is not None
         and previous.status == outcome.status
@@ -402,14 +384,7 @@ def _evaluate(
     closes = {s: b[-1].close for s, b in series.items()}
 
     # 4) 이미 판단한 날이면 아무것도 하지 않는다 (수동 실행 반복 등)
-    existing = session.scalars(
-        select(DecisionRow).where(
-            DecisionRow.bot_id == bot.id,
-            DecisionRow.session_date == target,
-            DecisionRow.mode == MODE,
-        )
-    ).first()
-    if existing is not None:
+    if find_decision(session, bot.id, target, MODE) is not None:
         save_account(session, bot.id, pf, now)
         outcome = EvaluationOutcome(
             run_id, RunStatus.OK, target, f"{target} 판단은 이미 있음", fills=tuple(fills)
@@ -417,11 +392,7 @@ def _evaluate(
         return _commit_ok(session, bot, outcome, calendar, now, _summary(bot, pf, closes))
 
     # Worker가 멈춰 있던 동안의 거래일은 소급 판단하지 않고 기록만 남긴다.
-    last_decided = session.scalar(
-        select(func.max(DecisionRow.session_date)).where(
-            DecisionRow.bot_id == bot.id, DecisionRow.mode == MODE
-        )
-    )
+    last_decided = last_decision_date(session, bot.id, MODE)
     if last_decided is not None and last_decided < target - timedelta(days=1):
         missed = calendar.sessions(last_decided + timedelta(days=1), target - timedelta(days=1))
         if missed:

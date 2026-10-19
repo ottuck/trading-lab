@@ -100,3 +100,40 @@ def test_engine_code_does_not_name_the_broker() -> None:
             if any(p in s.lower() for p in PROVIDERS):
                 violations.append(f"{rel.as_posix()}:{getattr(node, 'lineno', '?')} {s[:40]}")
     assert violations == []
+
+
+# 계층의 방향: domain ← persistence·adapters ← application ← api·worker.
+# 어긋나게 import하면 안 되는 쪽만 적는다 (api가 어댑터를 직접 아는 곳은 따로 정리한다).
+FORBIDDEN_UP = {
+    "persistence": ("application", "adapters", "api", "worker"),
+    "adapters": ("application", "persistence", "api", "worker"),
+    "application": ("adapters", "api", "worker"),
+}
+
+
+def test_layers_only_depend_downward() -> None:
+    root = DOMAIN_DIR.parent
+    violations = [
+        f"{path.relative_to(root).as_posix()}: {name}"
+        for layer, upper in FORBIDDEN_UP.items()
+        for path in (root / layer).rglob("*.py")
+        for name in imported_modules(path)
+        if any(name == f"trading_lab.{u}" or name.startswith(f"trading_lab.{u}.") for u in upper)
+    ]
+    assert violations == []
+
+
+def test_queries_are_built_only_in_persistence() -> None:
+    """application·api·worker는 sqlalchemy 본체(select·func 등)를 쓰지 않는다.
+
+    Session(`sqlalchemy.orm`)과 오류(`sqlalchemy.exc`)는 쓸 수 있다. 조회·집계는 이름을 붙인
+    persistence 함수로 두어, 쿼리가 계층마다 흩어지지 않게 한다.
+    """
+    root = DOMAIN_DIR.parent
+    violations = [
+        path.relative_to(root).as_posix()
+        for layer in ("application", "api", "worker")
+        for path in (root / layer).rglob("*.py")
+        if "sqlalchemy" in imported_modules(path)
+    ]
+    assert violations == []

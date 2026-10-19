@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from tests.fakes import WeekdayCalendar
 from trading_lab.application.errors import Conflict
-from trading_lab.application.live import LiveDesk, check_holdings, live_position, month_bought
+from trading_lab.application.live import LiveDesk, check_holdings
 from trading_lab.application.live_admin import approve, overview, resolve_unknown, set_halted
 from trading_lab.application.market import StoredMarket
 from trading_lab.domain.broker import (
@@ -29,6 +29,7 @@ from trading_lab.domain.live import LiveState, RealFill, partial_sell_qty, real_
 from trading_lab.domain.portfolio import CostModel, RiskLimits
 from trading_lab.persistence.bots import create_bot
 from trading_lab.persistence.broker_account import save_snapshot
+from trading_lab.persistence.live_orders import live_position, month_bought
 from trading_lab.persistence.market_info import upsert_instruments
 from trading_lab.persistence.models import (
     BotPositionRow,

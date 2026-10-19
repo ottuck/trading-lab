@@ -19,7 +19,6 @@ from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from trading_lab.domain.bars import TradingCalendar
@@ -54,14 +53,26 @@ from trading_lab.domain.live import (
     partial_sell_qty,
     scaled_amount,
 )
+from trading_lab.persistence.bars import last_close
 from trading_lab.persistence.bots import add_event
+from trading_lab.persistence.live_orders import (
+    WAITING_TO_SEND,
+    carried_orders,
+    control,
+    has_unknown,
+    linked_broker_ids,
+    live_position,
+    month_bought,
+    net_bought_by_symbol,
+    order_ids_in,
+    unplanned_sim_orders,
+    waiting_buy_total,
+)
 from trading_lab.persistence.market_info import leverage_of
 from trading_lab.persistence.models import (
     BotPositionRow,
     BotRow,
     BrokerAccountRow,
-    DailyBarRow,
-    LiveControlRow,
     LiveOrderRow,
     SimOrderRow,
 )
@@ -70,71 +81,9 @@ KST = ZoneInfo("Asia/Seoul")
 RETRY_MARGIN = timedelta(minutes=1)  # 멱등 유효 시간이 끝나기 이만큼 전까지만 같은 키로 다시 보낸다
 CHECK_INTERVAL = timedelta(minutes=1)  # 보낸 주문의 체결 확인 간격
 STALL_ALERT = timedelta(minutes=3)  # 연결이 안 돼 결과를 이만큼 못 알면 한 번 알린다
-COMMITTED = (
-    LiveState.APPROVED,
-    LiveState.SENDING,
-    LiveState.SENT,
-    LiveState.FILLED,
-    LiveState.UNKNOWN,
-)
-WAITING_TO_SEND = (LiveState.WAITING_APPROVAL, LiveState.APPROVED)
-# 체결 수량: 사면 +, 팔면 - (봇이 실제 계좌에 남긴 수량 계산)
-SIGNED_QTY = case(
-    (LiveOrderRow.side == "SELL", -LiveOrderRow.filled_qty), else_=LiveOrderRow.filled_qty
-)
-
 LIMITS = LiveLimits()
 
 log = logging.getLogger(__name__)
-
-
-def control(session: Session, now: datetime) -> LiveControlRow:
-    row = session.get(LiveControlRow, 1, with_for_update=True)
-    if row is None:
-        row = LiveControlRow(id=1, halted=False, trader=None, updated_at=now)
-        session.add(row)
-        session.flush()
-    return row
-
-
-def month_bought(
-    session: Session,
-    trade_date: date,
-    bot_id: int | None = None,
-    exclude_id: int | None = None,
-) -> Decimal:
-    """거래일이 속한 달에 내기로 한 사기 금액(결과 불명 포함). bot_id가 없으면 계좌 전체."""
-    start = trade_date.replace(day=1)
-    end = (start + timedelta(days=32)).replace(day=1)
-    reserved = case(
-        (LiveOrderRow.state.in_(COMMITTED), LiveOrderRow.amount),
-        (
-            LiveOrderRow.filled_qty > 0,
-            func.coalesce(LiveOrderRow.filled_amount, LiveOrderRow.amount),
-        ),
-        else_=func.coalesce(LiveOrderRow.filled_amount, 0),
-    )
-    query = select(func.coalesce(func.sum(reserved), 0)).where(
-        LiveOrderRow.side == "BUY",
-        LiveOrderRow.state.in_((*COMMITTED, LiveState.CANCELED, LiveState.REJECTED)),
-        LiveOrderRow.trade_date >= start,
-        LiveOrderRow.trade_date < end,
-    )
-    if bot_id is not None:
-        query = query.where(LiveOrderRow.bot_id == bot_id)
-    if exclude_id is not None:
-        query = query.where(LiveOrderRow.id != exclude_id)  # 지금 따지는 주문 자신은 뺀다
-    return Decimal(session.scalar(query) or 0)
-
-
-def has_unknown(session: Session) -> bool:
-    """달·봇과 무관하게, 삭제한 봇의 기록까지 확인한다."""
-    return (
-        session.scalar(
-            select(LiveOrderRow.id).where(LiveOrderRow.state == LiveState.UNKNOWN).limit(1)
-        )
-        is not None
-    )
 
 
 def live_event(
@@ -206,18 +155,7 @@ class LiveDesk:
             if has_unknown(session):
                 return made  # 모의 주문은 남겨 두고, 확인 뒤 원래 접수 시간 안에서만 따라 한다.
             halted, shortfall = ctl.halted, bool(ctl.shortfall)
-            rows = session.execute(
-                select(SimOrderRow, BotRow)
-                .join(BotRow, BotRow.id == SimOrderRow.bot_id)
-                .outerjoin(LiveOrderRow, LiveOrderRow.sim_order_id == SimOrderRow.id)
-                .where(
-                    BotRow.live_ratio.is_not(None),
-                    SimOrderRow.created_at >= BotRow.live_since,
-                    LiveOrderRow.id.is_(None),
-                )
-                .order_by(SimOrderRow.id)
-            ).all()
-            for sim, bot in rows:
+            for sim, bot in unplanned_sim_orders(session):
                 order, auto = self._plan_one(session, sim, bot, halted, shortfall, now)
                 session.add(order)
                 session.flush()
@@ -332,16 +270,7 @@ class LiveDesk:
             {o.trade_date for o in made if o.side == "BUY" and o.state in WAITING_TO_SEND}
         )
         for day in days:
-            needed = Decimal(
-                session.scalar(
-                    select(func.coalesce(func.sum(LiveOrderRow.amount), 0)).where(
-                        LiveOrderRow.trade_date == day,
-                        LiveOrderRow.side == "BUY",
-                        LiveOrderRow.state.in_(WAITING_TO_SEND),
-                    )
-                )
-                or 0
-            )
+            needed = waiting_buy_total(session, day)
             if needed <= account.cash_usd:
                 continue
             data = LiveFundsData(
@@ -360,16 +289,7 @@ class LiveDesk:
     @staticmethod
     def _carried(session: Session, bot_id: int, symbol: str) -> list[LiveOrderRow]:
         """아직 더하지 않은, 작아서 모아 둔 몫."""
-        return list(
-            session.scalars(
-                select(LiveOrderRow).where(
-                    LiveOrderRow.bot_id == bot_id,
-                    LiveOrderRow.symbol == symbol,
-                    LiveOrderRow.reason == SkipReason.CARRIED,
-                    LiveOrderRow.carried_into.is_(None),
-                )
-            )
-        )
+        return carried_orders(session, bot_id, symbol)
 
     def _next_session(self, signal_date: date) -> date:
         return self.calendar.sessions(
@@ -386,16 +306,8 @@ class LiveDesk:
 
     def send_due(self, now: datetime) -> None:
         with self.make_session() as session:
-            ids = list(
-                session.scalars(
-                    select(LiveOrderRow.id)
-                    .where(
-                        LiveOrderRow.state.in_(
-                            [LiveState.WAITING_APPROVAL, LiveState.APPROVED, LiveState.SENDING]
-                        )
-                    )
-                    .order_by(LiveOrderRow.id)
-                )
+            ids = order_ids_in(
+                session, [LiveState.WAITING_APPROVAL, LiveState.APPROVED, LiveState.SENDING]
             )
         for order_id in ids:
             try:
@@ -499,11 +411,7 @@ class LiveDesk:
     def check_unknown(self, now: datetime) -> None:
         """불명 주문은 1분마다 조회만 한다. 접수 창·멱등 시간이 지나도 재전송하지 않는다."""
         with self.make_session() as session:
-            ids = list(
-                session.scalars(
-                    select(LiveOrderRow.id).where(LiveOrderRow.state == LiveState.UNKNOWN)
-                )
-            )
+            ids = order_ids_in(session, [LiveState.UNKNOWN])
         for order_id in ids:
             last = self._checked_at.get(order_id)
             if last is not None and now - last < CHECK_INTERVAL:
@@ -525,15 +433,7 @@ class LiveDesk:
         assert self.trader is not None and order.sent_at is not None
         # 같은 키로 다시 보내면 새 주문이 될 수 있다. 다시 보내지 않고 찾는다.
         sent_day = order.sent_at.astimezone(KST).date()
-        linked = set(
-            session.scalars(
-                select(LiveOrderRow.broker_order_id).where(
-                    LiveOrderRow.id != order.id,
-                    LiveOrderRow.source == order.source,
-                    LiveOrderRow.broker_order_id.is_not(None),
-                )
-            )
-        )
+        linked = linked_broker_ids(session, order.id, order.source)
         matches = [
             o
             for o in self.trader.find_orders(order.symbol, sent_day)
@@ -580,9 +480,7 @@ class LiveDesk:
     def check_sent(self, now: datetime) -> None:
         assert self.trader is not None
         with self.make_session() as session:
-            ids = list(
-                session.scalars(select(LiveOrderRow.id).where(LiveOrderRow.state == LiveState.SENT))
-            )
+            ids = order_ids_in(session, [LiveState.SENT])
         for order_id in ids:
             last = self._checked_at.get(order_id)
             if last is not None and now - last < CHECK_INTERVAL:
@@ -641,16 +539,7 @@ def check_holdings(session: Session, snap: AccountSnapshot, now: datetime) -> No
     Worker가 계좌를 읽을 때마다(1시간 주기·주문 변화 뒤) 부른다. 결과가 바뀔 때만 알린다.
     부족이 있는 동안에는 새 실제 주문을 모두 승인을 받고 낸다 (LiveDesk.plan이 이 기록을 본다).
     """
-    rows = session.execute(
-        select(LiveOrderRow.symbol, func.sum(SIGNED_QTY))
-        .where(
-            LiveOrderRow.filled_qty.is_not(None),
-            LiveOrderRow.state.in_([LiveState.FILLED, LiveState.CANCELED]),
-            LiveOrderRow.updated_at <= now - SETTLE,
-        )
-        .group_by(LiveOrderRow.symbol)
-    ).all()
-    bought = {symbol: Decimal(qty) for symbol, qty in rows if qty}
+    bought = net_bought_by_symbol(session, now - SETTLE)
     held = {h.symbol: h.quantity for h in snap.holdings}
     items = [
         ShortfallItem(symbol=s, held=str(h), bought=str(b))
@@ -669,26 +558,3 @@ def check_holdings(session: Session, snap: AccountSnapshot, now: datetime) -> No
         )
     row.shortfall = [dict(i) for i in items] or None
     row.checked_at = now
-
-
-def live_position(session: Session, bot_id: int, symbol: str) -> Decimal:
-    """이 봇이 실제 계좌에서 사고판 결과 남은 수량 (체결 기준)."""
-    total = session.scalar(
-        select(func.coalesce(func.sum(SIGNED_QTY), 0)).where(
-            LiveOrderRow.bot_id == bot_id,
-            LiveOrderRow.symbol == symbol,
-            LiveOrderRow.filled_qty.is_not(None),
-        )
-    )
-    return max(Decimal(total or 0), Decimal(0))
-
-
-def last_close(session: Session, symbol: str) -> Decimal:
-    """파는 주문 금액 어림용 최근 종가 (없으면 0)."""
-    close = session.scalar(
-        select(DailyBarRow.close)
-        .where(DailyBarRow.symbol == symbol)
-        .order_by(DailyBarRow.session_date.desc())
-        .limit(1)
-    )
-    return Decimal(close) if close is not None else Decimal(0)

@@ -278,3 +278,254 @@ def reset_bot_history(session: Session, bot: BotRow, now: datetime) -> None:
         bot.live_since = now
     bot.next_evaluation_at = None
     bot.updated_at = now
+
+
+def bot_directory(session: Session) -> list[tuple[int, str, str, Decimal | None]]:
+    """(id, 이름, 종목, 따라 사기 비율) — 알림처럼 봇 전체가 아니라 이름만 필요한 곳."""
+    rows = session.execute(select(BotRow.id, BotRow.name, BotRow.symbol, BotRow.live_ratio)).all()
+    return [(r.id, r.name, r.symbol, r.live_ratio) for r in rows]
+
+
+def name_taken(session: Session, name: str) -> bool:
+    return session.scalar(select(BotRow.id).where(BotRow.name == name)) is not None
+
+
+def strategy_taken(session: Session, strategy: str, *, except_bot_id: int | None = None) -> bool:
+    """같은 전략의 다른 봇이 있는가."""
+    return (
+        session.scalar(
+            select(BotRow.id)
+            .where(BotRow.strategy == strategy, BotRow.id != (except_bot_id or 0))
+            .limit(1)
+        )
+        is not None
+    )
+
+
+def first_decision_date(session: Session, bot_id: int) -> date | None:
+    return session.scalar(
+        select(func.min(DecisionRow.session_date)).where(DecisionRow.bot_id == bot_id)
+    )
+
+
+def last_decision_date(session: Session, bot_id: int, mode: str) -> date | None:
+    return session.scalar(
+        select(func.max(DecisionRow.session_date)).where(
+            DecisionRow.bot_id == bot_id, DecisionRow.mode == mode
+        )
+    )
+
+
+def find_decision(session: Session, bot_id: int, day: date, mode: str) -> DecisionRow | None:
+    return session.scalars(
+        select(DecisionRow).where(
+            DecisionRow.bot_id == bot_id, DecisionRow.session_date == day, DecisionRow.mode == mode
+        )
+    ).first()
+
+
+def decisions_of(session: Session, bot_id: int) -> list[DecisionRow]:
+    """봇의 모든 판단, 오래된 것부터."""
+    return list(
+        session.scalars(
+            select(DecisionRow)
+            .where(DecisionRow.bot_id == bot_id)
+            .order_by(DecisionRow.session_date)
+        )
+    )
+
+
+def deposits_by_date(session: Session, bot_id: int) -> dict[date, BotDepositRow]:
+    return {
+        d.session_date: d
+        for d in session.scalars(select(BotDepositRow).where(BotDepositRow.bot_id == bot_id))
+    }
+
+
+def positions_of(session: Session, bot_id: int) -> list[BotPositionRow]:
+    return list(session.scalars(select(BotPositionRow).where(BotPositionRow.bot_id == bot_id)))
+
+
+def pending_buy_orders(session: Session, bot_id: int) -> list[SimOrderRow]:
+    """체결을 기다리는 모의 매수."""
+    return [o for o in pending_orders(session, bot_id) if o.side == "BUY"]
+
+
+def held_symbols(session: Session, bot_id: int) -> list[str]:
+    return list(
+        session.scalars(
+            select(BotPositionRow.symbol).where(
+                BotPositionRow.bot_id == bot_id, BotPositionRow.qty > 0
+            )
+        )
+    )
+
+
+def last_fill(session: Session, bot_id: int, symbol: str) -> SimOrderRow | None:
+    """그 종목에서 가장 최근에 체결된 모의 주문 (가격이 있는 것)."""
+    return session.scalars(
+        select(SimOrderRow)
+        .where(
+            SimOrderRow.bot_id == bot_id,
+            SimOrderRow.symbol == symbol,
+            SimOrderRow.status == "FILLED",
+            SimOrderRow.price.is_not(None),
+            SimOrderRow.fill_date.is_not(None),
+        )
+        .order_by(SimOrderRow.fill_date.desc(), SimOrderRow.id.desc())
+        .limit(1)
+    ).first()
+
+
+def filled_counts(session: Session, bot_id: int, start: date, end: date) -> dict[str, int]:
+    """[start, end]에 체결된 모의 주문 수 (BUY/SELL별)."""
+    rows = session.execute(
+        select(SimOrderRow.side, func.count())
+        .where(
+            SimOrderRow.bot_id == bot_id,
+            SimOrderRow.status == "FILLED",
+            SimOrderRow.fill_date >= start,
+            SimOrderRow.fill_date <= end,
+        )
+        .group_by(SimOrderRow.side)
+    ).all()
+    return {side: n for side, n in rows}
+
+
+def previous_finished_run(session: Session, bot_id: int, except_run_id: uuid.UUID) -> RunRow | None:
+    return session.scalars(
+        select(RunRow)
+        .where(RunRow.bot_id == bot_id, RunRow.id != except_run_id, RunRow.finished_at.is_not(None))
+        .order_by(RunRow.started_at.desc())
+        .limit(1)
+    ).first()
+
+
+def preferred_bot(session: Session, strategy: str) -> BotRow | None:
+    """그 전략의 봇 하나 (실행 중인 것부터, 여럿이면 먼저 만든 것)."""
+    return session.scalars(
+        select(BotRow)
+        .where(BotRow.strategy == strategy)
+        .order_by((BotRow.state != "RUNNING"), BotRow.id)
+        .limit(1)
+    ).first()
+
+
+def other_strategy_bots(session: Session, bot_id: int, strategy: str) -> list[BotRow]:
+    """다른 봇 중 전략이 다른 것, 먼저 만든 순서."""
+    return list(
+        session.scalars(
+            select(BotRow)
+            .where(BotRow.id != bot_id, BotRow.strategy != strategy)
+            .order_by(BotRow.id)
+        )
+    )
+
+
+def bot_names(session: Session) -> dict[int, str]:
+    return {b.id: b.name for b in session.scalars(select(BotRow))}
+
+
+def last_decision(session: Session, bot_id: int) -> DecisionRow | None:
+    return session.scalars(
+        select(DecisionRow)
+        .where(DecisionRow.bot_id == bot_id)
+        .order_by(DecisionRow.session_date.desc())
+        .limit(1)
+    ).first()
+
+
+def decisions_on(session: Session, bot_id: int, day: date) -> list[DecisionRow]:
+    return list(
+        session.scalars(
+            select(DecisionRow).where(DecisionRow.bot_id == bot_id, DecisionRow.session_date == day)
+        )
+    )
+
+
+def last_run(session: Session, bot_id: int) -> RunRow | None:
+    return session.scalars(
+        select(RunRow).where(RunRow.bot_id == bot_id).order_by(RunRow.started_at.desc()).limit(1)
+    ).first()
+
+
+def pending_command_kind(session: Session, bot_id: int) -> str | None:
+    """아직 Worker가 처리하지 않은 가장 최근 명령."""
+    return session.scalars(
+        select(CommandRow.kind)
+        .where(CommandRow.bot_id == bot_id, CommandRow.processed_at.is_(None))
+        .order_by(CommandRow.created_at.desc())
+        .limit(1)
+    ).first()
+
+
+def real_fill_count(session: Session, bot_id: int) -> int:
+    """이 봇이 실제로 체결(일부 포함)한 주문 수."""
+    return (
+        session.scalar(
+            select(func.count())
+            .select_from(LiveOrderRow)
+            .where(LiveOrderRow.bot_id == bot_id, LiveOrderRow.filled_qty > 0)
+        )
+        or 0
+    )
+
+
+def filled_sim_orders(session: Session, bot_id: int) -> list[SimOrderRow]:
+    """체결된 모의 주문, 체결일 순서."""
+    return list(
+        session.scalars(
+            select(SimOrderRow)
+            .where(SimOrderRow.bot_id == bot_id, SimOrderRow.status == "FILLED")
+            .order_by(SimOrderRow.fill_date, SimOrderRow.id)
+        )
+    )
+
+
+def latest_decisions(session: Session, bot_id: int, limit: int) -> list[DecisionRow]:
+    return list(
+        session.scalars(
+            select(DecisionRow)
+            .where(DecisionRow.bot_id == bot_id)
+            .order_by(DecisionRow.session_date.desc())
+            .limit(limit)
+        )
+    )
+
+
+def latest_sim_orders(session: Session, bot_id: int, limit: int) -> list[SimOrderRow]:
+    return list(
+        session.scalars(
+            select(SimOrderRow)
+            .where(SimOrderRow.bot_id == bot_id)
+            .order_by(SimOrderRow.id.desc())
+            .limit(limit)
+        )
+    )
+
+
+def running_bots(session: Session) -> list[BotRow]:
+    return list(session.scalars(select(BotRow).where(BotRow.state == BotState.RUNNING)))
+
+
+def due_bot_ids(session: Session, now: datetime) -> list[int]:
+    """평가할 때가 된 실행 중인 봇 (다음 평가 시각이 없거나 지났다)."""
+    return list(
+        session.scalars(
+            select(BotRow.id).where(
+                BotRow.state == BotState.RUNNING,
+                (BotRow.next_evaluation_at.is_(None)) | (BotRow.next_evaluation_at <= now),
+            )
+        )
+    )
+
+
+def pending_command_ids(session: Session) -> list[int]:
+    """아직 처리하지 않은 명령, 만든 순서."""
+    return list(
+        session.scalars(
+            select(CommandRow.id)
+            .where(CommandRow.processed_at.is_(None))
+            .order_by(CommandRow.created_at, CommandRow.id)
+        )
+    )

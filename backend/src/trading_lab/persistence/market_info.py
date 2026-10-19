@@ -69,3 +69,18 @@ def upsert_exchange_rate(session: Session, fx: ExchangeRate, source: str, now: d
     session.execute(
         stmt.on_conflict_do_update(index_elements=["base", "quote"], set_=stmt.excluded)
     )
+
+
+def instrument_map(session: Session) -> dict[str, InstrumentRow]:
+    return {r.symbol: r for r in session.scalars(select(InstrumentRow))}
+
+
+def quote_map(session: Session) -> dict[str, QuoteRow]:
+    return {q.symbol: q for q in session.scalars(select(QuoteRow))}
+
+
+def known_instrument_symbols(session: Session, symbols: Sequence[str]) -> set[str]:
+    """종목 정보가 이미 저장된 종목."""
+    return set(
+        session.scalars(select(InstrumentRow.symbol).where(InstrumentRow.symbol.in_(symbols)))
+    )
