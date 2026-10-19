@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Query, status
-from sqlalchemy import select
 
 from trading_lab.api.deps import SessionDep
 from trading_lab.api.schemas import (
@@ -23,6 +22,7 @@ from trading_lab.application.errors import NotFound
 from trading_lab.application.parallel import World
 from trading_lab.config import get_settings
 from trading_lab.domain.portfolio import CostModel
+from trading_lab.persistence.backtests import list_backtests
 from trading_lab.persistence.models import BacktestRow
 
 router = APIRouter()
@@ -74,10 +74,8 @@ def run_backtest(session: SessionDep, body: BacktestRequest) -> BacktestDetail:
 def backtests(
     session: SessionDep, symbol: str | None = None, limit: Annotated[int, Query(le=100)] = 20
 ) -> list[BacktestSummary]:
-    stmt = select(BacktestRow).order_by(BacktestRow.created_at.desc()).limit(limit)
-    if symbol:
-        stmt = stmt.where(BacktestRow.symbol == symbol.upper())
-    return [BacktestSummary.model_validate(r, from_attributes=True) for r in session.scalars(stmt)]
+    rows = list_backtests(session, symbol.upper() if symbol else None, limit)
+    return [BacktestSummary.model_validate(r, from_attributes=True) for r in rows]
 
 
 @router.get("/backtests/{backtest_id}")

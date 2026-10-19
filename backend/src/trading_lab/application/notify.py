@@ -10,12 +10,13 @@ Worker 자신이 죽은 경우는 외부 heartbeat ping(HEARTBEAT_PING_URL)으�
 import logging
 from collections.abc import Callable
 
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from trading_lab.application.messages import KST, event_message, telegram_text
 from trading_lab.application.notify_settings import current, wants
-from trading_lab.persistence.models import BotRow, EventRow
+from trading_lab.persistence.bots import bot_directory
+from trading_lab.persistence.events import events_after, latest_event_id
+from trading_lab.persistence.models import EventRow
 
 log = logging.getLogger(__name__)
 # 텔레그램 메시지 한 통 최대 4096자. 여유를 두고 자른다.
@@ -40,25 +41,16 @@ class EventNotifier:
     def start(self) -> None:
         """이미 있는 이벤트는 보내지 않고, 이 시점 이후 것부터 보낸다."""
         with self.make_session() as session:
-            self.cursor = session.scalar(select(func.max(EventRow.id))) or 0
+            self.cursor = latest_event_id(session)
 
     def poll(self) -> int:
         if self.cursor is None:
             self.start()
         sent = 0
         with self.make_session() as session:
-            events = list(
-                session.scalars(
-                    select(EventRow)
-                    .where(EventRow.id > self.cursor)
-                    .order_by(EventRow.id)
-                    .limit(50)
-                )
-            )
+            events = events_after(session, self.cursor or 0, 50)
             settings = current(session)
-            rows = session.execute(
-                select(BotRow.id, BotRow.name, BotRow.symbol, BotRow.live_ratio)
-            ).all()
+            rows = bot_directory(session)
             bots = {bot_id: (name, symbol) for bot_id, name, symbol, _ in rows}
             following = {bot_id for bot_id, _, _, ratio in rows if ratio is not None}
         # (마지막 이벤트 id, 묶은 문장, 소식 수) 단위로 보낸다.

@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from trading_lab.domain.bars import TradingCalendar
@@ -21,10 +20,13 @@ from trading_lab.persistence.bots import (
     active_weights,
     bot_costs,
     bot_limits,
+    decisions_of,
     deposited_month,
+    deposits_by_date,
     load_account,
+    pending_buy_orders,
 )
-from trading_lab.persistence.models import BotDepositRow, BotRow, DecisionRow, SimOrderRow
+from trading_lab.persistence.models import BotRow
 
 
 @dataclass(frozen=True)
@@ -73,13 +75,8 @@ def _reserve_items(
     session: Session, bot: BotRow, weights: dict[str, int], reserve: Decimal
 ) -> list[ReserveItem]:
     """모아 둔 돈이 어느 달 어느 종목 몫에서 왔는지. 마지막으로 몰아 산 뒤의 쉬는 달 몫을 모은다."""
-    decisions = session.scalars(
-        select(DecisionRow).where(DecisionRow.bot_id == bot.id).order_by(DecisionRow.session_date)
-    ).all()
-    deposits = {
-        d.session_date: d
-        for d in session.scalars(select(BotDepositRow).where(BotDepositRow.bot_id == bot.id))
-    }
+    decisions = decisions_of(session, bot.id)
+    deposits = deposits_by_date(session, bot.id)
     items: list[ReserveItem] = []
     for d in decisions:
         if d.action == Action.BUY and d.reason.startswith("하락장"):
@@ -113,13 +110,7 @@ def follow_plan(session: Session, bot: BotRow, calendar: TradingCalendar) -> Pla
     # 지금 가격이 입금일까지 이어진다고 보고 같은 규칙 함수로 계산한다 (실제 계좌는 바꾸지 않는다).
     # 다음 장에 살 예정인 돈은 이미 쓴 것으로 본다 (빼지 않으면 입금일에 살 금액이 부풀려진다).
     after = copy.deepcopy(pf)
-    for order in session.scalars(
-        select(SimOrderRow).where(
-            SimOrderRow.bot_id == bot.id,
-            SimOrderRow.status == "PENDING",
-            SimOrderRow.side == Action.BUY,
-        )
-    ):
+    for order in pending_buy_orders(session, bot.id):
         after.cash = max(Decimal(0), after.cash - (order.budget or after.cash))
     after.reserve = min(after.reserve, after.cash)
     after.deposit(plan.amount)

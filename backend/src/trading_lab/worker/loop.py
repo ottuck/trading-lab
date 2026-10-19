@@ -5,7 +5,6 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Connection, func, select
 from sqlalchemy.orm import Session
 
 from trading_lab.application.ai_judge import AiConfig
@@ -27,18 +26,26 @@ from trading_lab.domain.bot import (
 from trading_lab.domain.broker import AccountSnapshot, BrokerAccessError
 from trading_lab.domain.events import CommandData, EventKind, RestartData
 from trading_lab.persistence.bars import latest_session_date
-from trading_lab.persistence.bots import add_event, bot_weights, get_bot, set_bot_state
+from trading_lab.persistence.bots import (
+    add_event,
+    bot_weights,
+    due_bot_ids,
+    get_bot,
+    list_bots,
+    pending_command_ids,
+    running_bots,
+    set_bot_state,
+)
 from trading_lab.persistence.broker_account import save_error, save_snapshot
 from trading_lab.persistence.market_info import (
+    known_instrument_symbols,
     upsert_exchange_rate,
     upsert_instruments,
     upsert_live_bars,
     upsert_quotes,
 )
-from trading_lab.persistence.models import BotRow, CommandRow, InstrumentRow
+from trading_lab.persistence.models import CommandRow
 
-# 같은 DB에 Worker가 둘 뜨지 않게 하는 PostgreSQL advisory lock 키 ("QLAB")
-WORKER_LOCK_KEY = 0x514C4142
 WATCHLIST_CHECK_INTERVAL = timedelta(minutes=30)
 QUOTE_INTERVAL = timedelta(seconds=30)
 INSTRUMENT_INTERVAL = timedelta(days=1)
@@ -50,14 +57,6 @@ KST = ZoneInfo("Asia/Seoul")
 NEW_YORK = ZoneInfo("America/New_York")
 
 log = logging.getLogger(__name__)
-
-
-def try_acquire_worker_lock(conn: Connection) -> bool:
-    """세션 수준 잠금. conn이 열려 있는 동안 유지된다."""
-    acquired = bool(conn.execute(select(func.pg_try_advisory_lock(WORKER_LOCK_KEY))).scalar())
-    # 트랜잭션을 열어 둔 채 두지 않는다 (idle in transaction 타임아웃에 연결이 끊기지 않게).
-    conn.commit()
-    return acquired
 
 
 def us_trading_hours(now: datetime) -> bool:
@@ -74,12 +73,6 @@ def us_trading_hours(now: datetime) -> bool:
     if day == 4:
         return hour < 20
     return True
-
-
-def release_worker_lock(conn: Connection) -> None:
-    """연결 풀에 돌려줘도 세션 잠금은 남으므로 명시적으로 푼다."""
-    conn.execute(select(func.pg_advisory_unlock(WORKER_LOCK_KEY)))
-    conn.commit()
 
 
 class Worker:
@@ -122,7 +115,7 @@ class Worker:
         """
         now = self.now()
         with self.make_session() as session:
-            for bot in session.scalars(select(BotRow).where(BotRow.state == BotState.RUNNING)):
+            for bot in running_bots(session):
                 add_event(
                     session,
                     now,
@@ -202,14 +195,8 @@ class Worker:
             return
         now = self.now()
         with self.make_session() as session:
-            bot_symbols = sorted(
-                {s for bot in session.scalars(select(BotRow)) for s in bot_weights(bot)}
-            )
-            known = set(
-                session.scalars(
-                    select(InstrumentRow.symbol).where(InstrumentRow.symbol.in_(bot_symbols))
-                )
-            )
+            bot_symbols = sorted({s for bot in list_bots(session) for s in bot_weights(bot)})
+            known = known_instrument_symbols(session, bot_symbols)
         try:
             # 하루에 한 번 받되, 새 봇의 종목처럼 정보가 아직 없는 종목은 바로 받는다.
             # 토스가 모르는 종목을 15초마다 되묻지 않게, 한 번 물어본 종목은 다음 갱신까지 둔다.
@@ -310,13 +297,7 @@ class Worker:
     def process_commands(self) -> list[EvaluationOutcome]:
         outcomes: list[EvaluationOutcome] = []
         with self.make_session() as session:
-            ids = list(
-                session.scalars(
-                    select(CommandRow.id)
-                    .where(CommandRow.processed_at.is_(None))
-                    .order_by(CommandRow.created_at, CommandRow.id)
-                )
-            )
+            ids = pending_command_ids(session)
         for command_id in ids:
             with self.make_session() as session:
                 outcome = self._process_command(session, command_id)
@@ -386,14 +367,7 @@ class Worker:
     def run_due_bots(self) -> list[EvaluationOutcome]:
         now = self.now()
         with self.make_session() as session:
-            due = list(
-                session.scalars(
-                    select(BotRow.id).where(
-                        BotRow.state == BotState.RUNNING,
-                        (BotRow.next_evaluation_at.is_(None)) | (BotRow.next_evaluation_at <= now),
-                    )
-                )
-            )
+            due = due_bot_ids(session, now)
         outcomes = []
         for bot_id in due:
             with self.make_session() as session:

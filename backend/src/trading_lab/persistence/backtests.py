@@ -5,7 +5,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from trading_lab import __version__
@@ -104,3 +104,10 @@ def list_backtests(
     if symbol:
         stmt = stmt.where(BacktestRow.symbol == symbol)
     return list(session.scalars(stmt))
+
+
+def keep_latest_backtests(session: Session, keep: int) -> None:
+    """최신 keep개만 두고 지운다 (시험해 보기가 계속 쌓이지 않게)."""
+    newest = select(BacktestRow.id).order_by(BacktestRow.created_at.desc()).limit(keep)
+    session.execute(delete(BacktestRow).where(BacktestRow.id.not_in(newest)))
+    session.commit()

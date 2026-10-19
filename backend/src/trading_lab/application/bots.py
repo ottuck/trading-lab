@@ -10,7 +10,6 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from trading_lab.application.errors import Conflict, Invalid, NotFound
@@ -27,10 +26,13 @@ from trading_lab.persistence.bots import (
     delete_bot,
     enqueue_command,
     get_bot,
+    name_taken,
     pending_orders,
+    positions_of,
     reset_bot_history,
+    strategy_taken,
 )
-from trading_lab.persistence.models import BotPositionRow, BotRow, CommandRow
+from trading_lab.persistence.models import BotRow, CommandRow
 
 
 @dataclass(frozen=True)
@@ -72,12 +74,7 @@ def check_single(session: Session, strategy: str, *, except_bot_id: int | None =
     message = ONE_PER_STRATEGY.get(strategy)
     if message is None:
         return
-    taken = session.scalar(
-        select(BotRow.id)
-        .where(BotRow.strategy == strategy, BotRow.id != (except_bot_id or 0))
-        .limit(1)
-    )
-    if taken is not None:
+    if strategy_taken(session, strategy, except_bot_id=except_bot_id):
         raise Conflict(message)
 
 
@@ -141,10 +138,6 @@ def check_weights(symbol: str, symbols: Sequence[tuple[str, int]] | None) -> dic
     return weights
 
 
-def _name_taken(session: Session, name: str) -> bool:
-    return session.scalar(select(BotRow.id).where(BotRow.name == name)) is not None
-
-
 def _symbols_json(weights: dict[str, int]) -> list[dict[str, Any]]:
     return [{"symbol": s, "weight": w} for s, w in weights.items()]
 
@@ -185,7 +178,7 @@ def create(
     check_limits(settings)
     check_cash(initial_cash)
     name = check_name(name)
-    if _name_taken(session, name):
+    if name_taken(session, name):
         raise Conflict(f"같은 이름의 봇이 있습니다: {name}")
     weights = check_weights(symbol, symbols)
     check_single(session, strategy.name)
@@ -263,11 +256,9 @@ def update_symbols(
     bot = require_bot(session, bot_id, for_update=True)
     weights = check_weights("", symbols)
     before = bot_weights(bot)
-    held = {
-        p.symbol
-        for p in session.scalars(select(BotPositionRow).where(BotPositionRow.bot_id == bot.id))
-        if p.qty > 0
-    } | {o.symbol for o in pending_orders(session, bot.id)}
+    held = {p.symbol for p in positions_of(session, bot.id) if p.qty > 0} | {
+        o.symbol for o in pending_orders(session, bot.id)
+    }
     dropped = [s for s in before if s in held and s not in weights]
     after = weights | {s: 0 for s in dropped}
     if after == before:
@@ -307,7 +298,7 @@ def rename(session: Session, bot_id: int, name: str, now: datetime) -> BotRow:
     name = check_name(name)
     if name == bot.name:
         return bot
-    if _name_taken(session, name):
+    if name_taken(session, name):
         raise Conflict(f"같은 이름의 봇이 있습니다: {name}")
     add_event(
         session,

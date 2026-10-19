@@ -6,7 +6,6 @@ from fastapi import Depends, FastAPI, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from starlette.middleware.base import RequestResponseEndpoint
@@ -17,7 +16,7 @@ from trading_lab.api.routes import router
 from trading_lab.api.schemas import HealthResponse, WorkerStatus
 from trading_lab.application.errors import AppError, Conflict, Invalid, NotFound
 from trading_lab.config import get_settings
-from trading_lab.persistence.db import get_session
+from trading_lab.persistence.db import get_session, ping
 from trading_lab.persistence.heartbeat import evaluating, latest_heartbeat
 
 # 접근 제어는 Tailscale과 Cloudflare Access가 맡는다 (공개 포트 없음, project.md 6절).
@@ -82,7 +81,7 @@ async def cloudflare_access(request: Request, call_next: RequestResponseEndpoint
 @app.get("/api/health")
 def health(response: Response, session: Annotated[Session, Depends(get_session)]) -> HealthResponse:
     try:
-        session.execute(text("SELECT 1"))
+        ping(session)
         beat = latest_heartbeat(session)
         busy = evaluating(session, datetime.now(UTC))
     except SQLAlchemyError:

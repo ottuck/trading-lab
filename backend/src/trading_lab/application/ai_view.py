@@ -11,7 +11,6 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, cast
 
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from trading_lab.application.ai_judge import month_of
@@ -23,9 +22,17 @@ from trading_lab.application.research import COPY_STRATEGY, BotParallel
 from trading_lab.domain.advisor import JudgmentStatus
 from trading_lab.domain.backtest import BacktestResult, run_backtest
 from trading_lab.domain.strategy import STRATEGIES, AiJudge, is_ai
-from trading_lab.persistence.ai_judgments import spent
-from trading_lab.persistence.bots import active_weights, bot_costs, bot_limits, bot_weights
-from trading_lab.persistence.models import AiJudgmentRow, BotRow, DecisionRow
+from trading_lab.persistence.ai_judgments import all_judgments, latest_judgments, spent
+from trading_lab.persistence.bots import (
+    active_weights,
+    bot_costs,
+    bot_limits,
+    bot_weights,
+    first_decision_date,
+    other_strategy_bots,
+    preferred_bot,
+)
+from trading_lab.persistence.models import AiJudgmentRow, BotRow
 
 HISTORY = 60  # 판단 기록에 보여줄 날 수
 
@@ -90,15 +97,7 @@ def ai_overview(
 ) -> AiOverview:
     """budgets는 전략마다의 한 달 비용 상한."""
     bot = _ai_bot(session, bot_id)
-    rows = list(
-        session.scalars(
-            select(AiJudgmentRow)
-            .where(AiJudgmentRow.bot_id == bot_id)
-            .order_by(AiJudgmentRow.session_date.desc())
-            .limit(HISTORY)
-        )
-    )
-    days = [_day(r) for r in rows]
+    days = [_day(r) for r in latest_judgments(session, bot_id, HISTORY)]
     start, end = month_of(now)
     used = spent(session, start, end, bot.strategy)
     return AiOverview(days[0] if days else None, days, used, budgets[bot.strategy])
@@ -106,12 +105,7 @@ def ai_overview(
 
 def _copy_bot(session: Session) -> BotRow | None:
     """비교에 쓸 나 카피 봇 (실행 중인 것부터, 여럿이면 먼저 만든 것)."""
-    return session.scalars(
-        select(BotRow)
-        .where(BotRow.strategy == COPY_STRATEGY)
-        .order_by((BotRow.state != "RUNNING"), BotRow.id)
-        .limit(1)
-    ).first()
+    return preferred_bot(session, COPY_STRATEGY)
 
 
 def _replay(
@@ -121,7 +115,7 @@ def _replay(
 
     봇이 처음 판단한 날부터면 모의 기록과 같다 (원칙 3·9). 비교할 날이 없으면 ValueError.
     """
-    rows = session.scalars(select(AiJudgmentRow).where(AiJudgmentRow.bot_id == bot.id))
+    rows = all_judgments(session, bot.id)
     judgments = {
         r.session_date: (r.weights if r.status == JudgmentStatus.OK else None) for r in rows
     }
@@ -138,27 +132,16 @@ def _replay(
     )
 
 
-def _first_day(session: Session, bot_id: int) -> date | None:
-    return session.scalar(
-        select(func.min(DecisionRow.session_date)).where(DecisionRow.bot_id == bot_id)
-    )
-
-
 def _other_ais(session: Session, bot: BotRow, first: date, plan: AiJudge) -> list[World]:
     """먼저 시작한 다른 AI 봇: 이 봇이 처음 판단한 날에 같은 돈으로 시작했다면 (기록된 판단 재생).
 
     나중에 시작한 AI 봇은 그 봇 화면에서 이 봇과 비교한다 (그 앞 날에는 판단이 없다).
     """
     out = []
-    others = session.scalars(
-        select(BotRow)
-        .where(BotRow.id != bot.id, BotRow.strategy != bot.strategy)
-        .order_by(BotRow.id)
-    )
-    for other in others:
+    for other in other_strategy_bots(session, bot.id, bot.strategy):
         if not is_ai(other.strategy):
             continue
-        since = _first_day(session, other.id)
+        since = first_decision_date(session, other.id)
         if since is None or since > first:
             continue
         strategy = cast(AiJudge, STRATEGIES[other.strategy](deposit=plan.deposit, day=plan.day))
@@ -176,7 +159,7 @@ def ai_compare(session: Session, bot_id: int) -> BotParallel:
     이 봇이 처음 판단한 날부터 같은 날·같은 돈으로 계산한다.
     """
     bot = _ai_bot(session, bot_id)
-    first = _first_day(session, bot_id)
+    first = first_decision_date(session, bot_id)
     if first is None:
         return BotParallel(None, note="아직 첫 판단 전이에요.")
     strategy = cast(AiJudge, STRATEGIES[bot.strategy](**bot.params))

@@ -9,12 +9,11 @@ from datetime import date, datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from trading_lab.application.bots import require_bot
 from trading_lab.application.errors import Conflict, Invalid, NotFound
-from trading_lab.application.live import control, has_unknown, last_close, live_event, month_bought
+from trading_lab.application.live import live_event
 from trading_lab.domain.events import (
     ConfigChange,
     ConfigChangeData,
@@ -31,7 +30,17 @@ from trading_lab.domain.live import (
     over_account_limit,
     real_ledger,
 )
-from trading_lab.persistence.bots import add_event, drop_unsent_live_orders
+from trading_lab.persistence.bars import last_close
+from trading_lab.persistence.bots import add_event, bot_names, drop_unsent_live_orders
+from trading_lab.persistence.live_orders import (
+    broker_id_linked,
+    control,
+    filled_orders,
+    has_unknown,
+    month_bought,
+    recent_orders,
+    unknown_orders,
+)
 from trading_lab.persistence.models import BotRow, BrokerAccountRow, LiveControlRow, LiveOrderRow
 
 RECENT = 20
@@ -82,14 +91,6 @@ class LiveOverview:
 
 def _ledger(session: Session) -> RealLedger:
     """체결된 실제 주문(일부 체결 뒤 취소 포함)을 거래일·번호 순으로 장부에 넣는다."""
-    rows = session.scalars(
-        select(LiveOrderRow)
-        .where(
-            LiveOrderRow.filled_qty > 0,
-            LiveOrderRow.state.in_([LiveState.FILLED, LiveState.CANCELED]),
-        )
-        .order_by(LiveOrderRow.trade_date, LiveOrderRow.id)
-    )
     return real_ledger(
         [
             RealFill(
@@ -100,7 +101,7 @@ def _ledger(session: Session) -> RealLedger:
                 o.filled_amount if o.filled_amount is not None else o.amount,
                 o.trade_date.strftime("%Y-%m"),
             )
-            for o in rows
+            for o in filled_orders(session)
         ]
     )
 
@@ -121,17 +122,9 @@ def _held(session: Session, held: dict[str, tuple[Decimal, Decimal]]) -> tuple[D
 
 def overview(session: Session) -> LiveOverview:
     row = session.get(LiveControlRow, 1)
-    names = {b.id: b.name for b in session.scalars(select(BotRow))}
-    rows = list(
-        session.scalars(select(LiveOrderRow).order_by(LiveOrderRow.id.desc()).limit(RECENT))
-    )
-    unknown = list(
-        session.scalars(
-            select(LiveOrderRow)
-            .where(LiveOrderRow.state == LiveState.UNKNOWN)
-            .order_by(LiveOrderRow.id)
-        )
-    )
+    names = bot_names(session)
+    rows = recent_orders(session, RECENT)
+    unknown = unknown_orders(session)
     known_ids = {o.id for o in rows}
     rows.extend(o for o in unknown if o.id not in known_ids)
     rows.sort(key=lambda o: (o.state != LiveState.UNKNOWN, o.state != LiveState.WAITING_APPROVAL))
@@ -255,16 +248,7 @@ def resolve_unknown(
         broker_order_id = broker_order_id.strip()
         if not broker_order_id or len(broker_order_id) > 64:
             raise Invalid("증권사 주문 번호를 입력해 주세요 (64자 이하)")
-        linked = session.scalar(
-            select(LiveOrderRow.id)
-            .where(
-                LiveOrderRow.id != order.id,
-                LiveOrderRow.source == order.source,
-                LiveOrderRow.broker_order_id == broker_order_id,
-            )
-            .limit(1)
-        )
-        if linked is not None:
+        if broker_id_linked(session, order.id, order.source, broker_order_id):
             raise Conflict("다른 실제 주문에 연결된 번호예요")
         order.broker_order_id = broker_order_id
         order.note = "사용자가 주문 번호 지정; Worker의 증권사 조회 확인 대기"

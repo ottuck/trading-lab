@@ -75,3 +75,44 @@ def recent_ok(session: Session, bot_id: int, before: date, n: int) -> list[AiJud
         .limit(n)
     )
     return list(reversed(list(rows)))
+
+
+def has_judgment(session: Session, bot_id: int, day: date) -> bool:
+    return (
+        session.scalar(
+            select(AiJudgmentRow.id).where(
+                AiJudgmentRow.bot_id == bot_id, AiJudgmentRow.session_date == day
+            )
+        )
+        is not None
+    )
+
+
+def over_budget_since(session: Session, bot_id: int, since: datetime) -> bool:
+    """since 이후 이 봇이 비용 상한으로 판단하지 못한 적이 있는가."""
+    return (
+        session.scalar(
+            select(AiJudgmentRow.id).where(
+                AiJudgmentRow.bot_id == bot_id,
+                AiJudgmentRow.status == "OVER_BUDGET",
+                AiJudgmentRow.created_at >= since,
+            )
+        )
+        is not None
+    )
+
+
+def latest_judgments(session: Session, bot_id: int, n: int) -> list[AiJudgmentRow]:
+    """가장 최근 판단 n개, 최근 것부터."""
+    return list(
+        session.scalars(
+            select(AiJudgmentRow)
+            .where(AiJudgmentRow.bot_id == bot_id)
+            .order_by(AiJudgmentRow.session_date.desc())
+            .limit(n)
+        )
+    )
+
+
+def all_judgments(session: Session, bot_id: int) -> list[AiJudgmentRow]:
+    return list(session.scalars(select(AiJudgmentRow).where(AiJudgmentRow.bot_id == bot_id)))

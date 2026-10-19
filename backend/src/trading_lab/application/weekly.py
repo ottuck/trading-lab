@@ -9,13 +9,13 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from trading_lab.domain.bars import TradingCalendar
-from trading_lab.domain.events import BalanceSummary, EventKind, WeeklyData
-from trading_lab.persistence.bots import bot_weights
-from trading_lab.persistence.models import BotRow, EventRow, RunRow, SimOrderRow
+from trading_lab.domain.events import BalanceSummary, WeeklyData
+from trading_lab.persistence.bots import bot_weights, filled_counts
+from trading_lab.persistence.events import week_base_data
+from trading_lab.persistence.models import BotRow
 
 
 def is_week_end(calendar: TradingCalendar, session_date: date) -> bool:
@@ -32,29 +32,10 @@ def weekly_summary(
 ) -> WeeklyData:
     """이번 주 자산·그냥 보유 대비·거래 횟수. end는 이번 판단의 잔고 요약(equity, close)."""
     week_start = session_date - timedelta(days=session_date.weekday())
-    base_q = (
-        select(EventRow.data)
-        .join(RunRow, EventRow.run_id == RunRow.id)
-        .where(EventRow.bot_id == bot.id, EventRow.kind == EventKind.DECISION)
-    )
     # 기준점: 지난주 마지막 판단. 이번 주에 처음 시작했으면 이번 주 첫 판단.
-    base = session.scalar(
-        base_q.where(RunRow.session_date < week_start).order_by(RunRow.session_date.desc())
-    ) or session.scalar(
-        base_q.where(RunRow.session_date >= week_start).order_by(RunRow.session_date)
-    )
+    base = week_base_data(session, bot.id, week_start)
     start = base if base and "equity" in base and "close" in base else end
-    fills = session.execute(
-        select(SimOrderRow.side, func.count())
-        .where(
-            SimOrderRow.bot_id == bot.id,
-            SimOrderRow.status == "FILLED",
-            SimOrderRow.fill_date >= week_start,
-            SimOrderRow.fill_date <= session_date,
-        )
-        .group_by(SimOrderRow.side)
-    ).all()
-    counts = {side: n for side, n in fills}
+    counts = filled_counts(session, bot.id, week_start, session_date)
 
     def change(a: Any, b: Any) -> str:
         return str(round(Decimal(str(b)) / Decimal(str(a)) - 1, 6))

@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from functools import lru_cache
 
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from trading_lab.config import get_settings
@@ -20,3 +20,8 @@ def get_engine() -> Engine:
 def get_session() -> Iterator[Session]:
     with sessionmaker(get_engine())() as session:
         yield session
+
+
+def ping(session: Session) -> None:
+    """DB에 연결되는지 본다 (안 되면 SQLAlchemyError)."""
+    session.execute(text("SELECT 1"))
