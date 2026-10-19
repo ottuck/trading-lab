@@ -546,7 +546,21 @@ _LIVE_REASONS = {
 }
 
 
+def _live_stalled_message(d: LiveOrderData) -> Message:
+    """증권사와 연결이 안 돼 주문 결과·체결을 한동안 확인하지 못함 (연결되면 저절로 이어진다)."""
+    sym = d.get("symbol", "")
+    if d.get("state") == "SENDING":
+        title = f"실제 주문이 들어갔는지 아직 몰라요 · {sym}"
+        body = "증권사와 연결이 안 돼요. 연결되면 같은 주문으로 확인해서 두 번 내지 않아요."
+    else:
+        title = f"실제 주문의 체결을 아직 확인하지 못했어요 · {sym}"
+        body = "증권사와 연결이 안 돼요. 주문은 이미 들어갔고, 연결되면 체결을 확인해요."
+    return Message("📡", title, body, "WARN", True)
+
+
 def _live_order_message(d: LiveOrderData) -> Message | None:
+    if d.get("stalled"):
+        return _live_stalled_message(d)
     if d.get("side") == "SELL":
         return _live_sell_message(d)
     sym, amount, state = d.get("symbol", ""), _usd(d.get("amount", 0)), d.get("state")

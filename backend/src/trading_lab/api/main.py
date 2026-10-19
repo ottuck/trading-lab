@@ -35,6 +35,14 @@ async def app_error(request: Request, exc: AppError) -> JSONResponse:
     return JSONResponse({"detail": str(exc)}, status_code=code)
 
 
+@app.exception_handler(Exception)
+async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
+    """예상 못 한 오류도 화면이 읽는 {"detail"} 모양으로 돌려준다 (자세한 내용은 서버 로그)."""
+    return JSONResponse(
+        {"detail": "서버에 문제가 생겼어요. 잠시 뒤에 다시 해 주세요."}, status_code=500
+    )
+
+
 _settings = get_settings()
 access = (
     AccessGuard(_settings.cf_access_team, _settings.cf_access_aud)

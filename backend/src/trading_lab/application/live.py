@@ -69,6 +69,7 @@ from trading_lab.persistence.models import (
 KST = ZoneInfo("Asia/Seoul")
 RETRY_MARGIN = timedelta(minutes=1)  # 멱등 유효 시간이 끝나기 이만큼 전까지만 같은 키로 다시 보낸다
 CHECK_INTERVAL = timedelta(minutes=1)  # 보낸 주문의 체결 확인 간격
+STALL_ALERT = timedelta(minutes=3)  # 연결이 안 돼 결과를 이만큼 못 알면 한 번 알린다
 COMMITTED = (
     LiveState.APPROVED,
     LiveState.SENDING,
@@ -172,6 +173,9 @@ class LiveDesk:
         self.limits = limits
         self._windows: dict[date, tuple[datetime, datetime] | None] = {}
         self._checked_at: dict[int, datetime] = {}
+        self._check_failing_since: dict[int, datetime] = {}  # 체결 확인이 처음 실패한 때
+        # 연결 끊김을 이미 알린 주문 (Worker를 다시 시작하면 한 번 더 알릴 수 있다)
+        self._stalled: set[int] = set()
         # DB 저장이 끝난 실제 주문 변화만 표시한다. Worker가 계좌 저장에 성공하면 지운다.
         self.account_refresh_pending = False
 
@@ -460,12 +464,21 @@ class LiveDesk:
         except BrokerError as exc:
             # 결과를 모른다. SENDING으로 두고 다음 tick에 같은 키로 다시 보내거나 찾는다.
             order.note, order.updated_at = str(exc), now
+            if order.sent_at is not None and now - order.sent_at >= STALL_ALERT:
+                self._warn_stalled(session, order, now)
             session.commit()
             log.warning("실제 주문 %s 결과 모름, 다시 확인: %s", order.id, exc)
             return
         order.state, order.broker_order_id, order.updated_at = LiveState.SENT, broker_id, now
         session.commit()
+        self._stalled.discard(order.id)
         self.account_refresh_pending = True
+
+    def _warn_stalled(self, session: Session, order: LiveOrderRow, now: datetime) -> None:
+        """연결이 안 돼 한동안 결과를 모른다: 주문마다 한 번만 알린다 (commit은 부른 쪽)."""
+        if order.id not in self._stalled:
+            self._stalled.add(order.id)
+            live_event(session, now, order, "WARN", stalled=True)
 
     def _resend_or_resolve(
         self, session: Session, order: LiveOrderRow, now: datetime, end: datetime, halted: bool
@@ -475,7 +488,13 @@ class LiveDesk:
         if within and now < end and not halted:
             self._place(session, order, now)  # 같은 키라 이미 접수됐으면 같은 주문이 돌아온다
             return
-        self._find_order(session, order, now)
+        try:
+            self._find_order(session, order, now)
+        except BrokerError:
+            if now - order.sent_at >= STALL_ALERT:
+                self._warn_stalled(session, order, now)
+                session.commit()
+            raise
 
     def check_unknown(self, now: datetime) -> None:
         """불명 주문은 1분마다 조회만 한다. 접수 창·멱등 시간이 지나도 재전송하지 않는다."""
@@ -546,6 +565,7 @@ class LiveDesk:
         order.updated_at = now
         session.commit()
         if len(matches) == 1:
+            self._stalled.discard(order.id)
             self.account_refresh_pending = True
 
     def _skip(self, session: Session, order: LiveOrderRow, reason: str, now: datetime) -> None:
@@ -575,7 +595,12 @@ class LiveDesk:
                     found = self.trader.get_order(order.broker_order_id)
                 except BrokerError as exc:
                     log.warning("실제 주문 %s 체결 확인 보류: %s", order_id, exc)
+                    since = self._check_failing_since.setdefault(order_id, now)
+                    if now - since >= STALL_ALERT:
+                        self._warn_stalled(session, order, now)
+                        session.commit()
                     continue
+                self._check_failing_since.pop(order_id, None)
                 if found.status == OrderStatus.PARTIAL:
                     if (order.filled_qty, order.filled_amount) != (
                         found.filled_quantity,
@@ -604,6 +629,7 @@ class LiveDesk:
                 session.commit()
                 self.account_refresh_pending = True
                 self._checked_at.pop(order_id, None)
+                self._stalled.discard(order_id)
 
 
 SETTLE = timedelta(minutes=10)  # 체결 직후 계좌 보유에 아직 안 보일 수 있어 이만큼 지난 체결만 센다

@@ -358,6 +358,45 @@ def test_unknown_result_is_never_resent_after_window(
     assert live_order(session).state == LiveState.UNKNOWN
 
 
+def stalled_alerts(session: Session) -> list[str]:
+    session.expire_all()
+    rows = session.scalars(select(EventRow).where(EventRow.kind == "live_order")).all()
+    return [r.data["state"] for r in rows if r.data and r.data.get("stalled")]
+
+
+def test_long_disconnect_while_sending_alerts_once(
+    make_session: Callable[[], Session], session: Session
+) -> None:
+    sim_buy(session, live_bot(session), "337.5")
+    trader = FakeTrader()
+    desk = LiveDesk(make_session, trader, WeekdayCalendar())
+
+    trader.fail_next = 9  # 보낸 결과를 계속 모른다
+    desk.tick(SEND)
+    assert stalled_alerts(session) == []  # 잠깐 끊긴 것은 알리지 않는다
+    desk.tick(SEND + timedelta(minutes=4))
+    desk.tick(SEND + timedelta(minutes=5))
+    assert stalled_alerts(session) == ["SENDING"]  # 오래 모르면 한 번만 알린다
+
+
+def test_long_disconnect_while_checking_fill_alerts_once(
+    make_session: Callable[[], Session], session: Session
+) -> None:
+    sim_buy(session, live_bot(session), "337.5")
+    trader = PendingTrader()
+    desk = LiveDesk(make_session, trader, WeekdayCalendar())
+    desk.tick(SEND)
+    assert live_order(session).state == LiveState.SENT
+
+    def disconnected(order_id: str) -> AccountOrder:
+        raise BrokerError("연결 끊김")
+
+    trader.get_order = disconnected  # type: ignore[method-assign]
+    for minutes in (1, 5, 7):
+        desk.tick(SEND + timedelta(minutes=minutes))
+    assert stalled_alerts(session) == ["SENT"]
+
+
 def unknown_order(session: Session, *, side: str = "BUY", amount: str = "70") -> LiveOrderRow:
     order = LiveOrderRow(
         bot_id=None, symbol="VOO", side=side, signal_date=SIGNAL, trade_date=TRADE,

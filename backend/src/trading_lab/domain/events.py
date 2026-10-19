@@ -128,6 +128,7 @@ class LiveOrderData(TypedDict):
     auto: NotRequired[bool]  # 사람에게 묻지 않고 자동으로 내기로 함
     resolved: NotRequired[bool]  # UNKNOWN을 증권사 조회로 확인
     manual_resolution: NotRequired[bool]  # 사용자가 번호 지정 또는 미접수 확인
+    stalled: NotRequired[bool]  # 증권사 연결이 안 돼 보낸 결과·체결을 한동안 확인하지 못함
 
 
 class LiveFundsData(TypedDict):

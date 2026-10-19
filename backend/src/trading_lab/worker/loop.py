@@ -268,6 +268,7 @@ class Worker:
         try:
             target = latest_completed_session(self.calendar, now)
         except Exception:
+            log.warning("관심 종목 기준 거래일 계산 실패", exc_info=True)
             return []
         synced: list[str] = []
         with self.make_session() as session:
@@ -328,9 +329,15 @@ class Worker:
         cmd = session.get_one(CommandRow, command_id, with_for_update=True)
         if cmd.processed_at is not None:
             return None
-        kind = CommandKind(cmd.kind)
         # 처리 표시를 먼저 저장해서, 처리 중 Worker가 죽어도 같은 명령을 두 번 실행하지 않게 한다.
         cmd.processed_at = now
+        try:
+            kind = CommandKind(cmd.kind)
+        except ValueError:
+            # 알 수 없는 명령이 남아 있으면 매 주기 같은 곳에서 멈추므로 거절하고 넘어간다.
+            cmd.result, cmd.detail = "REJECTED", f"알 수 없는 명령입니다: {cmd.kind}"
+            session.commit()
+            return None
         bot = get_bot(session, cmd.bot_id, for_update=True)
         if bot is None:
             cmd.result, cmd.detail = "REJECTED", "봇이 없습니다"
