@@ -9,6 +9,12 @@ LOG = logging.getLogger("test.repeat_log")
 T0 = datetime(2026, 10, 21, tzinfo=UTC)
 
 
+@pytest.fixture(autouse=True)
+def _enabled() -> None:
+    # 다른 테스트가 마이그레이션을 돌리면 alembic의 fileConfig가 이미 있던 로거를 끈다.
+    LOG.disabled = False
+
+
 class Clock:
     def __init__(self) -> None:
         self.at = T0
