@@ -2613,3 +2613,189 @@ button.line.ai-day {
   margin-left: auto;
   font-weight: 600;
 }
+
+/* ---------- 매매일지 (#journal) ---------- */
+.jr-top h1 {
+  margin: 8px 0 0;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+.jr-month {
+  margin-top: 36px;
+}
+.jr-days {
+  border-top: 1px solid var(--border);
+}
+.jr-day {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 16px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border);
+}
+.jr-day.compact {
+  padding: 12px 0;
+}
+.jr-date {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.jr-date .tnum {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.jr-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.jr-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.jr-day.compact .jr-head {
+  font-weight: 500;
+}
+.mark.both {
+  background: linear-gradient(135deg, var(--fall) 50%, var(--rise) 50%);
+}
+.jr-basis {
+  margin: 2px 0 0;
+  padding-left: 18px;
+  color: var(--text);
+  line-height: 1.65;
+  max-width: 68ch;
+}
+.jr-basis li + li {
+  margin-top: 2px;
+}
+.jr-summary {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--muted);
+  max-width: 68ch;
+}
+.jr-trades {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 13.5px;
+}
+.jr-trade {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.jr-trade .side-tag {
+  font-weight: 600;
+}
+.jr-more {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+.jr-line {
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+  font-size: 13.5px;
+}
+.jr-line:first-child {
+  border-top: 0;
+}
+.jr-line-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.jr-line-head .title {
+  font-weight: 600;
+  min-width: 52px;
+}
+.jr-sym {
+  margin-right: 8px;
+  color: var(--text);
+}
+.jr-body > button.link {
+  align-self: flex-start;
+  font-size: 13px;
+}
+.jr-quiet {
+  border-bottom: 1px solid var(--border);
+}
+.jr-quiet .jr-day:last-child {
+  border-bottom: 0;
+}
+.jr-quiet-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: baseline;
+  width: 100%;
+  padding: 12px 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.jr-quiet-row .jr-date {
+  display: block;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.jr-quiet-row:hover,
+button.line.jr-archive:hover {
+  background: var(--hover);
+}
+button.line.jr-archive {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  border-radius: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.ai-decision {
+  margin-top: 2px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.decision-plain {
+  margin-top: 10px;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+@media (max-width: 520px) {
+  .jr-day,
+  .jr-quiet-row {
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 12px;
+  }
+  .jr-quiet-row > .small {
+    display: none;
+  }
+}

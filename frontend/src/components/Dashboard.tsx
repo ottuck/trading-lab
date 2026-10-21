@@ -21,7 +21,7 @@ import { useDemo } from '../demo'
 import { FxNote } from './Currency'
 import { AccountCard } from './Live'
 import { Term } from './Help'
-import { goTo, openBot, selectBot, startMeEdit, startMeQuestions, useSelectedBot } from '../selectedBot'
+import { goTo, openBot, openJournal, selectBot, startMeEdit, startMeQuestions, useSelectedBot } from '../selectedBot'
 import { PriceChart } from './PriceChart'
 import { useDismiss } from '../useDismiss'
 import { activeOf, basketLabel, evenSplit } from '../basket'
@@ -513,6 +513,7 @@ const headOf = (d: DecisionT) =>
   d.action === 'BUY' ? '매수 신호' : d.action === 'SELL' ? '매도 신호' : d.holding ? '그대로 들고 있기' : '기다리기'
 
 function Numbers({ d }: { d: DecisionT }) {
+  if (d.plain_numbers) return <div className="decision-plain">{d.plain_numbers}</div>
   return (
     <div className="decision-nums">
       {d.reason} ·{' '}
@@ -645,6 +646,9 @@ function Trades({ bot, onOpenLog }: { bot: Bot; onOpenLog: () => void }) {
     <section className="block">
       <div className="block-head">
         <h2>거래 내역</h2>
+        <button className="link" onClick={() => openJournal(bot.id)}>
+          매매일지
+        </button>
         <button className="link" onClick={onOpenLog}>
           전체 기록 보기 →
         </button>
@@ -868,7 +872,7 @@ AI 판단 비용은 하루 약 ${info.cost}이고, 이 봇의 한 달 상한을 
 }
 
 /** 폰에서 봇 바꾸기: 화면 맨 위의 가로 칩 (넓은 화면은 오른쪽 봇 목록을 쓴다). 순서는 봇 목록과 같다. */
-function BotTabs({ bots, current, onPick }: { bots: Bot[]; current?: Bot; onPick: (b: Bot) => void }) {
+export function BotTabs({ bots, current, onPick }: { bots: Bot[]; current?: Bot; onPick: (b: Bot) => void }) {
   if (bots.length < 2) return null
   const ordered = [...bots.filter(isMeBot), ...bots.filter(isAiBot), ...bots.filter((b) => !isMeBot(b) && !isAiBot(b))]
   return (
@@ -888,7 +892,7 @@ function BotTabs({ bots, current, onPick }: { bots: Bot[]; current?: Bot; onPick
 }
 
 /** 오른쪽 봇 목록: 나 카피 봇이 위, AI 봇, 다른 봇은 아래 묶음. */
-function BotSide({ bots, current, onPick }: { bots: Bot[]; current?: Bot; onPick: (b: Bot) => void }) {
+export function BotSide({ bots, current, onPick }: { bots: Bot[]; current?: Bot; onPick: (b: Bot) => void }) {
   const demo = useDemo()
   const mine = bots.filter(isMeBot)
   const ais = bots.filter(isAiBot)
@@ -1158,6 +1162,7 @@ export function MeHome({ bots }: { bots: Bot[] }) {
             <Decision bot={bot} />
             <div className="me-more">
               <button onClick={() => openBot(bot.id)}>자세히 보기</button>
+              <button onClick={() => openJournal(bot.id)}>매매일지</button>
               <span className="faint small">들고 있는 주식, 거래, 가격 그래프{demo ? '' : ', 매매 시작·멈춤'}</span>
             </div>
           </>

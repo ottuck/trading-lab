@@ -13,11 +13,17 @@ import anthropic
 from anthropic.types.beta import BetaMessage, BetaMessageParam, BetaOutputConfigParam
 
 from trading_lab.adapters.charts import candle_chart
-from trading_lab.adapters.claude.advisor import FALLBACK_BETA, SOURCE, _final_text, _usage
+from trading_lab.adapters.claude.advisor import (
+    FALLBACK_BETA,
+    SOURCE,
+    _final_text,
+    _rationale,
+    _usage,
+)
 from trading_lab.domain.advisor import CASH, Advice, AdviceResult, AdvisorError
 from trading_lab.domain.candles import CandleBrief, CandleRequest
 
-PROMPT_VERSION = "candle-2026-10-09.2"  # 지침(SYSTEM·입력 형식)을 바꾸면 올린다
+PROMPT_VERSION = "candle-2026-10-22.1"  # 지침(SYSTEM·입력 형식)을 바꾸면 올린다
 # 같은 익명 입력을 5개 날짜에 여러 번 물은 일관성 시험(2026-10-09): 다시 물을 때 바뀌는 비중이
 # Sonnet 5.5 high 13.9%p, Opus 5.5 high 9.9%p·medium 8.2%p (high·medium 차이는 시험 오차 안).
 # 판단 한 번 $0.066 → $0.144지만 한 달 상한($5) 안이다. 입력을 숫자 표(약 2.5만 토큰)에서 차트
@@ -53,8 +59,16 @@ SYSTEM = """\
 - 목표 비중은 정해 준 글자와 CASH(현금)에만, 0~100 정수로, 합이 정확히 100이 되게 정하세요. \
 비중을 0으로 두는 종목도 allocations에 넣으세요.
 
-쓰는 말
-- reason은 종목마다 한두 문장, summary는 오늘 차트를 두세 문장으로 요약한 한국어로 씁니다.
+쓰는 말 (매매일지에 그대로 남아 나중에 다시 읽습니다)
+- decision은 오늘 무엇을 어떻게 했는지 한 문장입니다. 비중을 바꿨으면 무엇을 늘리고 줄였는지, \
+그대로 뒀으면 그렇다고 쓰세요 (예: "종목 B를 줄이고 현금을 늘렸어요", "지난 비중을 그대로 \
+유지했어요").
+- basis는 그렇게 정한 근거 2~4개입니다. 하나에 한 문장으로, 차트에서 무엇을 봤고 그래서 어떻게 \
+했는지가 함께 드러나게 쓰세요 (예: "종목 B가 3주째 고점을 낮추며 내려오고 있어요. 그래서 비중을 \
+줄였어요").
+- reason은 종목마다 한두 문장으로, 차트 근거를 먼저 쓰고 비중을 어떻게 했는지로 끝내세요 (예: \
+"한 달 동안 저점을 높이며 올라 20%에서 25%로 늘려요").
+- summary는 오늘 차트를 두세 문장으로 요약합니다. 모두 한국어로 씁니다.
 - 다른 종목을 말할 때는 꼭 "종목 B"처럼 "종목"과 글자를 붙여 쓰세요.
 - 읽는 사람은 지수를 모릅니다. 차트의 숫자(100, 112 같은)는 쓰지 말고 \
 "오늘보다 12% 높았던 곳"처럼 오늘 값과 비교한 말로 쓰세요.
@@ -67,6 +81,8 @@ def _schema(labels: list[str]) -> dict[str, Any]:
         "type": "object",
         "properties": {
             "summary": {"type": "string"},
+            "decision": {"type": "string"},
+            "basis": {"type": "array", "items": {"type": "string"}},
             "allocations": {
                 "type": "array",
                 "items": {
@@ -81,7 +97,7 @@ def _schema(labels: list[str]) -> dict[str, Any]:
                 },
             },
         },
-        "required": ["summary", "allocations"],
+        "required": ["summary", "decision", "basis", "allocations"],
         "additionalProperties": False,
     }
 
@@ -187,7 +203,9 @@ class ClaudeCandleAdvisor:
             weights = {a["symbol"]: int(a["weight"]) for a in data["allocations"]}
             reasons = {a["symbol"]: str(a["reason"]) for a in data["allocations"]}
             summary = str(data["summary"])
+            decision, basis = _rationale(data)
         except (ValueError, KeyError, TypeError) as e:
             raise AdvisorError(f"AI 답 형식 오류: {e}", usage) from e
         version = f"{PROMPT_VERSION}/{self._effort}"  # 생각하는 양도 기록한다
-        return AdviceResult(Advice(weights, reasons, summary), usage, version)
+        advice = Advice(weights, reasons, summary, decision=decision, basis=basis)
+        return AdviceResult(advice, usage, version)

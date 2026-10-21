@@ -72,6 +72,7 @@ def test_bot_view_shows_position_and_reason(client: TestClient, bot_id: int) -> 
     assert body["last_decision"]["session_date"] == BARS[12].session_date.isoformat()
     assert "SMA5" in body["last_decision"]["reason"]
     assert "적당한 가격" in body["last_decision"]["plain_reason"]
+    assert "5일 평균 $" in body["last_decision"]["plain_numbers"]
     titles = [a["title"] for a in client.get("/api/activity", params={"bot_id": bot_id}).json()]
     assert any("샀어요" in t for t in titles)
     assert body["last_run"]["status"] == "OK"
@@ -216,17 +217,32 @@ def test_bot_management(client: TestClient, session: Session, bot_id: int) -> No
     assert client.patch(f"/api/bots/{bot_id}", json={"name": "voo"}).status_code == 409
     assert client.patch(f"/api/bots/{bot_id}", json={"name": "나스닥"}).json()["name"] == "나스닥"
 
-    # 처음부터 다시 시작: 잔고·기록 초기화, 설정·상태 유지
+    # 매매일지: 날마다 한 일·이유·주문 (최근 날부터)
+    before = client.get(f"/api/bots/{bot_id}/journal").json()
+    days = before["days"]
+    assert [d["date"] for d in days] == [b.session_date.isoformat() for b in BARS[12:9:-1]]
+    bought = next(d for d in days if d["trades"])
+    assert bought["headline"] == "QQQ를 샀어요" and not bought["quiet"]
+    assert bought["trades"][0]["status"] == "FILLED" and "적당한 가격" in bought["lines"][0]["reason"]
+
+    # 처음부터 다시 시작: 잔고·기록 초기화, 설정·상태 유지. 그 전의 일지는 보관한다
     reset = client.post(f"/api/bots/{bot_id}/reset").json()
     assert Decimal(reset["account"]["qty"]) == 0 and reset["account"]["cash"] == "500"
     assert reset["last_decision"] is None and reset["state"] == "RUNNING"
     assert reset["params"]["dip"] == 15
     kinds: dict[str, str | int] = {"bot_id": bot_id, "kind": "config_change"}
     assert len(client.get("/api/activity", params=kinds).json()) == 2  # 설정 기록은 남긴다
+    after = client.get(f"/api/bots/{bot_id}/journal").json()
+    (kept,) = after["archives"]
+    assert after["days"] == [] and kept["why"] == "처음부터 다시 시작하기 전"
+    assert client.get(f"/api/journal/archives/{kept['id']}").json()["days"] == days
 
     ai_id = created.json()["id"]
     assert client.delete(f"/api/bots/{ai_id}").status_code == 204
     assert client.get(f"/api/bots/{ai_id}").status_code == 404
+    # 봇을 지워도 일지는 남는다 (지운 봇의 일지)
+    assert client.delete(f"/api/bots/{bot_id}").status_code == 204
+    assert [j["id"] for j in client.get("/api/journal/deleted").json()] == [kept["id"]]
 
 
 def test_multi_symbol_bot_rules(client: TestClient, session: Session) -> None:

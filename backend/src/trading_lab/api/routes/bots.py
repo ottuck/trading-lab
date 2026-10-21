@@ -18,13 +18,15 @@ from trading_lab.api.schemas import (
     CommandRequest,
     DecisionView,
     EquityPoint,
+    JournalArchiveInfo,
+    JournalView,
     OrderView,
     ParallelView,
     PlanView,
     SymbolsUpdate,
     SymbolWeight,
 )
-from trading_lab.application import ai_view, bot_status, bots, queries, research
+from trading_lab.application import ai_view, bot_status, bots, journal, queries, research
 from trading_lab.application.bot_status import BotStatus
 from trading_lab.application.bots import BotSettings
 from trading_lab.config import get_settings
@@ -184,3 +186,25 @@ def parallel(session: SessionDep, bot_id: int) -> ParallelView:
     if not result.worlds:
         return ParallelView(start=result.start, end=None, worlds=[], note=result.note)
     return parallel_view(result.worlds)
+
+
+@router.get("/bots/{bot_id}/journal")
+def journal_of(session: SessionDep, bot_id: int) -> JournalView:
+    """매매일지: 날마다 근거·결정·주문 (처음부터 다시 시작하며 보관한 일지 목록도)."""
+    return JournalView.model_validate(journal.bot_journal(session, bot_id), from_attributes=True)
+
+
+@router.get("/journal/deleted")
+def deleted_journals(session: SessionDep) -> list[JournalArchiveInfo]:
+    """지운 봇의 매매일지 목록."""
+    return [
+        JournalArchiveInfo.model_validate(a, from_attributes=True)
+        for a in journal.deleted_journals(session)
+    ]
+
+
+@router.get("/journal/archives/{archive_id}")
+def archived_journal(session: SessionDep, archive_id: int) -> JournalView:
+    """보관한 매매일지 한 권."""
+    result = journal.archived_journal(session, archive_id)
+    return JournalView.model_validate(result, from_attributes=True)

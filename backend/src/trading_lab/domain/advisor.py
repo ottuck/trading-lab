@@ -173,6 +173,9 @@ class Advice:
     summary: str  # 오늘의 시장 요약
     sources: tuple[Source, ...] = ()
     queries: tuple[str, ...] = ()  # AI가 검색한 말
+    # 매매일지용: 오늘 한 일 한 문장과 그렇게 정한 근거 몇 줄 (지침 2026-10-22 전 판단에는 없다)
+    decision: str = ""
+    basis: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,6 +215,8 @@ def unmask(advice: Advice, key: Mapping[str, str]) -> Advice:
         summary=unmask_text(advice.summary, key),
         sources=advice.sources,
         queries=advice.queries,
+        decision=unmask_text(advice.decision, key),
+        basis=tuple(unmask_text(b, key) for b in advice.basis),
     )
 
 

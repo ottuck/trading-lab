@@ -97,8 +97,28 @@ class DemoAdvisor:
             + f"현금 {cash}%를 남겨요."
             + (" 지난 판단과 같아 비중을 그대로 둬요." if kept else "")
         )
-        advice = Advice({**weights, CASH: cash}, reasons, summary)
+        basis = [
+            f"{b.symbol}이 200일 평균보다 {b.vs_sma200}% 위에서 3개월 동안 "
+            f"{b.return_3m}% 올랐어요. 그래서 담았어요."
+            for b in rising[:3]
+        ]
+        basis.append(f"갑자기 떨어질 때와 다음 달 사기를 위해 현금 {cash}%를 남겼어요.")
+        advice = Advice(
+            {**weights, CASH: cash},
+            reasons,
+            summary,
+            decision=_decision(kept, [b.symbol for b in rising], cash),
+            basis=tuple(basis),
+        )
         return AdviceResult(advice, AdviceUsage("demo-rules", 0, 0, 0, Decimal(0)), "demo-1")
+
+
+def _decision(kept: bool, names: list[str], cash: int) -> str:
+    if kept:
+        return "지난 비중을 그대로 유지했어요."
+    if not names:
+        return "오르는 종목이 없어 모두 현금으로 뒀어요."
+    return f"{', '.join(names)}를 담고 현금 {cash}%를 남겼어요."
 
 
 CANDLE_PICKS = 4
@@ -175,5 +195,17 @@ class DemoCandleAdvisor:
             + f"현금 {cash}%를 남겨요."
             + (" 지난 판단과 같아 비중을 그대로 둬요." if kept else "")
         )
-        advice = Advice({**weights, CASH: cash}, reasons, summary)
+        basis = [
+            f"종목 {b.label}이 최근 20일 동안 {returns[b.label]:.1f}% 올랐고 90일 평균보다 위에 "
+            "있어요. 그래서 담았어요."
+            for b in rising[:3]
+        ]
+        basis.append(f"갑자기 떨어질 때와 다음 달 사기를 위해 현금 {cash}%를 남겼어요.")
+        advice = Advice(
+            {**weights, CASH: cash},
+            reasons,
+            summary,
+            decision=_decision(kept, [f"종목 {b.label}" for b in rising], cash),
+            basis=tuple(basis),
+        )
         return AdviceResult(advice, AdviceUsage("demo-rules", 0, 0, 0, Decimal(0)), "demo-candle-1")

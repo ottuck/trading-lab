@@ -6,6 +6,7 @@ import { useDemo } from '../demo'
 import { money, percent } from '../format'
 import { isCandleBot, isMeBot } from '../strategies'
 import { Chart } from './Parallel'
+import { openJournal } from '../selectedBot'
 
 /* AI 봇 (마일스톤 4 A3): 오늘의 AI 판단·참고한 것, 세 봇 비교, 판단 기록.
    AI는 고른 종목과 현금 사이의 비중만 정하고, 사고파는 금액은 엔진이 맞춘다 (project.md 14절).
@@ -164,7 +165,15 @@ export function AiToday({ bot }: { bot: Bot }) {
         <p className="decision-why">{MISSED[day.status]}</p>
       ) : (
         <>
-          {day.summary && <p className="decision-why">{day.summary}</p>}
+          {day.decision && <div className="ai-decision">{day.decision}</div>}
+          {!!day.basis?.length && (
+            <ul className="jr-basis">
+              {day.basis.map((b) => (
+                <li key={b}>{b}</li>
+              ))}
+            </ul>
+          )}
+          {day.summary && <p className={day.decision ? 'decision-why small' : 'decision-why'}>{day.summary}</p>}
           <div className="ai-rows">
             {(all ? rows : held).map((r) => (
               <Weight key={r.symbol} row={r} />
@@ -301,6 +310,9 @@ export function AiHistory({ bot }: { bot: Bot }) {
       <div className="block-head">
         <h2>판단 기록</h2>
         <span className="sub">최근 {days.length}일</span>
+        <button className="link" onClick={() => openJournal(bot.id)}>
+          매매일지에서 자세히 →
+        </button>
       </div>
       <div className="lines">
         {shown.map((d) => (

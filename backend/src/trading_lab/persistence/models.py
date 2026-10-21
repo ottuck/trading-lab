@@ -427,9 +427,32 @@ class AiJudgmentRow(Base):
         JSONB(none_as_null=True)
     )  # [{url, title}]
     queries: Mapped[list[str] | None] = mapped_column(JSONB(none_as_null=True))
+    # 매매일지: 오늘 한 일 한 문장과 근거 몇 줄 (지침 2026-10-22 전 판단은 NULL)
+    decision: Mapped[str | None] = mapped_column(Text)
+    basis: Mapped[list[str] | None] = mapped_column(JSONB(none_as_null=True))
     input_tokens: Mapped[int | None] = mapped_column(Integer)
     output_tokens: Mapped[int | None] = mapped_column(Integer)
     web_searches: Mapped[int | None] = mapped_column(Integer)
     cost: Mapped[Decimal | None] = mapped_column(PRICE)  # USD
     error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class JournalArchiveRow(Base):
+    """봇을 지우거나 처음부터 다시 시작하기 전의 매매일지 한 권 (지우지 않는다).
+
+    days는 그때 만든 일지 그대로다 (application/journal.py 형식). 봇을 지우면 연결만 비운다.
+    """
+
+    __tablename__ = "journal_archives"
+    __table_args__ = (Index("ix_journal_archives_bot", "bot_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bot_id: Mapped[int | None] = mapped_column(ForeignKey("bots.id", ondelete="SET NULL"))
+    bot_name: Mapped[str] = mapped_column(String(50))
+    strategy: Mapped[str] = mapped_column(String(50))
+    why: Mapped[str] = mapped_column(String(10))  # DELETED | RESET
+    first_date: Mapped[date] = mapped_column(Date)
+    last_date: Mapped[date] = mapped_column(Date)
+    days: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
