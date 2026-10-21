@@ -35,6 +35,7 @@ from trading_lab.persistence.db import get_engine
 from trading_lab.persistence.worker_lock import release_worker_lock, try_acquire_worker_lock
 from trading_lab.worker.heartbeat import HeartbeatThread
 from trading_lab.worker.loop import Worker
+from trading_lab.worker.repeat_log import RepeatedErrorLog
 
 log = logging.getLogger("trading_lab.worker")
 
@@ -143,6 +144,8 @@ def run(stop: threading.Event) -> None:
     heart.beat()
     heart.start()
 
+    # 같은 오류가 주기마다 되풀이되면 처음과 1시간마다만 자세히 남긴다 (worker/repeat_log.py)
+    errors = RepeatedErrorLog(log)
     while not stop.is_set():
         heart.loop_started()
         try:
@@ -154,11 +157,13 @@ def run(stop: threading.Event) -> None:
                 pinger.maybe_ping()
         except SQLAlchemyError:
             # DB 오류 중에는 판단·주문을 만들지 않는다 (project.md 3절 원칙 5).
-            log.exception("DB 오류, 다음 주기에 다시 시도")
+            errors.exception("DB 오류, 다음 주기에 다시 시도")
         except Exception:
             # 예상 못 한 오류로 Worker 전체가 죽지 않게 한다. 이번 주기의 외부 생존 신호는
             # 건너뛰므로 오류가 계속되면 heartbeat 감시가 알린다.
-            log.exception("예상하지 못한 오류, 다음 주기에 다시 시도")
+            errors.exception("예상하지 못한 오류, 다음 주기에 다시 시도")
+        else:
+            errors.ok()
         stop.wait(interval)
 
     release_worker_lock(lock_conn)
