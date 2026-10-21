@@ -167,9 +167,13 @@ def _rule_day(
     )
 
 
-def _change_headline(lines: list[JournalLine]) -> str:
-    up = [ln["symbol"] for ln in lines if ln["target"] is not None and ln["target"] > _now(ln)]
-    down = [ln["symbol"] for ln in lines if ln["target"] is not None and ln["target"] < _now(ln)]
+def _change_headline(weights: dict[str, int], previous: dict[str, int] | None) -> str:
+    """지난 판단의 목표 비중과 비교한 한 문장 (AI가 쓴 한 문장이 없던 예전 판단)."""
+    if previous is None:
+        return "처음으로 비중을 정했어요"
+    keys = sorted(set(weights) | set(previous), key=lambda k: k == CASH)
+    up = [k for k in keys if weights.get(k, 0) > previous.get(k, 0)]
+    down = [k for k in keys if weights.get(k, 0) < previous.get(k, 0)]
     if up and down:
         return f"{_names(up)} 비중을 늘리고 {_names(down)} 비중을 줄였어요"
     if up or down:
@@ -177,8 +181,8 @@ def _change_headline(lines: list[JournalLine]) -> str:
     return "지난 비중을 그대로 유지했어요"
 
 
-def _now(line: JournalLine) -> int:
-    return round(float(line["before"] or 0))
+def _now(line: JournalLine) -> float:
+    return float(line["before"] or 0)
 
 
 def _ai_day(
@@ -187,7 +191,9 @@ def _ai_day(
     trades: list[JournalTrade],
     deposit: Decimal | None,
     judgment: AiJudgmentRow | None,
+    previous: dict[str, int] | None,
 ) -> JournalDay:
+    """previous는 지난 판단의 목표 비중 (바꿨는지는 지금 비중이 아니라 지난 목표와 비교한다)."""
     by_symbol = {r.symbol: r for r in rows}
     ok = bool(judgment and judgment.status == JudgmentStatus.OK and judgment.weights)
     before = weights_when_judged(judgment.request if judgment else None)
@@ -220,8 +226,8 @@ def _ai_day(
         headline = MISSED.get(status, MISSED[JudgmentStatus.FAILED])
     else:
         assert judgment is not None
-        headline = judgment.decision or _change_headline(lines)
-    changed = ok and any(_now(ln) != ln["target"] for ln in lines)
+        headline = judgment.decision or _change_headline(weights, previous)
+    changed = ok and weights != previous
     sources = [
         {"url": s["url"], "title": s.get("title") or s["url"]}
         for s in (judgment.sources or [] if judgment else [])
@@ -260,10 +266,14 @@ def journal_days(session: Session, bot: BotRow) -> list[JournalDay]:
         else {}
     )
     days = []
+    previous: dict[str, int] | None = None  # 지난 판단의 목표 비중
     for day in sorted(by_day):
         rows, trades, deposit = by_day[day], orders.get(day, []), deposits.get(day)
         if ai:
-            days.append(_ai_day(day, rows, trades, deposit, judgments.get(day)))
+            judgment = judgments.get(day)
+            days.append(_ai_day(day, rows, trades, deposit, judgment, previous))
+            if judgment and judgment.status == JudgmentStatus.OK and judgment.weights:
+                previous = judgment.weights
         else:
             days.append(_rule_day(day, rows, trades, deposit))
     return days

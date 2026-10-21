@@ -223,7 +223,8 @@ def test_bot_management(client: TestClient, session: Session, bot_id: int) -> No
     assert [d["date"] for d in days] == [b.session_date.isoformat() for b in BARS[12:9:-1]]
     bought = next(d for d in days if d["trades"])
     assert bought["headline"] == "QQQ를 샀어요" and not bought["quiet"]
-    assert bought["trades"][0]["status"] == "FILLED" and "적당한 가격" in bought["lines"][0]["reason"]
+    assert bought["trades"][0]["status"] == "FILLED"
+    assert "적당한 가격" in bought["lines"][0]["reason"]
 
     # 처음부터 다시 시작: 잔고·기록 초기화, 설정·상태 유지. 그 전의 일지는 보관한다
     reset = client.post(f"/api/bots/{bot_id}/reset").json()

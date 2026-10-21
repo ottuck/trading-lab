@@ -62,14 +62,20 @@ function byMonth(days: JournalDay[]): [string, JournalDay[]][] {
   return [...months]
 }
 
-const STATUS: Record<JournalTrade['status'], string> = { PENDING: '다음 장에 예정', FILLED: '', UNFILLED: '체결 안 됨' }
+// 주문 상태마다 동사: 체결됐으면 "샀어요", 다음 장을 기다리면 "살 예정", 체결되지 않았으면 "못 샀어요"
+const VERB: Record<JournalTrade['status'], [string, string]> = {
+  FILLED: ['샀어요', '팔았어요'],
+  PENDING: ['살 예정', '팔 예정'],
+  UNFILLED: ['못 샀어요', '못 팔았어요'],
+}
+const STATUS: Record<JournalTrade['status'], string> = { PENDING: '다음 날 장이 열릴 때 체결돼요', FILLED: '', UNFILLED: '체결할 때 현금이나 한도가 모자랐어요' }
 
 function Trade({ t }: { t: JournalTrade }) {
   const buy = t.side === 'BUY'
   return (
     <div className="jr-trade">
       <span className={`side-tag ${buy ? 'rise' : 'fall'}`}>
-        {t.symbol} {buy ? '샀어요' : '팔았어요'}
+        {t.symbol} {VERB[t.status][buy ? 0 : 1]}
       </span>
       {t.status === 'FILLED' ? (
         <span className="muted tnum">
