@@ -7,6 +7,13 @@
 # (Access 없이 누구나 본다). 데모는 quant-lab-edge(터널)와 quant-lab-dbnet(데모 DB) 네트워크만 쓰고 운영 api·worker에는 닿지 않는다.
 name: quant-lab-demo
 
+# 컨테이너 로그가 디스크를 끝없이 채우지 않게 10MB 파일 3개로 제한한다 (UR Check·모니터링과 같은 값, 2026-10-21 측정: 모든 컨테이너 로그 합계 30MB).
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 x-app: &app
   image: ${IMAGE:-ghcr.io/ottuck/trading-lab}:${TAG:-latest}
   env_file: ${SECRETS_DIR:-../.secrets}/demo.env
@@ -14,6 +21,7 @@ x-app: &app
     DEMO_MODE: "true"
   networks: [default, dbnet]
   restart: unless-stopped
+  logging: *logging
 
 services:
   demo-migrate:

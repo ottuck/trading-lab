@@ -9,10 +9,18 @@
 #   demo.env (선택) : DEMO_DB_PASSWORD, DATABASE_URL(quant_demo 계정, shared-db 호스트) — 있으면 deploy.sh demo가 포트폴리오 데모(compose.demo.yaml)를 띄운다 (D3)
 name: quant-lab-prod
 
+# 컨테이너 로그가 디스크를 끝없이 채우지 않게 10MB 파일 3개로 제한한다 (UR Check·모니터링과 같은 값, 2026-10-21 측정: 모든 컨테이너 로그 합계 30MB).
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 x-app: &app
   image: ${IMAGE:-ghcr.io/ottuck/trading-lab}:${TAG:-latest}
   env_file: ${SECRETS_DIR:-../.secrets}/env
   restart: unless-stopped
+  logging: *logging
 
 services:
   db:
@@ -35,6 +43,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    logging: *logging
 
   migrate:
     <<: *app
@@ -83,6 +92,7 @@ services:
     env_file: ${SECRETS_DIR:-../.secrets}/cloudflared.env
     restart: unless-stopped
     profiles: ["tunnel"]
+    logging: *logging
     # edge: 포트폴리오 데모(demo-api)와만 함께 쓰는 네트워크. 운영 DB·Worker는 여기에 없다.
     networks: [default, edge]
     depends_on:
