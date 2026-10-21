@@ -45,6 +45,7 @@ from trading_lab.persistence.market_info import (
     upsert_quotes,
 )
 from trading_lab.persistence.models import CommandRow
+from trading_lab.worker.repeat_log import RepeatedErrorLog
 
 WATCHLIST_CHECK_INTERVAL = timedelta(minutes=30)
 QUOTE_INTERVAL = timedelta(seconds=30)
@@ -101,6 +102,7 @@ class Worker:
         self._account_failed = False
         self._watchlist_checked_at: datetime | None = None
         self._watchlist_failing: set[str] = set()
+        self._trade_errors = RepeatedErrorLog(log)
         self._quotes_at: datetime | None = None
         self._instruments_at: datetime | None = None
         self._instruments_asked: set[str] = set()
@@ -147,7 +149,9 @@ class Worker:
         try:
             self.desk.tick(self.now())
         except Exception:
-            log.exception("실제 주문 처리 실패, 다음 주기에 다시")
+            self._trade_errors.exception("실제 주문 처리 실패, 다음 주기에 다시")
+        else:
+            self._trade_errors.ok()
 
     def refresh_account(self, *, force: bool = False) -> None:
         """실제 계좌를 1시간마다, 주문 접수·체결 확인 뒤에도 읽어 저장한다.
