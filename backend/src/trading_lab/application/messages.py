@@ -243,6 +243,37 @@ def decision_reason(
     return ""
 
 
+def _vs(name: str, price: Any, diff: float, last: bool) -> str:
+    """'1년 최고가 $759.66보다 4.5% 낮고' (last면 '…낮아요.'), 거의 같으면 '… 근처이고'."""
+    if abs(diff) < 0.05:
+        return f"{name} {_usd(price)} 근처{'예요.' if last else '이고,'}"
+    word = "높" if diff > 0 else "낮"
+    return f"{name} {_usd(price)}보다 {abs(diff):.1f}% {word}{'아요.' if last else '고,'}"
+
+
+def decision_numbers(strategy: str, params: dict[str, Any], indicators: dict[str, Any]) -> str:
+    """판단에 쓴 숫자를 한 문장으로 ("1년 최고가 $759.66보다 4.5% 낮고, ...")."""
+    if strategy in ("ai_judge", "ai_candle"):
+        if "target" not in indicators:
+            return ""
+        target, now = float(indicators["target"]), float(indicators.get("weight", 0))
+        return f"목표 비중 {target:.0f}% (판단할 때 {now:.0f}%)"
+    if strategy != "dip_saver":
+        return ""
+    top = indicators.get(f"high{params.get('high', 252)}")
+    avg = indicators.get(f"sma{params.get('sma', 200)}")
+    if top is None or avg is None:
+        return ""
+    young = indicators.get("bars")
+    top_name = "상장 뒤 최고가" if young else "1년 최고가"
+    avg_name = (
+        f"상장 뒤 {int(float(young))}일 평균" if young else f"{params.get('sma', 200)}일 평균"
+    )
+    drop = float(indicators.get("drawdown", 0)) * 100
+    up = float(indicators.get("premium", 0)) * 100
+    return f"{_vs(top_name, top, drop, False)} {_vs(avg_name, avg, up, True)}"
+
+
 def action_phrase(action: str, holding: bool, symbol: str) -> str:
     if action == "BUY":
         more = "더 " if holding else ""

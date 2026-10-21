@@ -13,6 +13,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from trading_lab.application.errors import Conflict, Invalid, NotFound
+from trading_lab.application.journal import archive_journal
 from trading_lab.domain.bot import CommandKind
 from trading_lab.domain.events import BotDeletedData, ConfigChange, ConfigChangeData, EventKind
 from trading_lab.domain.portfolio import CostModel, RiskLimits
@@ -317,8 +318,12 @@ def rename(session: Session, bot_id: int, name: str, now: datetime) -> BotRow:
 
 
 def reset(session: Session, bot_id: int, now: datetime) -> BotRow:
-    """처음부터 다시 시작: 판단·주문·실행 기록을 지우고 시작 금액으로. 설정·상태는 그대로."""
+    """처음부터 다시 시작: 판단·주문·실행 기록을 지우고 시작 금액으로. 설정·상태는 그대로.
+
+    지우기 전의 매매일지는 보관한다 (봇 화면의 매매일지에서 다시 볼 수 있다).
+    """
     bot = require_bot(session, bot_id, for_update=True)
+    archive_journal(session, bot, "RESET", now)
     reset_bot_history(session, bot, now)
     add_event(session, now, "INFO", EventKind.BOT_RESET, "처음부터 다시 시작", bot_id=bot.id)
     session.commit()
@@ -326,8 +331,10 @@ def reset(session: Session, bot_id: int, now: datetime) -> BotRow:
 
 
 def remove(session: Session, bot_id: int, now: datetime) -> None:
+    """봇을 지운다. 매매일지는 보관한다 (매매일지 화면의 "지운 봇")."""
     bot = require_bot(session, bot_id, for_update=True)
     name, symbol = bot.name, bot.symbol
+    archive_journal(session, bot, "DELETED", now)
     delete_bot(session, bot_id)
     add_event(
         session,

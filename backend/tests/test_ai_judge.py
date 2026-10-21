@@ -149,6 +149,8 @@ def test_claude_candle_advisor_sends_masked_charts_without_search() -> None:
     a, b = request.candles.request.symbols
     answer = {
         "summary": f"종목 {a.label}가 더 강해요.",
+        "decision": f"종목 {b.label}를 모두 팔았어요.",
+        "basis": [f"종목 {b.label}가 고점을 낮추며 내려와요. 그래서 팔았어요."],
         "allocations": [
             {"symbol": a.label, "weight": 70, "reason": f"종목 {b.label}보다 꾸준히 올라요."},
             {"symbol": b.label, "weight": 0, "reason": "쉬어 가요."},
@@ -170,6 +172,9 @@ def test_claude_candle_advisor_sends_masked_charts_without_search() -> None:
     first, second = request.candles.key[a.label], request.candles.key[b.label]
     assert result.advice.weights == {first: 70, second: 0, "CASH": 30}
     assert result.advice.reasons[first] == f"{second}보다 꾸준히 올라요."
+    # 매매일지용 한 문장·근거도 종목 이름으로 되돌린다
+    assert result.advice.decision == f"{second}를 모두 팔았어요."
+    assert result.advice.basis == (f"{second}가 고점을 낮추며 내려와요. 그래서 팔았어요.",)
     assert result.prompt_version.endswith("/medium")  # 생각하는 양도 기록한다
     assert result.usage.cost == Decimal("0.2") + Decimal("0.1")  # 입력 10만·출력 1만 토큰
 

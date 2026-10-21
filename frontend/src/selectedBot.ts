@@ -13,9 +13,9 @@ function read(): number | null {
   }
 }
 
-/** 봇 화면 주소 #bot/3 → 3. 주소가 봇을 가리키면 그 봇을 고른다 (뒤로 가기·링크). */
+/** 봇 화면 주소 #bot/3 (매매일지 #journal/3) → 3. 주소가 봇을 가리키면 그 봇을 고른다 (뒤로 가기·링크). */
 function fromHash(): number | null {
-  const m = /^#bot\/(\d+)$/.exec(location.hash)
+  const m = /^#(?:bot|journal)\/(\d+)$/.exec(location.hash)
   return m ? Number(m[1]) : null
 }
 
@@ -40,6 +40,17 @@ window.addEventListener('hashchange', () => {
 export function openBot(id: number) {
   selectBot(id)
   location.hash = `bot/${id}`
+}
+
+/** 봇의 매매일지로 이동 (#journal/3). */
+export function openJournal(id: number) {
+  selectBot(id)
+  location.hash = `journal/${id}`
+}
+
+/** 보관한 매매일지 (처음부터 다시 시작하기 전·지운 봇) 한 권 (#journal/archive/7). */
+export function openArchive(id: number) {
+  location.hash = `journal/archive/${id}`
 }
 
 function subscribe(l: () => void) {

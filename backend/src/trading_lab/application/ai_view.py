@@ -6,7 +6,7 @@
 점수·판정은 붙이지 않는다 (project.md 1절).
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, cast
@@ -17,6 +17,7 @@ from trading_lab.application.ai_judge import month_of
 from trading_lab.application.backtesting import load_series
 from trading_lab.application.bots import require_bot
 from trading_lab.application.errors import Invalid
+from trading_lab.application.journal import weights_when_judged
 from trading_lab.application.parallel import World, copy_world, dca_world, world
 from trading_lab.application.research import COPY_STRATEGY, BotParallel
 from trading_lab.domain.advisor import JudgmentStatus
@@ -51,6 +52,8 @@ class AiDay:
     cost: Decimal | None
     error: str | None
     created_at: datetime
+    decision: str | None = None
+    basis: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -61,20 +64,13 @@ class AiOverview:
     budget: Decimal
 
 
-def _before(request: dict[str, Any] | None) -> dict[str, str]:
-    if not request:
-        return {}
-    out = {s["symbol"]: s["weight_now"] for s in request.get("symbols", [])}
-    return out | {"CASH": request.get("cash_weight", "0")}
-
-
 def _day(row: AiJudgmentRow) -> AiDay:
     return AiDay(
         session_date=row.session_date,
         status=row.status,
         summary=row.summary,
         weights=row.weights,
-        weights_before=_before(row.request),
+        weights_before=weights_when_judged(row.request),
         reasons=row.reasons,
         sources=row.sources or [],
         queries=row.queries or [],
@@ -82,6 +78,8 @@ def _day(row: AiJudgmentRow) -> AiDay:
         cost=row.cost,
         error=row.error,
         created_at=row.created_at,
+        decision=row.decision,
+        basis=row.basis or [],
     )
 
 

@@ -6,6 +6,7 @@ import { Brand, ThemeMenu } from './components/Brand'
 import { CurrencyToggle } from './components/Currency'
 import { Home, MeHome } from './components/Dashboard'
 import { HelpButton } from './components/Help'
+import { JournalView } from './components/Journal'
 import { MeView } from './components/MeView'
 import { SettingsView } from './components/SettingsView'
 import { LiveApprovals } from './components/Live'
@@ -20,13 +21,14 @@ const TABS = {
 } as const
 type Tab = keyof typeof TABS
 
-// 탭 밖의 화면: 나 카피하기 (#me), 봇 하나 자세히 보기 (#bot/3, 홈 탭)
-type Page = Tab | 'me' | 'bot'
+// 탭 밖의 화면: 나 카피하기 (#me), 봇 하나 자세히 보기 (#bot/3, 홈 탭), 매매일지 (#journal/3, 홈 탭)
+type Page = Tab | 'me' | 'bot' | 'journal'
 
 function useHashTab(): [Page, (t: Tab) => void] {
   const read = (): Page => {
     const h = location.hash.slice(1)
     if (h === 'bot' || h.startsWith('bot/')) return 'bot'
+    if (h.startsWith('journal/')) return 'journal'
     return h === 'me' || h in TABS ? (h as Page) : 'dashboard'
   }
   const [tab, setTab] = useState<Page>(read)
@@ -108,8 +110,8 @@ export default function App() {
           <Brand />
           <nav className="tabs">
             {(Object.keys(TABS) as Tab[]).map((t) => {
-              // 봇 자세히 보기(#bot)는 홈 탭 안의 화면이다.
-              const on = t === tab || (t === 'dashboard' && tab === 'bot')
+              // 봇 자세히 보기(#bot)와 매매일지(#journal)는 홈 탭 안의 화면이다.
+              const on = t === tab || (t === 'dashboard' && (tab === 'bot' || tab === 'journal'))
               return (
               <button
                 key={t}
@@ -143,6 +145,7 @@ export default function App() {
         {bots.error && <div className="alert">봇 정보를 불러오지 못했습니다: {bots.error.message}</div>}
         {tab === 'dashboard' && bots.data && <MeHome bots={bots.data} />}
         {tab === 'bot' && !!bots.data?.length && <Home bots={bots.data} />}
+        {tab === 'journal' && bots.data && <JournalView bots={bots.data} />}
         {tab === 'backtest' && <BacktestView />}
         {tab === 'me' && bots.data && <MeView bots={bots.data} />}
         {tab === 'settings' && bots.data && <SettingsView bots={bots.data} />}

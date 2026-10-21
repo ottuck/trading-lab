@@ -116,6 +116,7 @@ class DecisionView(BaseModel):
     created_at: datetime
     plain_reason: str = ""  # 일상어 설명
     plain_action: str = ""  # 예: "내일 장이 열리면 QQQ를 사요."
+    plain_numbers: str = ""  # 예: "1년 최고가 $759.66보다 4.5% 낮고, …"
 
 
 class OrderView(BaseModel):
@@ -466,6 +467,8 @@ class AiDayView(BaseModel):
     cost: Decimal | None
     error: str | None
     created_at: datetime
+    decision: str | None = None  # 오늘 한 일 한 문장 (지침 2026-10-22 전 판단은 없음)
+    basis: list[str] = []  # 그렇게 정한 근거
 
 
 class AiView(BaseModel):
@@ -501,3 +504,55 @@ class BotCreate(BotConfig):
     symbol: str  # 종목 하나. symbols가 있으면 그 첫 종목과 같아야 한다
     symbols: list[SymbolWeight] | None = None  # 여러 종목(최대 10개, 비율 합 100)
     initial_cash: Decimal = Decimal(10_000)
+
+
+class JournalTradeView(BaseModel):
+    symbol: str
+    side: str  # BUY | SELL
+    status: str  # PENDING | FILLED | UNFILLED
+    fill_date: date | None
+    qty: Decimal | None
+    price: Decimal | None
+    amount: Decimal | None
+    realized_pnl: Decimal | None
+
+
+class JournalLineView(BaseModel):
+    symbol: str  # AI 봇은 현금 CASH도
+    action: str
+    reason: str
+    numbers: str
+    before: Decimal | None  # AI 봇: 판단할 때 비중 %
+    target: int | None  # AI 봇: 목표 비중 %
+    blocked: str | None
+
+
+class JournalDayView(BaseModel):
+    """매매일지 하루 (판단일). 주문은 다음 거래일 시가에 체결한다."""
+
+    date: date
+    quiet: bool  # 주문·입금·비중 변화가 없는 날
+    headline: str
+    basis: list[str]
+    summary: str | None
+    lines: list[JournalLineView]
+    trades: list[JournalTradeView]
+    deposit: Decimal | None
+    sources: list[dict[str, str]]
+
+
+class JournalArchiveInfo(BaseModel):
+    id: int
+    bot_name: str
+    strategy: str
+    why: str
+    first_date: date
+    last_date: date
+
+
+class JournalView(BaseModel):
+    bot_id: int | None
+    bot_name: str
+    strategy: str
+    days: list[JournalDayView]  # 최근 날부터
+    archives: list[JournalArchiveInfo]

@@ -87,6 +87,7 @@ export type Decision = {
   created_at: string
   plain_reason: string
   plain_action: string
+  plain_numbers: string // 판단에 쓴 숫자 한 문장 ("1년 최고가 $759.66보다 4.5% 낮고, …")
 }
 
 export type Order = {
@@ -287,8 +288,44 @@ export type AiDay = {
   cost: Money | null
   error: string | null
   created_at: string
+  decision?: string | null // 오늘 한 일 한 문장 (2026-10-22 전 판단은 없음)
+  basis?: string[] // 그렇게 정한 근거
 }
 export type AiOverview = { latest: AiDay | null; history: AiDay[]; spent: Money; budget: Money }
+// 매매일지: 판단일마다 무엇을 근거로 어떻게 했고 주문이 어떻게 체결됐는지 (최근 날부터)
+export type JournalTrade = {
+  symbol: string
+  side: 'BUY' | 'SELL'
+  status: 'PENDING' | 'FILLED' | 'UNFILLED'
+  fill_date: string | null
+  qty: Money | null
+  price: Money | null
+  amount: Money | null
+  realized_pnl: Money | null
+}
+export type JournalLine = {
+  symbol: string // AI 봇은 현금 CASH도
+  action: 'BUY' | 'SELL' | 'HOLD' | ''
+  reason: string
+  numbers: string
+  before: Money | null // AI 봇: 판단할 때 비중 %
+  target: number | null // AI 봇: 목표 비중 %
+  blocked: string | null
+}
+export type JournalDay = {
+  date: string
+  quiet: boolean // 주문·입금·비중 변화가 없는 날
+  headline: string
+  basis: string[]
+  summary: string | null
+  lines: JournalLine[]
+  trades: JournalTrade[]
+  deposit: Money | null
+  sources: { url: string; title: string }[]
+}
+export type JournalArchive = { id: number; bot_name: string; strategy: string; why: string; first_date: string; last_date: string }
+export type Journal = { bot_id: number | null; bot_name: string; strategy: string; days: JournalDay[]; archives: JournalArchive[] }
+
 export type ParallelRequest = {
   symbol: string
   symbols?: SymbolWeight[]
@@ -421,6 +458,9 @@ export const botApi = {
   ai: (botId: number) => request<AiOverview>(`/api/bots/${botId}/ai`),
   aiCompare: (botId: number) => request<Parallel>(`/api/bots/${botId}/ai/compare`),
   plan: (botId: number) => request<Plan | null>(`/api/bots/${botId}/plan`),
+  journal: (botId: number) => request<Journal>(`/api/bots/${botId}/journal`),
+  archivedJournal: (id: number) => request<Journal>(`/api/journal/archives/${id}`),
+  deletedJournals: () => request<JournalArchive[]>('/api/journal/deleted'),
   updateSymbols: (botId: number, symbols: SymbolWeight[]) => request<Bot>(`/api/bots/${botId}/symbols`, json('PUT', { symbols })),
   rename: (botId: number, name: string) => request<Bot>(`/api/bots/${botId}`, json('PATCH', { name })),
   reset: (botId: number) => request<Bot>(`/api/bots/${botId}/reset`, { method: 'POST' }),

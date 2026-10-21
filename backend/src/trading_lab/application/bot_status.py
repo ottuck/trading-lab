@@ -11,7 +11,11 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from trading_lab.application.messages import action_phrase, decision_reason
+from trading_lab.application.messages import (
+    action_phrase,
+    decision_numbers,
+    decision_reason,
+)
 from trading_lab.domain.portfolio import Portfolio, RiskLimits, affordable_qty
 from trading_lab.persistence.bars import bar_range, bar_rows_since, last_bar
 from trading_lab.persistence.bots import (
@@ -93,6 +97,7 @@ class DecisionStatus:
     created_at: datetime
     plain_reason: str = ""
     plain_action: str = ""
+    plain_numbers: str = ""  # 판단에 쓴 숫자를 한 문장으로 ("숫자 보기")
 
 
 @dataclass(frozen=True)
@@ -210,18 +215,16 @@ def account_status(session: Session, bot: BotRow) -> AccountStatus:
 
 
 def decision_status(row: DecisionRow, bot: BotRow | None = None) -> DecisionStatus:
-    """bot을 주면 쉬운 말 설명(plain_reason·plain_action)도 채운다."""
-    plain_reason = plain_action = ""
+    """bot을 주면 쉬운 말 설명(plain_reason·plain_action·plain_numbers)도 채운다."""
+    plain_reason = plain_action = plain_numbers = ""
     if bot is not None:
         strategy = row.strategy or {}
+        name, params = strategy.get("name", bot.strategy), strategy.get("params", bot.params)
         plain_reason = decision_reason(
-            strategy.get("name", bot.strategy),
-            strategy.get("params", bot.params),
-            row.indicators,
-            action=row.action,
-            raw=row.reason,
+            name, params, row.indicators, action=row.action, raw=row.reason
         )
         plain_action = action_phrase(row.action, row.holding, row.symbol)
+        plain_numbers = decision_numbers(name, params, row.indicators)
     return DecisionStatus(
         id=row.id,
         symbol=row.symbol,
@@ -235,6 +238,7 @@ def decision_status(row: DecisionRow, bot: BotRow | None = None) -> DecisionStat
         created_at=row.created_at,
         plain_reason=plain_reason,
         plain_action=plain_action,
+        plain_numbers=plain_numbers,
     )
 
 
