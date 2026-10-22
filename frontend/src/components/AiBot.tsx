@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { api, botApi, type AiDay, type Bot, type Order, type World } from '../api'
+import { api, botApi, type AiDay, type Basis, type Bot, type Order, type World } from '../api'
 import { activeOf } from '../basket'
 import { useDemo } from '../demo'
 import { money, percent } from '../format'
@@ -34,6 +34,15 @@ const MISSED: Record<Exclude<AiDay['status'], 'OK'>, string> = {
 
 function useAi(bot: Bot) {
   return useQuery({ queryKey: ['ai', bot.id], queryFn: () => botApi.ai(bot.id), staleTime: 60_000 })
+}
+
+/** 오늘의 판단 아래: 지난 판단은 매매일지로 (봇 화면에서만, 홈은 [매매일지] 버튼이 바로 아래에 있다). */
+export function JournalLink({ bot }: { bot: Bot }) {
+  return (
+    <button className="link jr-go" onClick={() => openJournal(bot.id)}>
+      지난 판단과 거래는 매매일지에서 →
+    </button>
+  )
 }
 
 /** 내일 시가에 낼 모의 주문 한 줄: "$405 사요", "$120어치 팔아요", "모두 팔아요". */
@@ -95,6 +104,28 @@ function SourceList({ items }: { items: AiDay['sources'] }) {
   )
 }
 
+const host = (url: string) => new URL(url).hostname.replace(/^www\./, '')
+
+/** 판단 근거: 줄마다 근거가 된 기사(시장분석), 데모는 "예시 뉴스", 캔들분석은 출처 없이. */
+export function BasisList({ items }: { items: Basis[] }) {
+  return (
+    <ul className="jr-basis">
+      {items.map((b) => (
+        <li key={b.text}>
+          {b.text}
+          {b.url ? (
+            <a className="jr-cite" href={b.url} target="_blank" rel="noopener noreferrer" title={b.title}>
+              {host(b.url)}
+            </a>
+          ) : (
+            b.title && <span className="jr-cite">{b.title}</span>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 /** AI가 참고한 것: 판단에 쓴 기사를 먼저, 검색해서 받아 보기만 한 결과는 접어 둔다. */
 function Sources({ day }: { day: AiDay }) {
   const [open, setOpen] = useState(false)
@@ -136,7 +167,7 @@ function Sources({ day }: { day: AiDay }) {
 }
 
 /** 오늘의 AI 판단: 시장 요약, 종목마다 지금 → 목표 비중과 이유, 내일 낼 주문. */
-export function AiToday({ bot }: { bot: Bot }) {
+export function AiToday({ bot, journal = false }: { bot: Bot; journal?: boolean }) {
   const { data, error } = useAi(bot)
   const demo = useDemo()
   const [all, setAll] = useState(false)
@@ -166,13 +197,7 @@ export function AiToday({ bot }: { bot: Bot }) {
       ) : (
         <>
           {day.decision && <div className="ai-decision">{day.decision}</div>}
-          {!!day.basis?.length && (
-            <ul className="jr-basis">
-              {day.basis.map((b) => (
-                <li key={b}>{b}</li>
-              ))}
-            </ul>
-          )}
+          {!!day.basis?.length && <BasisList items={day.basis} />}
           {day.summary && <p className={day.decision ? 'decision-why small' : 'decision-why'}>{day.summary}</p>}
           <div className="ai-rows">
             {(all ? rows : held).map((r) => (
@@ -185,6 +210,7 @@ export function AiToday({ bot }: { bot: Bot }) {
             </button>
           )}
           <Sources day={day} />
+          {journal && <JournalLink bot={bot} />}
         </>
       )}
       {candle && (

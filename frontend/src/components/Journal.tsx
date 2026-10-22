@@ -4,6 +4,7 @@ import { botApi, type Bot, type Journal, type JournalArchive, type JournalDay, t
 import { money, shares, signedMoney, tone } from '../format'
 import { openArchive, openBot, openJournal, useSelectedBot } from '../selectedBot'
 import { isAiBot } from '../strategies'
+import { BasisList } from './AiBot'
 import { BotSide, BotTabs } from './Dashboard'
 
 /* 매매일지 (#journal/3): 판단일마다 무엇을 근거로 어떻게 했고 주문이 어떻게 체결됐는지.
@@ -120,7 +121,8 @@ function Rule({ line, multi }: { line: JournalLine; multi: boolean }) {
   )
 }
 
-function Entry({ day, ai, compact = false }: { day: JournalDay; ai: boolean; compact?: boolean }) {
+function Entry({ day, compact = false }: { day: JournalDay; compact?: boolean }) {
+  const ai = day.ai
   const [more, setMore] = useState(false)
   const { m, d, w } = parts(day.date)
   const multi = day.lines.length > 1
@@ -138,13 +140,7 @@ function Entry({ day, ai, compact = false }: { day: JournalDay; ai: boolean; com
           {day.headline}
         </div>
         {day.deposit != null && <div className="faint small">입금 {money(day.deposit)}</div>}
-        {day.basis.length > 0 && (
-          <ul className="jr-basis">
-            {day.basis.map((b) => (
-              <li key={b}>{b}</li>
-            ))}
-          </ul>
-        )}
+        {day.basis.length > 0 && <BasisList items={day.basis} />}
         {/* 근거가 따로 없던 예전 AI 판단은 시장 요약이 근거다 */}
         {day.summary && !day.basis.length && <p className="jr-summary">{day.summary}</p>}
         {day.trades.length > 0 && (
@@ -182,9 +178,9 @@ function Entry({ day, ai, compact = false }: { day: JournalDay; ai: boolean; com
   )
 }
 
-function Quiet({ days, ai }: { days: JournalDay[]; ai: boolean }) {
+function Quiet({ days }: { days: JournalDay[] }) {
   const [open, setOpen] = useState(false)
-  if (days.length === 1) return <Entry day={days[0]} ai={ai} compact />
+  if (days.length === 1) return <Entry day={days[0]} compact />
   const last = parts(days[0].date)
   const first = parts(days.at(-1)!.date)
   const range = first.m === last.m ? `${first.m}.${first.d}–${last.d}` : `${first.m}.${first.d}–${last.m}.${last.d}`
@@ -197,13 +193,12 @@ function Quiet({ days, ai }: { days: JournalDay[]; ai: boolean }) {
         </span>
         <span className="faint small">{open ? '접기' : '펼치기'}</span>
       </button>
-      {open && days.map((d) => <Entry key={d.date} day={d} ai={ai} compact />)}
+      {open && days.map((d) => <Entry key={d.date} day={d} compact />)}
     </div>
   )
 }
 
 function Days({ journal }: { journal: Journal }) {
-  const ai = journal.strategy === 'ai_judge' || journal.strategy === 'ai_candle'
   if (!journal.days.length)
     return <div className="line-empty">아직 판단이 없어요. 첫 판단을 하면 이곳에 날마다 기록이 쌓여요.</div>
   return (
@@ -220,7 +215,7 @@ function Days({ journal }: { journal: Journal }) {
             </div>
             <div className="jr-days">
               {grouped(days).map((g) =>
-                g.quiet ? <Quiet key={g.days[0].date} days={g.days} ai={ai} /> : <Entry key={g.day.date} day={g.day} ai={ai} />,
+                g.quiet ? <Quiet key={g.days[0].date} days={g.days} /> : <Entry key={g.day.date} day={g.day} />,
               )}
             </div>
           </section>
@@ -337,9 +332,25 @@ function useHash() {
   )
 }
 
+/** 봇이 하나도 없을 때도 지운 봇의 일지는 볼 수 있다. */
+function NoBots() {
+  const deleted = useQuery({ queryKey: ['journal', 'deleted'], queryFn: botApi.deletedJournals })
+  return (
+    <div className="home">
+      <div className="home-main">
+        <div className="jr-top">
+          <h1>매매일지</h1>
+          <p className="decision-why">지금은 봇이 없어요. 봇을 만들면 날마다 기록이 이곳에 쌓여요.</p>
+        </div>
+        <Archives items={deleted.data ?? []} title="지운 봇의 일지" />
+      </div>
+    </div>
+  )
+}
+
 export function JournalView({ bots }: { bots: Bot[] }) {
   const archive = /^#journal\/archive\/(\d+)$/.exec(useHash())
   if (archive) return <ArchivedJournal id={Number(archive[1])} bots={bots} />
-  if (!bots.length) return <div className="line-empty">아직 봇이 없어요.</div>
+  if (!bots.length) return <NoBots />
   return <BotJournal bots={bots} />
 }

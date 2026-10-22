@@ -31,7 +31,7 @@ def save_judgment(
         else None,
         queries=list(advice.queries) if advice else None,
         decision=(advice.decision or None) if advice else None,
-        basis=(list(advice.basis) or None) if advice else None,
+        basis=([b.as_dict() for b in advice.basis] or None) if advice else None,
         input_tokens=usage.input_tokens if usage else None,
         output_tokens=usage.output_tokens if usage else None,
         web_searches=usage.web_searches if usage else None,

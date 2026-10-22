@@ -17,7 +17,7 @@ from trading_lab.application.ai_judge import month_of
 from trading_lab.application.backtesting import load_series
 from trading_lab.application.bots import require_bot
 from trading_lab.application.errors import Invalid
-from trading_lab.application.journal import weights_when_judged
+from trading_lab.application.journal import basis_items, weights_when_judged
 from trading_lab.application.parallel import World, copy_world, dca_world, world
 from trading_lab.application.research import COPY_STRATEGY, BotParallel
 from trading_lab.domain.advisor import JudgmentStatus
@@ -53,7 +53,7 @@ class AiDay:
     error: str | None
     created_at: datetime
     decision: str | None = None
-    basis: list[str] = field(default_factory=list)
+    basis: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -79,7 +79,7 @@ def _day(row: AiJudgmentRow) -> AiDay:
         error=row.error,
         created_at=row.created_at,
         decision=row.decision,
-        basis=row.basis or [],
+        basis=basis_items(row.basis),
     )
 
 

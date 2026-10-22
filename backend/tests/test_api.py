@@ -2,6 +2,7 @@ import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
+from typing import Any, cast
 
 import jwt
 import pytest
@@ -12,6 +13,7 @@ from sqlalchemy.orm import Session
 from tests.fakes import WeekdayCalendar, make_bars
 from trading_lab.api.main import app
 from trading_lab.application.dry_run import Trigger, evaluate_bot
+from trading_lab.application.journal import _trade_headline
 from trading_lab.application.market import StoredMarket
 from trading_lab.domain.bot import BotState
 from trading_lab.domain.portfolio import CostModel, RiskLimits
@@ -225,6 +227,12 @@ def test_bot_management(client: TestClient, session: Session, bot_id: int) -> No
     assert bought["headline"] == "QQQ를 샀어요" and not bought["quiet"]
     assert bought["trades"][0]["status"] == "FILLED"
     assert "적당한 가격" in bought["lines"][0]["reason"]
+    # 같은 날 같은 방향이어도 체결 결과가 다르면 나눠 쓴다 (못 산 종목을 샀다고 쓰지 않는다)
+    unfilled = {**bought["trades"][0], "symbol": "VOO", "status": "UNFILLED"}
+    assert (
+        _trade_headline(cast(Any, [unfilled, bought["trades"][0]]))
+        == "QQQ를 샀어요 · VOO를 사려 했지만 체결되지 않았어요"
+    )
 
     # 처음부터 다시 시작: 잔고·기록 초기화, 설정·상태 유지. 그 전의 일지는 보관한다
     reset = client.post(f"/api/bots/{bot_id}/reset").json()

@@ -452,6 +452,14 @@ class AiSourceView(BaseModel):
     used: bool = False  # AI가 판단의 근거로 썼다고 밝힌 기사 (2026-10-07 지침 .4부터)
 
 
+class BasisView(BaseModel):
+    """AI 판단 근거 한 줄. 시장분석 AI 봇은 근거 기사(url·title), 데모는 title만 ("예시 뉴스")."""
+
+    text: str
+    url: str = ""
+    title: str = ""
+
+
 class AiDayView(BaseModel):
     """AI 판단 하루 (마일스톤 4). 실패한 날은 weights 등이 없고 error에 이유가 있다."""
 
@@ -468,7 +476,7 @@ class AiDayView(BaseModel):
     error: str | None
     created_at: datetime
     decision: str | None = None  # 오늘 한 일 한 문장 (지침 2026-10-22 전 판단은 없음)
-    basis: list[str] = []  # 그렇게 정한 근거
+    basis: list[BasisView] = []  # 그렇게 정한 근거
 
 
 class AiView(BaseModel):
@@ -531,9 +539,10 @@ class JournalDayView(BaseModel):
     """매매일지 하루 (판단일). 주문은 다음 거래일 시가에 체결한다."""
 
     date: date
+    ai: bool  # 그날 AI가 판단했는지
     quiet: bool  # 주문·입금·비중 변화가 없는 날
     headline: str
-    basis: list[str]
+    basis: list[BasisView]
     summary: str | None
     lines: list[JournalLineView]
     trades: list[JournalTradeView]
