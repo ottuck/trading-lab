@@ -1170,10 +1170,10 @@ export function MeHome({ bots }: { bots: Bot[] }) {
         {bot ? (
           <>
             <MeHero bot={bot} />
+            <Decision bot={bot} />
             <NextPlan bot={bot} />
             <MonthDigest bot={bot} />
             <BotParallel bot={bot} />
-            <Decision bot={bot} />
             <div className="me-more">
               <button onClick={() => openBot(bot.id)}>자세히 보기</button>
               <button onClick={() => openJournal(bot.id)}>매매일지</button>

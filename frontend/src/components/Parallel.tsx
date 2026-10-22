@@ -31,6 +31,10 @@ export function Chart({ me, other }: { me: World; other: World }) {
   const { theme } = useTheme()
   useEffect(() => {
     if (!el.current) return
+    const rateOf = (p: World['equity'][number]) => (Number(p.contributed) ? (Number(p.equity) / Number(p.contributed) - 1) * 100 : 0)
+    const rates = [...me.equity, ...other.equity].map(rateOf)
+    // 폭이 좁으면(시작한 지 얼마 안 됨) 소수 한 자리까지: 아니면 눈금이 "-2% -2% -2%"처럼 겹친다
+    const digits = Math.max(...rates) - Math.min(...rates) < 10 ? 1 : 0
     const chart = createChart(el.current, {
       autoSize: true,
       layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: cssVar('--muted'), fontFamily: cssVar('--sans') },
@@ -38,18 +42,13 @@ export function Chart({ me, other }: { me: World; other: World }) {
       grid: { vertLines: { visible: false }, horzLines: { color: cssVar('--chart-grid') } },
       timeScale: { borderVisible: false, minBarSpacing: 0.01 },
       rightPriceScale: { borderVisible: false },
-      localization: { locale: 'ko-KR', priceFormatter: (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(0)}%` },
+      localization: { locale: 'ko-KR', priceFormatter: (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(digits)}%` },
       handleScroll: false,
       handleScale: false,
     })
     const line = (w: World, color: string) => {
       const series = chart.addSeries(LineSeries, { color, lineWidth: 2, priceLineVisible: false, lastValueVisible: false })
-      series.setData(
-        w.equity.map((p) => ({
-          time: p.date as Time,
-          value: Number(p.contributed) ? (Number(p.equity) / Number(p.contributed) - 1) * 100 : 0,
-        })),
-      )
+      series.setData(w.equity.map((p) => ({ time: p.date as Time, value: rateOf(p) })))
       return series
     }
     line(other, cssVar('--accent'))
