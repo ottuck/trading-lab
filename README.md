@@ -1,288 +1,125 @@
-# Trading Lab
+<p align="center">
+  <img src="frontend/public/icon-192.png" alt="Trading Lab" width="120" />
+</p>
 
-**내 투자 습관을 복사한 봇이, 내 방식대로 대신 투자해 보는 개인용 퀀트 앱입니다.**
+<h1 align="center">Trading Lab</h1>
 
-토스증권 공식 Open API의 미국 주식 일봉으로 두 종류의 봇을 돌립니다. 내 습관을 규칙으로 옮긴 **나 카피 봇**과, 정해 준 종목 안에서 **AI가 매일 비중을 정하는 AI 봇**입니다. AI 봇은 뉴스·금리를 조사하는 **시장분석 AI 봇**과, 이름·날짜를 가린 가격 차트만 보는 **캔들분석 AI 봇** 두 가지입니다. 모든 판단은 먼저 내부 모의 체결(DRY RUN)로 기록하고, 원하면 그 판단을 **1/100로 줄인 금액으로 실제 토스증권 계좌에서 따라 합니다.**
+<p align="center">A personal quant app where bots invest the way I do.<br />Every decision is simulated first, then mirrored at 1/100 size in a real account if I choose.</p>
 
-**데모:** [demo.trading-lab.me](https://demo.trading-lab.me) · 예시 시세(실제 가격 아님)로 누구나 볼 수 있습니다. 예시 나 카피 봇·시장분석 AI 봇·캔들분석 AI 봇이 미리 돌고 있고(데모 AI 봇은 실제 AI 대신 규칙으로 만든 예시 판단), 나 카피하기와 시험해 보기를 직접 해 볼 수 있습니다.
+<p align="center"><a href="https://demo.trading-lab.me"><b>Live demo →</b></a></p>
 
-## 나 카피 봇
+## What is Trading Lab?
 
-질문 몇 개(얼마를, 언제 넣나요? 많이 오르면 쉬나요? 얼마나 떨어지면 몰아 사나요?)로 내 투자 습관을 규칙으로 옮긴 봇입니다. 이 봇이 세 가지에 답합니다.
+Trading Lab runs small investing bots on US stock daily prices from the Toss Securities Open API. There are two kinds:
 
-| | 질문 | 보여주는 것 |
-| --- | --- | --- |
-| **과거** | 그때 그렇게 했다면? | 지난 10년 "나처럼 했다면 vs 매달 그냥 샀다면", 그리고 내 규칙을 하나씩 바꾼 **평행세계의 나**들. 점수·등수 없이 구경하듯 봅니다 |
-| **미래** | 다음에 무엇을 할까? | 다음 월급날 종목별로 살 금액·모아 둘 금액과 이유, "이 가격 아래면 몰아 사요 / 이 가격 위면 쉬어요"까지의 거리, 모아 둔 돈의 내력 |
-| **실제** | 진짜 돈으로도 똑같이 움직일까? | 모의 매수를 **1/100 금액으로 실제 계좌에서 따라 사기**. 한도 안의 주문은 자동으로 사고, 한도를 넘는 주문만 앱에서 승인합니다 |
+- **Copy-me bot.** A few questions turn my own investing habits into rules: how much I put in each month, whether I pause after a big rally, how far a drop has to go before I buy more.
+- **AI bots.** Once a day after the US market closes, an AI (Claude) decides how to split money between a fixed watchlist of 10 stocks and ETFs and cash. The engine, not the AI, turns that into orders.
 
-실제 큰돈 투자는 다른 증권사에서 하고, 이 앱의 토스 계좌는 "같은 판단이 진짜 돈으로도 그대로 움직인다"를 작은 금액(한 달 약 1만원)으로 증명하는 곳입니다 ([설계 1절](docs/project.md#1-한-줄-정의), [실거래 트랙](docs/roadmap.md#실거래-트랙-마일스톤-3-완료)).
+Every decision is first recorded as a simulated (dry-run) trade. If I turn it on, the same decision is also placed in my real brokerage account at 1/100 of the amount, to prove the bot behaves the same with real money.
 
-## AI 봇
+It is a one-person app. It does not manage anyone else's money and there is no service behind it. The app itself is in Korean.
 
-관심 종목 10개(VOO·QQQ·QLD·TQQQ·SOXL·NVDA·GLD·MAGS·EWY·EWJ)와 현금 사이의 비중을 **AI(Claude)가 매일 장이 끝난 뒤 정합니다.** 사고팔 금액과 체결은 AI가 아니라 엔진이 정합니다. AI 봇은 보는 정보가 다른 두 가지이고, 종류마다 하나씩 만들어 같은 돈으로 나란히 봅니다. 봇 목록의 "AI 봇" 묶음에서 아직 없는 종류마다 [+ 만들기]로 만들고, 만든 순간부터 시작합니다.
+<table>
+  <tr>
+    <td align="center"><img src="docs/images/dashboard.png" alt="Home" width="400" /><br />Home</td>
+    <td align="center"><img src="docs/images/ai.png" alt="AI bot" width="400" /><br />AI bot</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/me.png" alt="Copy me" width="400" /><br />Copy me</td>
+    <td align="center"><img src="docs/images/backtest.png" alt="Try it" width="400" /><br />Try it</td>
+  </tr>
+</table>
 
-| | 시장분석 AI 봇 | 캔들분석 AI 봇 |
-| --- | --- | --- |
-| **보는 것** | 웹에서 찾은 금리·물가·실적·뉴스와 엔진이 계산한 종목 지표(200일 평균·1년 최고가 대비, 수익률, 변동성) | 종목마다 일봉 90개·주봉 52개로 직접 그린 차트 그림과 짧은 숫자 요약만. 종목 이름·날짜는 가리고("종목 A"), 가격은 오늘 = 100인 지수로 바꿉니다 |
-| **묻는 것** | 시장 상황을 알면 더 잘 고를까? | 같은 가격만 보고 AI가 내 규칙보다 나을까? |
-| **모델** | Claude Sonnet 5.5 | Claude Opus 5.5 (같은 차트에 덜 흔들려서) |
-| **판단 한 번** | 약 $0.1~0.18 (웹 검색 포함) | 약 $0.06 (검색 없음, 그림 입력) |
-| **한 달 상한** | $15 | $5 (따로 셉니다) |
+<p align="center"><sub>Screenshots use the demo's synthetic prices, not real market data.</sub></p>
 
-| | 보여주는 것 |
-| --- | --- |
-| **오늘의 AI 판단** | 오늘의 요약, 종목마다 지금 → 목표 비중과 쉬운 말 이유, 내일 사고팔 금액, (시장분석) AI가 검색한 말과 읽은 기사 링크, 이 봇의 이번 달 AI 비용 |
-| **비교** | 이 봇이 시작한 날부터 같은 날 같은 돈으로: 이 봇, 먼저 시작한 다른 AI 봇, 나 카피 봇 규칙, 매달 그냥 사기 (판정 문장 없이) |
-| **판단 기록** | 날마다 비중과 비용. 판단에 넘긴 입력(캔들분석은 AI가 본 익명 표와 대응표까지)·출처·답·모델·지침 버전을 모두 저장해 다시 돌리면 같은 결과가 나옵니다 |
-| **실제** | 나 카피 봇처럼 1/100로 실제 계좌에서 따라 합니다. 일부 팔기는 실제로 산 수량에서 같은 비율만큼 팝니다 |
+## Highlights
 
-과거 백테스트는 하지 않습니다. 모델이 과거 시장의 결과를 이미 알고 있어 결과가 부풀려지기 때문입니다. 캔들분석도 이름과 날짜를 가리지만 유명한 차트 모양은 알아볼 수 있어, 두 봇 모두 시작한 날부터 앞으로만 비교합니다 ([설계 14절](docs/project.md#14-ai-봇-마일스톤-4-2026-10-06-결정)).
+- **A bot that copies you.** Answer a few questions and get a bot that follows your own rules, not someone else's formula.
+- **Parallel versions of you.** See how the last 10 years would have gone if you had changed one habit — for curiosity, not as a score.
+- **AI bots that show their work.** Each day's call comes with a one-line decision, its reasons, target weights per stock and the news it read.
+- **Two kinds of AI.** One reads the news. The other sees only price charts with names and dates hidden, so it cannot lean on what it remembers.
+- **Real money, tiny amounts.** Real orders are 1/100 of the simulated ones, capped per order and per month, need approval above the limit, and can all be stopped with one switch.
+- **Plain language.** Built for people new to investing: short explanations next to every term, light and dark themes, dollar or won view, and installable on a phone.
 
-## 진행 상황
+## What you can do
 
-| 마일스톤 | 내용 | 상태 |
-| --- | --- | --- |
-| 1. 모의 운영 기반 | 시세 수집·검증, 백테스트, 정기 DRY RUN, 운영 화면, 배포 | 완료 · 태그 [`milestone-1`](https://github.com/ottuck/trading-lab/tree/milestone-1) |
-| 2. 나 카피 봇 | 질문으로 나 만들기, 평행세계의 나, 홈 첫 화면, 도메인 접속 | 완료 · 태그 [`milestone-2`](https://github.com/ottuck/trading-lab/tree/milestone-2) |
-| 따라 하기 · 데모 · 원화 | 다음에 할 일, 포트폴리오 데모, 원화로 보기 | 완료 |
-| 3. 실거래 | 실제 계좌 읽기, 1/100로 실제로 따라 사기, 파는 전략·레버리지(QLD·TQQQ) | 완료 · 태그 [`milestone-3`](https://github.com/ottuck/trading-lab/tree/milestone-3) |
-| **4. AI 퀀트봇** | AI가 시장을 조사해 정해 준 종목 안에서 비중을 정하는 봇, 판단 기록, 나 카피 봇과 비교, 실제로 따라 하기 | **진행 중** · 만들기 완료, 운영에서 매일 판단하며 1~2주 지켜보는 중 |
-| 캔들분석 AI 봇 | 이름·날짜를 가린 가격 차트만 보고 판단하는 두 번째 AI 봇, 봇 종류별 AI 비용 상한, AI 봇끼리 비교 | 만들기 완료 (2026-10-08) · 운영 배포 뒤 시작 |
-| 다음 계획 | 시장분석 AI 봇에 기업 분석(실적·가치) 더하기, 서버 이전 마무리 | 계획 · [로드맵](docs/roadmap.md) |
+|                       |                                                                                          |
+| --------------------- | ---------------------------------------------------------------------------------------- |
+| **Copy me**           | Turn your habits into a bot and compare "invest like me" with "just buy every month".     |
+| **Try it**            | Test the same rules on past prices, across up to 10 stocks.                              |
+| **See what's next**   | How much each stock gets on the next payday, and how far prices are from buy or pause.   |
+| **Watch AI bots**     | Today's call, the reasons and sources, and how it compares with the other bots.          |
+| **Read the journal**  | Every decision a bot made, with what it did and why.                                     |
+| **Follow for real**   | Mirror a bot's trades at 1/100 size in the real account.                                 |
+| **Get alerts**        | Telegram messages for approvals, fills and problems.                                     |
 
-| 문서 | 내용 |
-| --- | --- |
-| [docs/project.md](docs/project.md) | 설계의 단일 출처: 범위, 원칙, 아키텍처, 인프라, 작업 방식, 알려진 한계 |
-| [docs/roadmap.md](docs/roadmap.md) | 단계별 계획과 진행 상태, 백테스트·replay 결과 |
-| [docs/tossApi.md](docs/tossApi.md) | 토스증권 Open API 조사와 직접 호출로 확인한 사실 |
+## The bots
 
-## 무엇을 하나
+|                    | Copy-me bot                         | Market AI bot                                   | Candle AI bot                                        |
+| ------------------ | ----------------------------------- | ----------------------------------------------- | ---------------------------------------------------- |
+| **Decides with**   | My rules                            | News, rates and earnings found by web search    | Anonymized price charts only                         |
+| **Asks**           | What if I had done it my way?       | Does knowing the market help pick better?       | Can AI beat my rules looking at the same prices?     |
+| **Compared**       | Over the past 10 years              | From the day it starts, going forward           | From the day it starts, going forward                |
 
-**모의 투자**
+AI bots are never backtested on the past: the model already knows how the market turned out, so the result would look better than it is.
 
-- **시세 수집** · 토스 일봉을 상장일부터 받아 PostgreSQL에 캐시하고, 누락·중복·비거래일·이상치를 검사합니다. 수정주가가 바뀌면 전체를 다시 받습니다.
-- **시험해 보기(백테스트)** · 나처럼 투자(월급 적립·고점 쉬기·하락장 몰아 사기)의 규칙을 과거 일봉으로 시험합니다. 여러 종목을 비율대로 나눠 사는 봇도 됩니다(최대 10종목).
-- **정기 DRY RUN** · Worker가 미국 정규장 마감 2시간 뒤 확정된 일봉으로 판단하고, 다음 거래일 시가로 모의 체결합니다. 금액 기준·소수점 6자리로 사서 실제 소수점 주문과 같은 방식입니다.
-
-**실제 계좌 (마일스톤 3)**
-
-- **실제 계좌 읽기** · 1시간마다, 봇의 주문 접수·부분 체결·최종 결과 확인 뒤에도 주문 가능 금액·보유·최근 주문을 읽습니다. 화면은 저장된 값을 30초마다 확인합니다. 홈의 계좌 카드에서 보고, 누르면 금액을 가립니다.
-- **실제로 따라 하기** · 모의 주문을 1/100로 줄여 다음 거래일 밤 토스 계좌에서 냅니다. 나 카피 봇은 매달 사기만 하고($1보다 작은 몫은 모아 두었다가 함께), AI 봇은 모의로 판 비율만큼 실제로 산 수량에서 팝니다. 레버리지 ETF는 QLD·TQQQ만 합니다.
-- **실제 계좌 손익** · 홈 계좌 카드와 설정에서 이번 달 산·판 금액, 봇이 산 주식의 평가 손익, 판 주식의 확정 손익을 달러로 봅니다 (봇이 낸 주문만 센 어림값, 수수료 제외)
-- **안전장치** · 실거래 스위치(`LIVE_TRADING`), 한도(주문 1건 $20 · 봇마다 한 달 $50)를 넘는 주문은 승인, 모든 봇 합쳐 한 달 $100은 승인해도 못 넘김, 잔고를 못 읽으면 주문 보류, 실제 주문 모두 멈추기, 실제 계좌 대조(보유가 봇이 산 수량보다 적으면 새 주문마다 승인), 입력 상한(매달 $100,000 · 시작 금액 $1,000,000).
-
-**AI 봇 (마일스톤 4)**
-
-- **매일 판단** · Worker가 장 마감 뒤 봇 상태와 종목 지표를 요약해 Claude에 넘기고, AI는 웹 검색 뒤 정해진 형식(JSON 스키마)으로 목표 비중과 이유를 냅니다. 정해 주지 않은 종목이나 합이 100이 아닌 답은 버리고 그날은 그대로 둡니다.
-- **캔들분석의 익명 입력** · 엔진이 일봉·주봉을 오늘 = 100인 지수로 바꾸고 종목을 날마다 섞은 글자로 불러 Claude에 넘깁니다(검색 도구 없음). AI는 글자로 답하고, 엔진이 글자와 이유 문장 속 "종목 B"를 종목 이름으로 되돌린 뒤(조사도 받침에 맞게) 같은 규칙으로 검사합니다.
-- **비중 맞추기** · 엔진이 목표와 지금의 차이를 팔 금액·살 금액으로 바꿔 다음 날 시가에 팔기 먼저, 사기 나중으로 모의 체결합니다. 자산의 2%보다 작은 차이는 무시해 매일 조금씩 사고팔지 않습니다.
-- **기록과 비용** · 판단마다 입력·검색어·출처·답·모델·지침 버전·토큰·비용을 남깁니다. 실패한 날도 이유와 든 비용을 남기고, 그 봇 종류의 한 달 비용 상한을 넘으면 그달은 판단하지 않습니다.
-
-**화면과 알림**
-
-- **쉬운 말** · 전략은 별명과 작은 그림으로 고르고, 설정은 선택지로 바꿉니다. 판단 이유는 "상승 흐름이에요. 내일 장이 열리면 QQQ를 사요"처럼 보여줍니다.
-- **원화로 보기** · 머리말의 $ / ₩ 버튼으로 금액을 오늘 환율(매매기준율)로 바꿔 봅니다. 계산과 주문은 늘 달러입니다.
-- **텔레그램 알림** · 설정에서 끄기 / 실제 주문만(승인 요청·체결·문제) / 모의 투자 소식까지 고르고 테스트 메시지를 보냅니다. 서버가 멈추면 외부 heartbeat(Healthchecks.io)가 알립니다.
-
-## 화면
-
-> 캡처는 **포트폴리오 데모**([demo.trading-lab.me](https://demo.trading-lab.me))의 예시 시세입니다. 토스 시세는 제3자 배포가 금지돼 있어, 데모는 `cli seed-demo`로 만든 합성 일봉만 씁니다. 하루하루의 값은 모두 난수이고, 큰 흐름만 실제 역사의 큰 고점·바닥(2008·2020·2022 등)을 닮게 했습니다. 2025년 4월 뒤는 상승장·조정장·하락장이 실제와 비슷한 빈도로 오는 가상의 미래라 실제 가격과 무관합니다. 데모에는 실제 계좌·주문 기능이 없습니다.
-
-주식을 잘 모르는 사람도 쓸 수 있게 만들었습니다. 용어 옆 ⓘ와 "도움말"에서 뜻을 볼 수 있고, 밝은·어두운 테마를 지원합니다. 가격 색은 국내 관례대로 오르면 빨강, 내리면 파랑입니다. 폰에서 "홈 화면에 추가"하면 앱처럼 열립니다(PWA).
-
-**홈 (나 카피 봇)** · 나처럼 했을 때 vs 매달 그냥 샀다면, 오늘의 판단, 다음에 할 일, 월간 정리, 평행세계의 나
-
-![홈](docs/images/dashboard.png)
-
-| 나 카피하기 결과 | 시험해 보기 |
-| --- | --- |
-| ![나 카피하기: 질문 4~6개의 답을 규칙으로 요약하고, 지난 10년 나처럼 했다면 vs 매달 그냥 샀다면과 평행세계의 나](docs/images/me.png) | ![시험해 보기: 금액·규칙·종목·기간을 고르면 결과와 평행세계의 나](docs/images/backtest.png) |
-
-**AI 봇** · 오늘의 AI 판단(지금 → 목표 비중과 이유, 참고한 기사), 다른 방법과 비교. 데모는 실제 AI 대신 규칙으로 만든 예시 판단입니다
-
-![AI 봇](docs/images/ai.png)
-
-## 설계에서 신경 쓴 것
-
-**모의 투자**
-
-| 문제 | 해결 |
-| --- | --- |
-| 백테스트와 실제 운영이 어긋남 | 판단·체결 함수(`domain/trading.py`)를 백테스트와 Worker가 **같이** 씁니다. 과거 거래일마다 정기 평가를 재생하는 `replay`로 실제 QQQ 데이터에서 **체결까지 백테스트와 일치**하는 것을 확인했습니다. |
-| 미래 데이터 참조 (look-ahead) | 전략은 판단일까지의 봉만 받습니다. 잘린 데이터와 전체 데이터의 판단이 겹치는 구간에서 같은지 테스트합니다. |
-| 진행 중인 봉으로 판단 | 토스는 미국 정규장 **전부터** 당일 일봉을 데이마켓 체결로 채워 줍니다(직접 호출해서 발견). 정규장 마감 + 2시간이 지난 봉만 완료로 보고, 저장 뒤 값이 바뀌면 재동기화로 감지합니다. |
-| 중복 모의 주문 | `봇 + 종목 + 거래일 + 모드` 유일 제약, 봇·종목당 대기 주문 1개, PostgreSQL advisory lock으로 Worker 1개만 실행. 같은 봉을 다시 평가해도 아무것도 하지 않습니다. |
-| 모를 때의 동작 | 데이터 지연·캘린더 불일치·일시 장애는 판단 없이 `SKIPPED` 후 재시도하고, 허용 IP·인증 오류는 봇을 멈춥니다. 평가가 멱등이라 Worker가 몇 번 재시작해도 중복 주문이 생기지 않습니다. |
-
-**실제 주문**
-
-| 문제 | 해결 |
-| --- | --- |
-| 같은 주문이 두 번 나감 | 모의 매수 1건에 실제 주문 최대 1건(DB 유일 제약). 보내기 **전에** `SENDING`을 먼저 기록하고, 같은 판단은 늘 같은 중복 방지 키를 씁니다. |
-| 보냈는지 모르는 주문 | 토스의 중복 방지 키는 **10분만** 유효하고, 주문 조회에는 그 키가 나오지 않습니다(명세에서 확인). 그래서 10분 안에서만 같은 키로 다시 보내고, 그 뒤에는 다시 보내지 않고 주문 조회로 찾습니다. 못 찾으면 "확인 필요"로 멈추고 알립니다. |
-| 기록과 실제 계좌가 어긋남 | 주문마다 체결을 확인하고, 계좌를 읽을 때마다 종목별 보유가 봇이 산 수량보다 적지 않은지 봅니다. 직접 산 주식이 섞일 수 있어 "같은지"가 아니라 "적지 않은지"만 봅니다. |
-| 증권사에 묶인 엔진 | 엔진·저장소·API는 증권사 규약(`domain/broker.py`의 `Broker`·`Trader`)만 압니다. 주문 키 형식, 접수 시간, 오류 코드 같은 토스 규칙은 어댑터 안에만 있고, 엔진 코드에 토스 이름이 들어오면 테스트가 실패합니다. |
-
-**AI 판단**
-
-| 문제 | 해결 |
-| --- | --- |
-| AI 판단은 같은 입력에도 달라서 재현이 안 됨 | 판단 자체(입력 요약·검색어·출처·답·모델·지침 버전)를 저장하고 그것을 재현의 원본으로 씁니다. 기록된 판단으로 다시 돌린 백테스트가 모의 운영 체결과 **같은지** 테스트합니다. |
-| AI로 과거 백테스트를 하면 부풀려짐 | 모델은 2020년 폭락이 어떻게 끝났는지 이미 압니다. 과거로 판단을 시키지 않고, 시작한 날부터 나 카피 봇·매달 그냥 사기와 같은 돈으로 나란히 비교합니다. |
-| AI가 엉뚱한 답을 냄 | AI는 비중만 정하고 주문·체결·한도는 엔진이 합니다. 종목 목록을 스키마로 고정하고, 합이 100이 아니거나 모르는 종목이면 그날은 그대로 둡니다. |
-| 차트만 보게 해도 AI가 종목을 알아봄 | 캔들분석 공급자 규약은 익명 표만 받아 어댑터가 종목 이름을 볼 수 없습니다. 날짜·실제 가격도 빼고, 글자 배정은 판단일마다 섞습니다(같은 날은 같은 배정이라 재현됩니다). 그래도 유명한 모양은 알아볼 수 있어 과거 성과로 말하지 않습니다. |
-| 30초 넘게 걸리는 호출이 DB를 잠금 | 그날 판단이 없으면 평가를 되돌리고 잠금 없이 AI를 부른 뒤 다시 평가합니다. 같은 날은 AI를 다시 부르지 않습니다(비용·결과 흔들림 방지). |
-| 비용과 공급자 | 판단마다 비용과 봇 종류를 적고 종류마다 한 달 상한을 따로 둡니다. 엔진은 판단 규약(`domain/advisor.py`)만 알고 Claude 호출은 어댑터에만 있어, 엔진 코드에 공급자 이름이 들어오면 테스트가 실패합니다. |
-
-**공통**
-
-| 문제 | 해결 |
-| --- | --- |
-| 토큰 경합 | 토스는 client당 유효 토큰이 1개라 새로 발급하면 이전 토큰이 무효가 됩니다. 토큰은 Worker 한 곳만 보유하고, API 컨테이너에는 토스 키가 아예 없습니다. |
-| 알림 문구가 조용히 틀어짐 | 이벤트 종류와 내용 형식을 `domain/events.py`에 정의하고, 알림은 로그 문구가 아니라 그 값만 읽습니다. 모든 종류가 문장으로 바뀌는지 테스트합니다. |
-| 돈과 시간 | 가격·금액은 `Decimal`/`numeric`(float 금지), DB 시각은 UTC, 장 판정은 `America/New_York`, 화면은 KST. |
-
-## 아키텍처
+## How it fits together
 
 ```mermaid
 flowchart LR
-    ME[내 브라우저·폰] -->|app.trading-lab.me<br/>Cloudflare Access| CF[Cloudflare Tunnel]
-    VISITOR[누구나] -->|demo.trading-lab.me| CF
-    CF --> API
-    CF --> DEMO[demo-api<br/>예시 시세 · 키 없음]
-    subgraph HOST[서버 1대 · Docker Compose]
-        API[api<br/>FastAPI + React] <--> DB[(PostgreSQL 17)]
-        WORKER[worker<br/>수집·판단·모의 체결·실주문] <--> DB
-        DEMO <--> DEMODB[(같은 PostgreSQL · 데모 DB)]
-    end
-    WORKER -->|고정 송신 IP<br/>시세·계좌 읽기, 실주문은 스위치 켤 때만| TOSS[토스증권 Open API]
-    WORKER --> TG[텔레그램]
-    WORKER -->|AI 봇 판단 · 하루 한 번<br/>시장분석: 웹 검색 · 캔들분석: 익명 차트| CLAUDE[Claude API]
+  me(["👤 Me"])
+  visitor(["👥 Anyone"])
+
+  subgraph server["🖥 One server"]
+    app["<b>Trading Lab</b><br/>screens · API"]
+    worker["<b>Worker</b><br/>prices · decisions · orders"]
+    db[("🗄 Database")]
+    demo["<b>Demo</b><br/>synthetic prices · no keys"]
+  end
+
+  subgraph outside["🌐 Outside"]
+    toss["Toss Securities<br/>prices · account · orders"]
+    claude["Claude<br/>AI bot decisions"]
+    tg["Telegram<br/>alerts"]
+  end
+
+  me -- "private sign-in" --> app
+  visitor --> demo
+  app <--> db
+  worker <--> db
+  worker <--> toss
+  worker --> claude
+  worker --> tg
 ```
 
-- 공개 인바운드 포트가 없습니다. 화면은 Cloudflare Tunnel(밖으로만 연결)과 Access(본인 이메일만)로 엽니다. 데모는 별도 DB·네트워크라 운영 DB와 Worker에 닿지 않습니다.
-- API와 Worker는 **DB를 통해서만** 대화합니다. 화면의 명령과 승인은 DB에 쌓이고 Worker가 15초 안에 처리합니다. 토스·텔레그램·Claude는 Worker만 부릅니다.
-- 운영은 시드니 리전 Lightsail VM 한 대(Terraform으로 생성, 고정 IP)에서 돕니다. VM 한 대 구성이라 홈서버 같은 다른 서버로도 같은 방식으로 옮길 수 있습니다.
+The screens and the worker only talk through the database. Only the worker reaches the brokerage, the AI and Telegram, and the demo has its own database with no keys.
 
-```text
-Worker 15초마다
-명령 처리 → 예정된 봇 평가(확정 일봉 → 이전 모의 주문 체결 → 판단[AI 봇은 그날 AI 판단] → 모의 주문)
-→ 실시간 가격·환율 → 계좌 읽기·대조(1시간) → 실제로 따라 사기(계획 → 승인 확인 → 보내기 → 체결 확인)
+## A bot's day
+
+```mermaid
+flowchart LR
+  a["<b>1. Market closes</b><br/>wait until the day's price is final"]
+  b["<b>2. Decide</b><br/>rules, or one AI call a day"]
+  c["<b>3. Check</b><br/>only known stocks, weights add to 100"]
+  d["<b>4. Simulate</b><br/>trade at the next day's open"]
+  e["<b>5. Follow for real</b><br/>1/100 size, within limits"]
+  a --> b --> c --> d --> e
 ```
 
-## 백테스트 결과는 구경용
+If anything is unclear — late data, a failed AI call, an order with an unknown result — the bot does nothing that day and says why.
 
-"나처럼 투자" 규칙도 10년 실제 가격에서 매달 그냥 사기와 거의 같아서(예: +145.5% vs +147.9%), 결과는 성적표가 아니라 구경하는 재미로 보여줍니다. 유명 전략(이동평균 교차·200일선·RSI2·돈치안)은 서비스 색깔에 맞지 않아 2026-10-08에 없앴습니다.
+## Keeping it simple
 
-## 기술 스택
+One person, one server, one decision a day. No intraday trading, no scores or rankings, and the AI only ever chooses weights; buying, selling and limits stay with the engine.
 
-| 영역 | 사용 |
-| --- | --- |
-| Backend | Python 3.14, uv, FastAPI, Pydantic v2, SQLAlchemy 2, Alembic, psycopg 3, httpx, pandas, exchange_calendars, Anthropic SDK |
-| Frontend | React, TypeScript, Vite, TanStack Query, Lightweight Charts |
-| Infra | Docker Compose, PostgreSQL 17, Cloudflare Tunnel·Access, Tailscale, AWS Lightsail(Terraform) |
-| 품질 | pytest(핵심 불변식 위주), ruff, mypy strict, oxlint, GitHub Actions, `alembic check` |
+## Disclaimer
 
-## 로컬 실행
+This is a personal project, not investment advice and not a service. Toss Securities data may only be used for my own trading, so this repository contains no market data and the demo uses synthetic prices only. AI decisions can change from day to day for the same situation and can be wrong. Past results do not promise future returns.
 
-필요한 도구: [uv](https://docs.astral.sh/uv/), Python 3.14, Node.js LTS, Docker Desktop.
+## For developers
 
-```bash
-cp .env.example .env                      # 필요하면 값 채우기 (기본값은 토스를 부르지 않음)
-docker compose up -d --wait db            # PostgreSQL 17
-cd backend
-uv sync
-uv run alembic upgrade head
-uv run uvicorn trading_lab.api.main:app --reload   # http://localhost:8000/api/health
-uv run python -m trading_lab.worker                # 다른 터미널
-cd ../frontend
-npm install
-npm run dev                                       # http://localhost:5173
-```
+How it is built and run: [`docs/project.md`](docs/project.md) (design, operations, local setup), [`docs/roadmap.md`](docs/roadmap.md) (progress), [`docs/tossApi.md`](docs/tossApi.md) (brokerage API notes), [`AGENTS.md`](AGENTS.md) (working rules and checks).
 
-| 설정 | 기본값 | 뜻 |
-| --- | --- | --- |
-| `WORKER_MARKET_SOURCE` | `stored` | `toss`면 토스 시세를 받음. 토스 client는 계정당 1개라 로컬에서는 보통 꺼 둠 |
-| `TOSS_ACCOUNT_ENABLED` | `false` | 실제 계좌 읽기 (1시간 주기·주문 변화 뒤) |
-| `LIVE_TRADING` | `false` | 실거래 스위치. 꺼져 있으면 주문 어댑터를 만들지 않아 실제 주문 경로가 없음 |
-| `ANTHROPIC_API_KEY` | 없음 | AI 봇 판단용 Claude API 키. 없으면 AI 봇은 판단하지 않고 그대로 둠 |
-| `AI_MONTHLY_BUDGET` | `15` | 시장분석 AI 봇의 한 달 비용 상한 (USD) |
-| `AI_CANDLE_MONTHLY_BUDGET` | `5` | 캔들분석 AI 봇의 한 달 비용 상한 (USD, 따로 센다) |
+## License
 
-비밀값(토스 키, Claude 키, 텔레그램 토큰 등)은 저장소 안 `.secrets/`(Git 제외)에 둡니다.
-
-## CLI
-
-```bash
-cd backend
-uv run python -m trading_lab.cli sync-bars QQQ VOO                                # 토스 일봉 동기화 (처음 전체, 이후 증분)
-uv run python -m trading_lab.cli backtest QQQ --params deposit=1000,dip=15 --save    # 백테스트
-uv run python -m trading_lab.cli bot create my-copy QQQ --params deposit=1000        # DRY RUN 봇
-uv run python -m trading_lab.cli bot cmd <봇 ID> START                            # START·PAUSE·STOP·RUN_ONCE
-uv run python -m trading_lab.cli bot create-ai "시장분석 AI 봇"                   # 시장분석 AI 봇 (관심 10종목, 월 $1,000·25일)
-uv run python -m trading_lab.cli ai-judge QQQ VOO GLD --show                      # AI에 넘길 입력 보기 (--show 빼면 실제로 1번 판단, 비용 듦)
-uv run python -m trading_lab.cli ai-judge QQQ VOO GLD --candle                    # 캔들분석 판단 1번 (--show면 AI가 볼 익명 표, --effort low|medium|high)
-uv run python -m trading_lab.cli replay QQQ --start 2024-01-02 --end 2026-09-30   # 정기 평가 재생 vs 백테스트
-uv run python -m trading_lab.cli notify chat-id                                   # 텔레그램 채팅 ID 확인 (봇에게 먼저 메시지)
-uv run scripts/toss_probe.py                                                    # 토스 API 읽기 전용 탐색
-DATABASE_URL=postgresql+psycopg://quant:quant@localhost:5432/quant_lab_portfolio \
-  uv run python -m trading_lab.cli seed-demo                                      # 데모 DB에 예시 시세·예시 봇·예시 환율
-```
-
-## 검사
-
-```bash
-cd backend
-uv run ruff check . && uv run ruff format --check .
-uv run python -m mypy          # Windows에서 mypy.exe가 막히면 이렇게 실행
-uv run pytest                  # DB 테스트는 compose DB의 quant_lab_test 사용
-cd ../frontend
-npm run lint && npm run build
-```
-
-## 운영 배포
-
-서버 한 대에서 Docker Compose로 운영(api·worker·db·cloudflared)과 데모를 함께 띄웁니다. 단계별 절차는 [project.md 6절](docs/project.md).
-
-```bash
-cd infra/lightsail && terraform apply   # (서버를 옮길 때) 시드니 VM·고정 IP·자동 스냅샷
-sudo bash deploy/bootstrap.sh           # 새 서버에서 한 번
-bash deploy/deploy.sh                   # 운영 (main 기준, 마이그레이션 성공해야 api·worker가 뜸)
-bash deploy/deploy.sh demo              # 데모 (운영 자동 배포가 함께 부른다)
-bash deploy/reset-demo.sh               # 데모 DB를 비우고 처음부터 다시 채움 (수동, 예시 봇 값을 바꿨을 때. 시세가 바뀌면 시드가 알아서)
-```
-
-**운영은 자동 배포**입니다. `main`에 push되면(CI는 작업 PR에서 이미 돌았다) [deploy 워크플로](.github/workflows/deploy.yml)가 ① GitHub 서버에서 이미지를 빌드해 GHCR(`ghcr.io/ottuck/trading-lab`, 태그는 커밋 해시와 `latest`)에 올리고 ② 운영 서버(Lightsail 시드니)의 GitHub Actions 러너(라벨 `trading-lab`)가 그 이미지를 받아 `deploy.sh`로 띄웁니다. 서버는 빌드하지 않아 가볍고, 이전 버전으로 되돌리려면 `TAG=<커밋 해시> bash deploy/deploy.sh`입니다. 러너가 밖으로만 연결하므로 앱·DB 공개 포트는 0개이고, 봇이 판단 중(AI 판단 포함)이면 끝날 때까지만 기다렸다 배포합니다(최대 60분). 운영 다음에 데모도 같은 이미지로 다시 띄웁니다(데모가 실패해도 운영은 그대로). 서버에는 GHCR 로그인이 없어 손으로 `deploy.sh`를 부르면 이미지를 받지 못하므로, 다시 배포하려면 Actions의 deploy 워크플로를 수동 실행(Run workflow)합니다. 데모는 운영과 같은 Postgres 컨테이너 안의 별도 데이터베이스(`quant_lab_demo`)를 쓰고, 예시 봇의 값(`DEMO_BOTS`)을 바꾸면 시드가 이름이 같은 봇을 이어서 채우기만 해서 새 값이 보이지 않으므로 `deploy/reset-demo.sh`로 데모 DB를 비우고 다시 채웁니다(운영 DB에는 영향 없음, 서버에서 실행, 떠 있는 데모와 같은 이미지를 써서 로그인이 필요 없음). `deploy.sh`는 `origin/main`의 compose 파일을 `.deploy/src`에 꺼내 쓰므로 작업 폴더의 브랜치를 바꾸지 않습니다.
-
-러너는 운영 서버에 systemd 서비스(Linux)로 돌고 밖으로만 연결합니다. 켜져 있는지는 GitHub 설정 → Actions → Runners에서, 배포 로그는 Actions 탭에서 봅니다.
-
-
-## 프로젝트 구조
-
-```text
-backend/src/trading_lab/
-  domain/        봉·전략·체결·백테스트·실주문 규칙, 증권사 규약(broker.py), AI 판단 규약(advisor.py)·캔들 익명화(candles.py), 이벤트 형식 (외부 의존 없음)
-  application/   일봉 동기화, DRY RUN 평가, AI 판단·화면, 실제로 따라 하기, 백테스트·평행세계·따라 하기, 알림, 데모 예시
-  adapters/      토스 시세·계좌 클라이언트와 주문 어댑터, Claude 판단 어댑터(시장분석·캔들분석), 거래소 달력, 텔레그램
-  persistence/   SQLAlchemy 모델·저장소
-  api/           FastAPI (요청 해석 → application 호출 → 응답만)
-  worker/        Worker 진입점(조립 지점)과 루프
-frontend/        React 화면
-deploy/          운영·데모 compose, 서버 준비·배포·백업 스크립트
-infra/lightsail/ Terraform
-docs/            설계·로드맵·토스 API 조사
-```
-
-## 데이터와 범위에 대한 주의
-
-- 토스증권 Open API 데이터는 본인 매매 목적으로만 쓸 수 있고 제3자 배포가 금지돼 있습니다. 이 저장소에는 시세 데이터를 넣지 않으며, 테스트와 데모는 합성 데이터만 씁니다.
-- 실제 주문은 실거래 스위치를 켜고, 봇마다 "실제로 따라 하기"를 켜고, 한도를 넘는 주문은 사람이 승인해야 나갑니다. 비율은 1/100만 쓰고, 파는 주문은 봇이 실제로 산 수량까지만 내며, 작은 금액 한도 안에서만 냅니다.
-- 주문 결과가 불명확하면 모든 봇의 새 실제 주문과 승인을 막고 매수 금액을 월 한도에 계속 예약합니다. 화면 상단의 확인 필요 카드에서 주문 번호를 지정하거나 증권사 앱의 주문 내역·보유를 확인해 미접수로 정리합니다. 입력한 번호는 Worker가 증권사 조회로 확인해야 하고, 불명 주문은 재전송하지 않습니다.
-- AI 봇의 판단은 같은 상황에서도 날마다 달라질 수 있고, 과거 성과로 검증할 수 없습니다. 판단 이유와 출처는 참고용이며 사실과 다를 수 있습니다.
-- 개인용 앱입니다. 남에게 서비스하지 않으며 투자 조언이 아닙니다. 백테스트 결과는 미래 수익을 보장하지 않습니다.
-- 체결·비용·데이터·운영의 알려진 한계는 [project.md 11절](docs/project.md)에 정리했습니다 (예: 환전·세금·배당 미반영, 원화 수익에 환차손익 미반영, 하루 한 번 판단).
-
-## 라이선스
-
-**모든 권리 보유 (All rights reserved).** 비공개 저장소이며 어떤 사용 허락도 주지 않습니다. 저작권자의 서면 허락 없이 코드·문서·설계를 쓰거나 복제·수정·배포할 수 없습니다 ([LICENSE](LICENSE)). 토스증권·Anthropic 등 외부 API와 그 데이터는 각 서비스의 약관을 따르며, 이 저장소는 그에 대한 권리를 주지 않습니다.
+All rights reserved. See [LICENSE](LICENSE).
