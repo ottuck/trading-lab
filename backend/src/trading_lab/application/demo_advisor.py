@@ -136,7 +136,7 @@ _PICK_NEWS = (
     "{s} 쪽 이익 전망이 좋아졌다는 소식이 이어지며 석 달 동안 {r:+.1f}% 올랐어요.",
     "{s} 쪽으로 투자 돈이 몰리고 있다는 소식이 이어졌어요. 석 달 수익은 {r:+.1f}%예요.",
 )
-_WEAK_NEWS = "{s} 관련 기업들의 전망이 낮아지며 200일 평균 아래로 내려왔어요."
+_WEAK_NEWS = "{s} 쪽 전망이 어두워졌다는 소식에 200일 평균 아래로 내려왔어요."
 
 
 def _news(request: AdviceRequest, rising: list[SymbolBrief]) -> list[str]:

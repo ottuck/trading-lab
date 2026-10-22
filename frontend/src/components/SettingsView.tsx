@@ -5,7 +5,7 @@ import { realKeepNote, useLive } from '../live'
 import { useDemo } from '../demo'
 import { LiveOrderList } from './Live'
 import { ago, dollars, MAX_CASH, money, percent, plainDollars, shares, signedDollars, tone, won } from '../format'
-import { closeNewBot, openBot, selectBot, startMeEdit, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
+import { JOURNAL_KEPT, closeNewBot, openBot, selectBot, startMeEdit, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
 import { isAiBot, isCandleBot, isMeBot, sameParams, useStrategies } from '../strategies'
 import { answersOf, describe } from '../me'
 import { badLimit, NAME_MAX, toConfig, toDraft, type Draft } from '../botConfig'
@@ -187,8 +187,8 @@ function DangerZone({ bot, others }: { bot: Bot; others: Bot[] }) {
   const error = reset.error ?? remove.error
   const confirmReset = () =>
     window.confirm(
-      `${bot.name}의 모의 잔고를 ${money(bot.account.initial_cash)}로 되돌리고 판단·거래 기록을 모두 지울까요?\n` +
-        '설정과 실행 상태는 그대로예요. 되돌릴 수 없어요.' +
+      `${bot.name}의 모의 잔고를 ${money(bot.account.initial_cash)}로 되돌리고 처음부터 다시 시작할까요?\n` +
+        `설정과 실행 상태는 그대로예요. ${JOURNAL_KEPT.reset}` +
         realKeepNote(bot, 'reset'),
     )
   // 따로 상자로 묶지 않고 다른 설정과 같은 줄로 둔다. 되돌릴 수 없음은 누를 때 확인 메시지로 알린다.
@@ -196,7 +196,7 @@ function DangerZone({ bot, others }: { bot: Bot; others: Bot[] }) {
     <>
       <Section
         title="처음부터 다시 시작"
-        desc={`모의 잔고를 시작 금액 ${money(bot.account.initial_cash)}로 되돌리고 판단·거래 기록을 지워요. 설정은 그대로예요.`}
+        desc={`모의 잔고를 시작 금액 ${money(bot.account.initial_cash)}로 되돌리고 처음부터 다시 판단해요. 설정은 그대로이고, 그 전 매매일지는 보관해요.`}
       >
         <div className="controls">
           <button disabled={reset.isPending} onClick={() => confirmReset() && reset.mutate()}>
@@ -205,12 +205,12 @@ function DangerZone({ bot, others }: { bot: Bot; others: Bot[] }) {
           {reset.isSuccess && <span className="ok small">다시 시작했어요. 곧 가장 최근 가격으로 첫 판단을 해요.</span>}
         </div>
       </Section>
-      <Section title="봇 삭제" desc="이 봇과 모든 기록을 지워요.">
+      <Section title="봇 삭제" desc="이 봇을 지워요. 매매일지는 보관해 두어 나중에도 볼 수 있어요.">
         <div className="controls">
           <button
             className="danger"
             disabled={remove.isPending}
-            onClick={() => window.confirm(`${bot.name}의 모든 기록을 지울까요? 되돌릴 수 없어요.${realKeepNote(bot, 'delete')}`) && remove.mutate()}
+            onClick={() => window.confirm(`${bot.name}을(를) 지울까요? 되돌릴 수 없어요. ${JOURNAL_KEPT.delete}${realKeepNote(bot, 'delete')}`) && remove.mutate()}
           >
             봇 삭제
           </button>

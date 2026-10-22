@@ -21,7 +21,7 @@ import { useDemo } from '../demo'
 import { FxNote } from './Currency'
 import { AccountCard } from './Live'
 import { Term } from './Help'
-import { goTo, openBot, openJournal, selectBot, startMeEdit, startMeQuestions, useSelectedBot } from '../selectedBot'
+import { JOURNAL_KEPT, goTo, openBot, openJournal, selectBot, startMeEdit, startMeQuestions, useSelectedBot } from '../selectedBot'
 import { PriceChart } from './PriceChart'
 import { useDismiss } from '../useDismiss'
 import { activeOf, basketLabel, evenSplit } from '../basket'
@@ -29,7 +29,7 @@ import { LeverageNotice } from './SymbolPicker'
 import { ParallelWorlds } from './Parallel'
 import { NextPlan } from './NextPlan'
 import { toConfig, toDraft } from '../botConfig'
-import { AiCompare, AiHistory, AiToday } from './AiBot'
+import { AiCompare, AiHistory, AiToday, JournalLink } from './AiBot'
 
 const STATE: Record<BotState, { label: string; dot: string }> = {
   RUNNING: { label: '실행 중', dot: 'ok pulse' },
@@ -157,6 +157,9 @@ function Controls({ bot, onSent }: { bot: Bot; onSent: (msg: string) => void }) 
       <button className={primary ? 'primary' : ''} disabled={mutation.isPending} onClick={() => send(main)}>
         {main.label}
       </button>
+      <button className="ghost" onClick={() => openJournal(bot.id)}>
+        매매일지
+      </button>
       <button className="ghost" onClick={() => (location.hash = 'settings')}>
         설정
       </button>
@@ -171,8 +174,8 @@ function Controls({ bot, onSent }: { bot: Bot; onSent: (msg: string) => void }) 
             onClick={() => {
               setMenu(false)
               const ok = window.confirm(
-                `${bot.name}의 모의 잔고를 ${money(bot.account.initial_cash)}로 되돌리고 판단·거래 기록을 모두 지울까요?\n` +
-                  '설정과 실행 상태는 그대로예요. 되돌릴 수 없어요.' +
+                `${bot.name}의 모의 잔고를 ${money(bot.account.initial_cash)}로 되돌리고 처음부터 다시 시작할까요?\n` +
+                  `설정과 실행 상태는 그대로예요. ${JOURNAL_KEPT.reset}` +
                   realKeepNote(bot, 'reset'),
               )
               if (ok) reset.mutate()
@@ -187,7 +190,7 @@ function Controls({ bot, onSent }: { bot: Bot; onSent: (msg: string) => void }) 
             disabled={remove.isPending}
             onClick={() => {
               setMenu(false)
-              if (window.confirm(`${bot.name}을(를) 지울까요? 이 봇의 모든 기록도 함께 지워져요. 되돌릴 수 없어요.${realKeepNote(bot, 'delete')}`))
+              if (window.confirm(`${bot.name}을(를) 지울까요? 되돌릴 수 없어요. ${JOURNAL_KEPT.delete}${realKeepNote(bot, 'delete')}`))
                 remove.mutate()
             }}
           >
@@ -391,7 +394,16 @@ function Overview({ bot }: { bot: Bot }) {
           </div>
           <FxNote />
         </div>
-        {!demo && <Controls bot={bot} onSent={setSent} />}
+        {demo ? (
+          // 데모는 봇을 움직일 수 없지만 매매일지는 볼 수 있다
+          <div className="hero-actions">
+            <button onClick={() => openJournal(bot.id)}>
+              매매일지
+            </button>
+          </div>
+        ) : (
+          <Controls bot={bot} onSent={setSent} />
+        )}
       </div>
       {sent && <div className="hero-note">{sent}</div>}
       {bot.state_reason && (
@@ -524,7 +536,7 @@ function Numbers({ d }: { d: DecisionT }) {
   )
 }
 
-function Decision({ bot }: { bot: Bot }) {
+function Decision({ bot, journal = false }: { bot: Bot; journal?: boolean }) {
   const list = bot.last_decisions.length ? bot.last_decisions : bot.last_decision ? [bot.last_decision] : []
   const d = list[0]
   const [more, setMore] = useState(false)
@@ -581,6 +593,7 @@ function Decision({ bot }: { bot: Bot }) {
           ))}
         </div>
       )}
+      {journal && d && <JournalLink bot={bot} />}
     </section>
   )
 }
@@ -647,10 +660,7 @@ function Trades({ bot, onOpenLog }: { bot: Bot; onOpenLog: () => void }) {
       <div className="block-head">
         <h2>거래 내역</h2>
         <button className="link" onClick={() => openJournal(bot.id)}>
-          매매일지
-        </button>
-        <button className="link" onClick={onOpenLog}>
-          전체 기록 보기 →
+          매매일지에서 모두 보기 →
         </button>
       </div>
       {!data ? (
@@ -694,6 +704,10 @@ function Trades({ bot, onOpenLog }: { bot: Bot; onOpenLog: () => void }) {
       ) : (
         <div className="line-empty">아직 거래가 없어요.</div>
       )}
+      {/* 판단·거래는 매매일지, 알림·설정을 바꾼 기록은 서랍 */}
+      <button className="link jr-go faint" onClick={onOpenLog}>
+        알림과 설정을 바꾼 기록 보기
+      </button>
     </section>
   )
 }
@@ -952,11 +966,11 @@ export function Home({ bots }: { bots: Bot[] }) {
         <Overview bot={bot} />
         {isAiBot(bot) ? (
           <>
-            <AiToday bot={bot} />
+            <AiToday bot={bot} journal />
             <AiCompare bot={bot} />
           </>
         ) : (
-          <Decision bot={bot} />
+          <Decision bot={bot} journal />
         )}
         <Holding bot={bot} />
         <PriceChart bot={bot} />

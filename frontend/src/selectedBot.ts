@@ -48,6 +48,12 @@ export function openJournal(id: number) {
   location.hash = `journal/${id}`
 }
 
+/** 처음부터 다시 시작·봇 삭제 확인창에 붙이는 말: 그 전 매매일지는 보관한다 (서버 journal_archives). */
+export const JOURNAL_KEPT = {
+  reset: '지금까지의 매매일지는 보관해 두어 매매일지 화면에서 다시 볼 수 있어요.',
+  delete: '매매일지는 보관해 두어 매매일지 화면의 "지운 봇의 일지"에서 볼 수 있어요.',
+}
+
 /** 보관한 매매일지 (처음부터 다시 시작하기 전·지운 봇) 한 권 (#journal/archive/7). */
 export function openArchive(id: number) {
   location.hash = `journal/archive/${id}`

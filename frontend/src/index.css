@@ -2813,3 +2813,11 @@ a.jr-cite {
 a.jr-cite:hover {
   color: var(--muted);
 }
+button.link.jr-go {
+  display: block;
+  margin-top: 14px;
+  font-size: 13px;
+}
+button.link.jr-go.faint {
+  color: var(--faint);
+}

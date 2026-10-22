@@ -36,6 +36,15 @@ function useAi(bot: Bot) {
   return useQuery({ queryKey: ['ai', bot.id], queryFn: () => botApi.ai(bot.id), staleTime: 60_000 })
 }
 
+/** 오늘의 판단 아래: 지난 판단은 매매일지로 (봇 화면에서만, 홈은 [매매일지] 버튼이 바로 아래에 있다). */
+export function JournalLink({ bot }: { bot: Bot }) {
+  return (
+    <button className="link jr-go" onClick={() => openJournal(bot.id)}>
+      지난 판단과 거래는 매매일지에서 →
+    </button>
+  )
+}
+
 /** 내일 시가에 낼 모의 주문 한 줄: "$405 사요", "$120어치 팔아요", "모두 팔아요". */
 function orderText(o: Order | undefined) {
   if (!o) return null
@@ -158,7 +167,7 @@ function Sources({ day }: { day: AiDay }) {
 }
 
 /** 오늘의 AI 판단: 시장 요약, 종목마다 지금 → 목표 비중과 이유, 내일 낼 주문. */
-export function AiToday({ bot }: { bot: Bot }) {
+export function AiToday({ bot, journal = false }: { bot: Bot; journal?: boolean }) {
   const { data, error } = useAi(bot)
   const demo = useDemo()
   const [all, setAll] = useState(false)
@@ -201,6 +210,7 @@ export function AiToday({ bot }: { bot: Bot }) {
             </button>
           )}
           <Sources day={day} />
+          {journal && <JournalLink bot={bot} />}
         </>
       )}
       {candle && (
