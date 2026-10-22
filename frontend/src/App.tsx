@@ -8,7 +8,7 @@ import { Home, MeHome } from './components/Dashboard'
 import { HelpButton } from './components/Help'
 import { JournalView } from './components/Journal'
 import { MeView } from './components/MeView'
-import { SettingsView } from './components/SettingsView'
+import { BotSettingsView, NewBotView, SettingsView } from './components/SettingsView'
 import { LiveApprovals } from './components/Live'
 import { ago } from './format'
 import { useDemo } from './demo'
@@ -21,12 +21,16 @@ const TABS = {
 } as const
 type Tab = keyof typeof TABS
 
-// 탭 밖의 화면: 나 카피하기 (#me), 봇 하나 자세히 보기 (#bot/3, 홈 탭), 매매일지 (#journal/3, 홈 탭)
-type Page = Tab | 'me' | 'bot' | 'journal'
+// 탭 밖의 화면: 나 카피하기 (#me), 홈 탭 안의 봇 하나 자세히 보기 (#bot/3), 봇 설정 (#bot/3/settings),
+// 매매일지 (#journal/3), 새 봇 만들기 (#new)
+type Page = Tab | 'me' | 'bot' | 'botSettings' | 'journal' | 'new'
+const IN_HOME: Page[] = ['bot', 'botSettings', 'journal', 'new']
 
 function useHashTab(): [Page, (t: Tab) => void] {
   const read = (): Page => {
     const h = location.hash.slice(1)
+    if (/^bot\/\d+\/settings$/.test(h)) return 'botSettings'
+    if (h === 'new') return 'new'
     if (h === 'bot' || h.startsWith('bot/')) return 'bot'
     if (h.startsWith('journal/')) return 'journal'
     return h === 'me' || h in TABS ? (h as Page) : 'dashboard'
@@ -110,8 +114,8 @@ export default function App() {
           <Brand />
           <nav className="tabs">
             {(Object.keys(TABS) as Tab[]).map((t) => {
-              // 봇 자세히 보기(#bot)와 매매일지(#journal)는 홈 탭 안의 화면이다.
-              const on = t === tab || (t === 'dashboard' && (tab === 'bot' || tab === 'journal'))
+              // 봇 자세히 보기·봇 설정·매매일지·새 봇 만들기는 홈 탭 안의 화면이다.
+              const on = t === tab || (t === 'dashboard' && IN_HOME.includes(tab))
               return (
               <button
                 key={t}
@@ -145,6 +149,8 @@ export default function App() {
         {bots.error && <div className="alert">봇 정보를 불러오지 못했습니다: {bots.error.message}</div>}
         {tab === 'dashboard' && bots.data && <MeHome bots={bots.data} />}
         {tab === 'bot' && !!bots.data?.length && <Home bots={bots.data} />}
+        {tab === 'botSettings' && bots.data && <BotSettingsView bots={bots.data} />}
+        {tab === 'new' && bots.data && <NewBotView bots={bots.data} />}
         {tab === 'journal' && bots.data && <JournalView bots={bots.data} />}
         {tab === 'backtest' && <BacktestView />}
         {tab === 'me' && bots.data && <MeView bots={bots.data} />}

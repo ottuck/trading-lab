@@ -1438,7 +1438,8 @@ button.bt-item.active {
 }
 
 /* ---------- 설정 ---------- */
-/* Vercel식: 제목 자리의 봇 바꾸기 메뉴, 왼쪽 섹션 설명·오른쪽 입력, 저장 하나, 맨 아래 위험 영역 */
+/* Vercel식: 왼쪽 섹션 설명·오른쪽 입력, 저장 하나, 맨 아래 위험 영역.
+   설정 탭은 앱 전체, 봇 하나의 설정은 봇 화면의 [설정](#bot/3/settings) */
 .settings {
   max-width: 960px;
 }
@@ -1450,42 +1451,46 @@ button.bt-item.active {
 .settings-head p {
   margin: 0;
 }
-.switcher {
-  position: relative;
+.settings-head .settings-title {
+  overflow-wrap: anywhere; /* 띄어쓰기 없는 긴 봇 이름도 화면 밖으로 밀지 않게 */
+}
+.settings-head button.back {
   justify-self: start;
+  margin-bottom: 4px;
 }
-button.switcher-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 6px 2px 0;
-  border: 0;
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.03em;
-  max-width: 100%;
-  text-align: left;
-  overflow-wrap: anywhere; /* 띄어쓰기 없는 긴 이름도 화면 밖으로 밀지 않게 */
+/* 설정 탭의 봇 목록: 누르면 그 봇의 설정으로 */
+.set-bots {
+  display: grid;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
 }
-button.switcher-btn svg {
-  flex: none;
-}
-button.switcher-btn:hover:not(:disabled) {
-  background: none;
-  color: var(--muted);
-}
-.switcher-btn svg {
-  width: 20px;
-  height: 20px;
-  color: var(--muted);
-}
-.switcher .menu {
-  left: 0;
-  right: auto;
-  min-width: 220px;
-}
-.switcher .menu button {
+button.set-bot {
+  display: flex;
   justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 0;
+  text-align: left;
+}
+button.set-bot + button.set-bot {
+  border-top: 1px solid var(--border);
+}
+button.set-bot > span:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.ai-cost-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
 }
 .set-section {
   display: grid;
@@ -2328,15 +2333,12 @@ body {
 .live-ask-row .title {
   font-size: 15px;
 }
-/* 설정: 맨 위 "계좌와 알림"(봇과 무관) 다음에 봇 설정 */
+/* 설정 제목: 설정 탭 "설정", 봇 설정 "봇 이름 설정", "새 봇 만들기" */
 .settings-title {
   margin: 0;
   font-size: 22px;
   font-weight: 600;
   letter-spacing: -0.03em;
-}
-.settings-head.bots-head {
-  margin-top: 48px;
 }
 /* 홈 오른쪽 실제 계좌 카드. 누르면 금액을 가린다 */
 button.account-card {
@@ -2530,11 +2532,6 @@ button.line.ai-day {
   padding: 0;
   border: 0;
   min-width: 0;
-}
-
-/* 새 봇 만들기로 오면 이 제목까지 스크롤한다: 위의 고정 메뉴에 가리지 않게 */
-.bots-head {
-  scroll-margin-top: 72px;
 }
 
 /* ---------- 설정의 토스증권 계좌: 돈·손익을 칸으로 나눠 보여준다 ---------- */

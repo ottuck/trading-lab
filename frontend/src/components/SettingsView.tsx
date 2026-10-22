@@ -1,15 +1,14 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { api, botApi, liveApi, notifyApi, type Bot, type NotifyScope, type SymbolWeight, type BrokerAccount } from '../api'
 import { realKeepNote, useLive } from '../live'
 import { useDemo } from '../demo'
 import { LiveOrderList } from './Live'
 import { ago, dollars, MAX_CASH, money, percent, plainDollars, shares, signedDollars, tone, won } from '../format'
-import { JOURNAL_KEPT, closeNewBot, openBot, selectBot, startMeEdit, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
+import { JOURNAL_KEPT, closeNewBot, goTo, openBot, openBotSettings, selectBot, startMeEdit, startNewBot, useNewBotSeed, useSelectedBot, type NewBotSeed } from '../selectedBot'
 import { isAiBot, isCandleBot, isMeBot, sameParams, useStrategies } from '../strategies'
 import { answersOf, describe } from '../me'
 import { badLimit, NAME_MAX, toConfig, toDraft, type Draft } from '../botConfig'
-import { useDismiss } from '../useDismiss'
 import { AmountInput } from './AmountInput'
 import { StrategyFields, TradeFields } from './BotConfigFields'
 import { activeOf, basketLabel, suggestName } from '../basket'
@@ -31,62 +30,38 @@ function Section({ title, desc, children }: { title: string; desc?: React.ReactN
   )
 }
 
-/** 제목 자리의 봇 바꾸기 메뉴: "qqq-sma 설정 ▾" */
-function Switcher({ bots, current, creating }: { bots: Bot[]; current?: Bot; creating: boolean }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useDismiss(open, () => setOpen(false), ref)
-  // 나 카피 봇이 있으면 질문은 그 봇의 규칙 바꾸기 (데모의 예시 봇은 바꿀 수 없어 새로 해 본다)
+/** 봇 한 줄 설명: "VOO 50% · QQQ 50% · 나처럼 투자 · 시작 금액 $1,350.00" */
+function useBotLine() {
+  const { byName } = useStrategies()
+  return (bot: Bot) =>
+    `${isAiBot(bot) ? `관심 종목 ${bot.symbols.length}개` : basketLabel(bot.symbols, bot.symbol)} · ${byName[bot.strategy]?.nickname ?? bot.strategy} · 시작 금액 ${money(bot.account.initial_cash)}`
+}
+
+/** 설정 탭의 봇 목록: 봇마다의 설정은 봇 화면에 있으니 거기로 보내 준다. */
+function BotsSection({ bots }: { bots: Bot[] }) {
+  const line = useBotLine()
+  // 나 카피 봇이 없으면 여기서도 만들 수 있게 (데모의 예시 봇은 바꿀 수 없어 새로 해 본다)
   const me = useDemo() ? undefined : bots.find(isMeBot)
   return (
-    <div className="switcher" ref={ref}>
-      <button className="switcher-btn" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen(!open)} disabled={!bots.length}>
-        {creating ? '새 봇 만들기' : `${current?.name} 설정`}
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M7 10l5 5 5-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
-      {open && (
-        <div className="menu" role="menu">
+    <Section title="봇 설정" desc="규칙·종목·이름처럼 봇마다 다른 것은 봇 화면의 [설정]에서 바꿔요. 봇을 누르면 바로 가요.">
+      {bots.length > 0 && (
+        <div className="set-bots">
           {bots.map((b) => (
-            <button
-              key={b.id}
-              role="menuitemradio"
-              aria-checked={!creating && b.id === current?.id}
-              className={!creating && b.id === current?.id ? 'active' : ''}
-              onClick={() => {
-                setOpen(false)
-                closeNewBot()
-                selectBot(b.id)
-              }}
-            >
-              {b.name}
-              <span className="faint small">{b.symbol}</span>
+            <button key={b.id} className="set-bot" onClick={() => openBotSettings(b.id)}>
+              <span>
+                <b>{b.name}</b>
+                <span className="faint small">{line(b)}</span>
+              </span>
+              <span aria-hidden="true">›</span>
             </button>
           ))}
-          <hr />
-          <button
-            role="menuitem"
-            onClick={() => {
-              setOpen(false)
-              startNewBot()
-            }}
-          >
-            + 새 봇 만들기
-          </button>
-          <button
-            role="menuitem"
-            onClick={() => {
-              setOpen(false)
-              if (me) startMeEdit(me.id)
-              else location.hash = 'me'
-            }}
-          >
-            {me ? '나 다시 카피하기' : '나 카피하기'}
-          </button>
         </div>
       )}
-    </div>
+      <div className="controls">
+        <button onClick={() => startNewBot()}>+ 새 봇 만들기</button>
+        {!me && <button onClick={() => (location.hash = 'me')}>나 카피하기</button>}
+      </div>
+    </Section>
   )
 }
 
@@ -182,6 +157,7 @@ function DangerZone({ bot, others }: { bot: Bot; others: Bot[] }) {
     onSuccess: () => {
       if (others[0]) selectBot(others[0].id)
       void qc.invalidateQueries()
+      goTo('dashboard')
     },
   })
   const error = reset.error ?? remove.error
@@ -563,9 +539,21 @@ function AiCostRow({ bot }: { bot: Bot }) {
 /** AI 비용: 봇이 몇 개 안 되니 설정에서 한눈에 본다. 80%를 넘으면 텔레그램으로도 알려 준다. */
 function AiCostSection({ bots }: { bots: Bot[] }) {
   const ais = bots.filter(isAiBot)
+  // 봇마다의 줄과 같은 쿼리라 한 번만 부른다
+  const costs = useQueries({ queries: ais.map((b) => ({ queryKey: ['ai', b.id], queryFn: () => botApi.ai(b.id), staleTime: 60_000 })) })
   if (!ais.length) return null
+  const loaded = costs.every((c) => c.data)
+  const sum = (k: 'spent' | 'budget') => String(costs.reduce((s, c) => s + Number(c.data?.[k] ?? 0), 0))
   return (
     <Section title="AI 비용" desc="AI 봇은 판단할 때마다 돈이 들어요. 봇마다 한 달 상한이 있고, 상한의 80%를 넘으면 알려 드려요.">
+      {ais.length > 1 && loaded && (
+        <div className="ai-cost-total">
+          <span>이번 달 합계</span>
+          <b className="tnum">
+            {money(sum('spent'))} / {money(sum('budget'))}
+          </b>
+        </div>
+      )}
       {ais.map((b) => (
         <AiCostRow key={b.id} bot={b} />
       ))}
@@ -573,21 +561,6 @@ function AiCostSection({ bots }: { bots: Bot[] }) {
   )
 }
 
-/** 설정 맨 위: 봇과 상관없이 하나인 것 (실제 계좌, AI 비용, 알림, 비상 중지). */
-function AccountAndNotify({ bots }: { bots: Bot[] }) {
-  return (
-    <>
-      <div className="settings-head">
-        <h1 className="settings-title">계좌와 알림</h1>
-        <p className="muted small">봇과 상관없이 하나예요.</p>
-      </div>
-      <BrokerAccountSection />
-      <AiCostSection bots={bots} />
-      <NotifySection />
-      <HaltSection />
-    </>
-  )
-}
 
 function sameStrategy(d: Draft, bot: Bot) {
   return d.strategy === bot.strategy && sameParams(d.params, bot.params)
@@ -762,50 +735,94 @@ function NewBotForm({ seed, taken }: { seed: NewBotSeed; taken: string[] }) {
         >
           {startNow ? '만들고 시작하기' : '만들기'}
         </button>
-        {taken.length > 0 && (
-          <button className="ghost" onClick={closeNewBot}>
-            취소
-          </button>
-        )}
+        <button
+          className="ghost"
+          onClick={() => {
+            closeNewBot()
+            history.back()
+          }}
+        >
+          취소
+        </button>
         {create.error && <span className="bad small">{create.error.message}</span>}
       </div>
     </>
   )
 }
 
-/** 설정: 홈에서 고른 봇 하나를 바꾼다. 제목의 메뉴로 다른 봇을 고르거나 새 봇을 만든다. */
+/** 설정 탭: 앱 전체에 하나인 것 (실제 계좌, AI 비용 합계, 알림, 실제 주문 멈추기)과 봇 설정으로 가는 목록. */
 export function SettingsView({ bots }: { bots: Bot[] }) {
-  const seed = useNewBotSeed()
-  const selected = useSelectedBot(bots)
-  const { byName } = useStrategies()
-  const creating = seed !== null || !bots.length
   const demo = useDemo()
-  const botsHead = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (seed) botsHead.current?.scrollIntoView({ block: 'start' })
-  }, [seed])
   return (
     <div className="settings">
-      {/* 데모: 실제 계좌·알림이 없고, 봇 설정은 무엇을 고를 수 있는지 보기만 한다 (바꾸기 요청은 서버가 막는다) */}
-      {!demo && <AccountAndNotify bots={bots} />}
-      <div className="settings-head bots-head" ref={botsHead}>
-        <Switcher bots={bots} current={selected} creating={creating} />
-        <p className="muted small">
-          {creating
-            ? seed?.strategy
-              ? '시험해 본 전략과 종목으로 채워 뒀어요.'
-              : '새 모의 투자 봇을 만들어요.'
-            : `${isAiBot(selected) ? `관심 종목 ${selected.symbols.length}개` : basketLabel(selected.symbols, selected.symbol)} · ${byName[selected.strategy]?.nickname ?? selected.strategy} · 시작 금액 ${money(selected.account.initial_cash)}`}
-        </p>
+      <div className="settings-head">
+        <h1 className="settings-title">설정</h1>
+        <p className="muted small">앱 전체에 한 번만 정하는 것들이에요.</p>
       </div>
+      {/* 데모에는 실제 계좌·알림이 없다 */}
+      {!demo && (
+        <>
+          <BrokerAccountSection />
+          <AiCostSection bots={bots} />
+          <NotifySection />
+          <HaltSection />
+        </>
+      )}
+      <BotsSection bots={bots} />
+    </div>
+  )
+}
+
+/** 데모에서는 무엇을 고를 수 있는지 보기만 한다 (바꾸기 요청은 서버가 막는다). */
+function DemoLock({ children }: { children: React.ReactNode }) {
+  const demo = useDemo()
+  return (
+    <>
       {demo && <div className="notice">데모에서는 설정을 바꿀 수 없어요. 어떤 것을 고를 수 있는지만 보여 드려요.</div>}
       <fieldset className="set-lock" disabled={demo}>
-        {creating ? (
-          <NewBotForm key={JSON.stringify(seed)} seed={seed ?? {}} taken={bots.map((b) => b.name)} />
-        ) : (
-          <BotSettings key={selected.id} bot={selected} others={bots.filter((b) => b.id !== selected.id)} />
-        )}
+        {children}
       </fieldset>
+    </>
+  )
+}
+
+/** 봇 하나의 설정 (#bot/3/settings): 봇 화면의 [설정]으로 들어온다. */
+export function BotSettingsView({ bots }: { bots: Bot[] }) {
+  // 주소의 봇만 쓴다: 지운 봇의 주소로 와도 다른 봇 설정을 열지 않는다.
+  // useSelectedBot은 주소가 바뀔 때(다른 봇 설정으로 바로 옮겨 갈 때) 다시 그리려고 부른다.
+  useSelectedBot(bots)
+  const id = Number(/^#bot\/(\d+)\/settings$/.exec(location.hash)?.[1])
+  const bot = bots.find((b) => b.id === id)
+  const line = useBotLine()
+  if (!bot) return <div className="line-empty">이 봇을 찾을 수 없어요. 지워졌을 수 있어요.</div>
+  return (
+    <div className="settings">
+      <div className="settings-head">
+        <button className="link back" onClick={() => (isMeBot(bot) ? goTo('dashboard') : openBot(bot.id))}>
+          ‹ {bot.name}
+        </button>
+        <h1 className="settings-title">{bot.name} 설정</h1>
+        <p className="muted small">{line(bot)}</p>
+      </div>
+      <DemoLock>
+        <BotSettings key={bot.id} bot={bot} others={bots.filter((b) => b.id !== bot.id)} />
+      </DemoLock>
+    </div>
+  )
+}
+
+/** 새 봇 만들기 (#new): 설정 탭의 [+ 새 봇 만들기]나 시험해 보기 결과에서 온다. */
+export function NewBotView({ bots }: { bots: Bot[] }) {
+  const seed = useNewBotSeed() ?? {}
+  return (
+    <div className="settings">
+      <div className="settings-head">
+        <h1 className="settings-title">새 봇 만들기</h1>
+        <p className="muted small">{seed.strategy ? '시험해 본 전략과 종목으로 채워 뒀어요.' : '새 모의 투자 봇을 만들어요.'}</p>
+      </div>
+      <DemoLock>
+        <NewBotForm key={JSON.stringify(seed)} seed={seed} taken={bots.map((b) => b.name)} />
+      </DemoLock>
     </div>
   )
 }
