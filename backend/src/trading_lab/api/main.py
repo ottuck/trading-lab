@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from starlette.middleware.base import RequestResponseEndpoint
 
 from trading_lab import __version__
+from trading_lab.adapters.error_reporting import init_error_reporting
 from trading_lab.api.access import AccessGuard
 from trading_lab.api.routes import router
 from trading_lab.api.schemas import HealthResponse, WorkerStatus
@@ -43,6 +44,8 @@ async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
 
 
 _settings = get_settings()
+# 예상 못 한 500은 uvicorn이 ERROR로 남기고, 그 로그가 Sentry로 간다 (adapters/error_reporting.py).
+init_error_reporting(_settings.sentry_dsn, _settings.sentry_release)
 access = (
     AccessGuard(_settings.cf_access_team, _settings.cf_access_aud)
     if _settings.cf_access_team and _settings.cf_access_aud

@@ -19,6 +19,7 @@ from trading_lab import __version__
 from trading_lab.adapters.brokers import BrokerSetupError, connect_broker, make_trader
 from trading_lab.adapters.claude.advisor import ClaudeAdvisor
 from trading_lab.adapters.claude.candles import ClaudeCandleAdvisor
+from trading_lab.adapters.error_reporting import init_error_reporting
 from trading_lab.adapters.heartbeat_ping import HeartbeatPinger
 from trading_lab.adapters.market_calendar import get_calendar
 from trading_lab.adapters.telegram import TelegramClient
@@ -179,6 +180,8 @@ def main() -> None:
             stream.reconfigure(encoding="utf-8")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    settings = get_settings()
+    init_error_reporting(settings.sentry_dsn, settings.sentry_release)
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.set())
