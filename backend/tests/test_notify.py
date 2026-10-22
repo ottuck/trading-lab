@@ -9,6 +9,7 @@ from trading_lab.application import notify_settings
 from trading_lab.application.messages import event_message
 from trading_lab.application.notify import EventNotifier
 from trading_lab.domain.events import (
+    AiBudgetNearData,
     AiJudgmentData,
     BalanceSummary,
     BotDeletedData,
@@ -110,6 +111,7 @@ SAMPLES: dict[EventKind, Mapping[str, Any] | None] = {
         needed="6.75", available="2.86", trade_date="2026-10-26", deadline="10/26 22:35"
     ),
     EventKind.AI_JUDGMENT: AiJudgmentData(status="FAILED", session_date="2026-10-05"),
+    EventKind.AI_BUDGET_NEAR: AiBudgetNearData(spent="12.10", budget="15"),
     EventKind.LIVE_RECONCILE: LiveReconcileData(
         shortfall=[ShortfallItem(symbol="VOO", held="0.002", bought="0.0048")]
     ),
@@ -137,6 +139,8 @@ def test_quiet_restart_and_followed_ai_failure() -> None:
     live = notify_settings.NotifySettings(available=True, enabled=True, scope="live")
     assert not notify_settings.wants(live, EventKind.AI_JUDGMENT)
     assert notify_settings.wants(live, EventKind.AI_JUDGMENT, follows=True)
+    # 비용이 상한에 가까워진 소식은 따라 하지 않는 AI 봇이어도 보낸다
+    assert notify_settings.wants(live, EventKind.AI_BUDGET_NEAR)
 
 
 def test_events_become_plain_messages_sent_once(engine: Engine, session: Session) -> None:

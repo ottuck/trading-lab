@@ -56,7 +56,9 @@ class EventNotifier:
         # (마지막 이벤트 id, 묶은 문장, 소식 수) 단위로 보낸다.
         chunks: list[tuple[int, str, int]] = []
         for event in events:
-            follows = event.bot_id in following
+            # 비용 상한 소식은 돈이 드는 일이라 실제로 따라 하지 않는 AI 봇도 보낸다
+            over_budget = (event.data or {}).get("status") == "OVER_BUDGET"
+            follows = event.bot_id in following or over_budget
             # 화면 설정: 꺼짐이거나 받지 않기로 한 종류
             if not wants(settings, event.kind, follows=follows):
                 continue

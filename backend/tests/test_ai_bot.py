@@ -173,6 +173,9 @@ def test_ai_bot_stops_calling_over_monthly_budget(engine: Engine, session: Sessi
         select(EventRow.level).where(EventRow.kind == "ai_judgment").order_by(EventRow.id)
     ).all()
     assert notices[0] == "WARN" and set(notices[1:]) == {"INFO"}  # 상한은 한 번만 알린다
+    # 80%($0.08)를 넘긴 두 번째 판단에서 미리 알림이 한 번 나간다
+    near = session.scalars(select(EventRow).where(EventRow.kind == "ai_budget_near")).all()
+    assert len(near) == 1 and near[0].data == {"spent": "0.10", "budget": "0.1"}
 
 
 class LabelAdvisor:

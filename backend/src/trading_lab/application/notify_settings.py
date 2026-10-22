@@ -24,6 +24,7 @@ LIVE_KINDS = {
     EventKind.LIVE_RECONCILE,
     EventKind.LIVE_FUNDS,
     EventKind.RUN_ERROR,
+    EventKind.AI_BUDGET_NEAR,  # 돈이 드는 일이라 실제로 따라 하지 않는 AI 봇도 보낸다
     EventKind.NOTIFY_TEST,
 }
 # 실제로 따라 하는 봇이면 "실제 주문만"에서도 보낸다: 그날 판단이 없으면 실제 주문도 나가지 않는다

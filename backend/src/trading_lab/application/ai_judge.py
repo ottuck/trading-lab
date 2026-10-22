@@ -19,7 +19,7 @@ from trading_lab.domain.advisor import (
     Unmasking,
     check_advice,
 )
-from trading_lab.domain.events import AiJudgmentData, EventKind
+from trading_lab.domain.events import AiBudgetNearData, AiJudgmentData, EventKind
 from trading_lab.domain.strategy import AI_STRATEGY, CANDLE_STRATEGY
 from trading_lab.persistence.ai_judgments import (
     has_judgment,
@@ -28,6 +28,8 @@ from trading_lab.persistence.ai_judgments import (
     spent,
 )
 from trading_lab.persistence.bots import add_event
+
+NEAR_BUDGET = Decimal("0.8")  # 한 달 비용이 상한의 이 비율을 넘으면 미리 알린다
 
 
 @dataclass(frozen=True)
@@ -109,6 +111,21 @@ def judge_bot(
         judgment = judge(advisor, request)
     already_over = over_budget_since(session, bot_id, start)
     save_judgment(session, bot_id, judgment, now, strategy)
+    if judgment.status is not JudgmentStatus.OVER_BUDGET:
+        # 80%선을 넘는 판단에서 한 번만 알린다 (비용은 늘기만 해서 그달 안에 다시 넘을 수 없다)
+        total = spent(session, start, end, strategy)
+        if used < budget * NEAR_BUDGET <= total:
+            add_event(
+                session,
+                now,
+                "WARN",
+                EventKind.AI_BUDGET_NEAR,
+                f"{request.session_date} AI 비용 ${total:.2f}, 상한 ${budget}의 80%를 넘음",
+                bot_id=bot_id,
+                data=AiBudgetNearData(
+                    spent=str(total.quantize(Decimal("0.01"))), budget=str(budget)
+                ),
+            )
     if judgment.status is not JudgmentStatus.OK:
         data["status"] = judgment.status.value
         # 비용 상한은 그달 처음 한 번만 알린다

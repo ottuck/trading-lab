@@ -33,6 +33,7 @@ class EventKind(StrEnum):
     LIVE_RECONCILE = "live_reconcile"  # 실제 계좌 대조 결과가 바뀜 (부족 생김·풀림)
     LIVE_FUNDS = "live_funds"  # 곧 낼 실제 주문에 달러가 모자람 (미리 알림)
     AI_JUDGMENT = "ai_judgment"  # AI 봇이 그날 판단을 받지 못함 (실패·형식 오류·비용 상한)
+    AI_BUDGET_NEAR = "ai_budget_near"  # 이번 달 AI 비용이 상한의 80%를 넘음 (미리 알림)
 
 
 class SkipReason(StrEnum):
@@ -184,6 +185,11 @@ class AiJudgmentData(TypedDict):
     session_date: str
     spent: NotRequired[str]  # 이번 달 쓴 AI 비용 (USD, 비용 상한일 때)
     budget: NotRequired[str]
+
+
+class AiBudgetNearData(TypedDict):
+    spent: str  # 이번 달 쓴 AI 비용 (USD)
+    budget: str  # 그 전략의 한 달 상한 (USD)
 
 
 class DecisionRepeatData(BalanceSummary):

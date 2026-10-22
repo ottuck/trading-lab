@@ -521,8 +521,60 @@ function NotifySection() {
   )
 }
 
-/** 설정 맨 위: 봇과 상관없이 하나인 것 (실제 계좌, 알림, 비상 중지). */
-function AccountAndNotify() {
+/** 지금까지 쓴 돈이 이 속도로 이어질 때 월말 비용 (UTC 달). 달 초에는 들쭉날쭉해서 3일이 지난 뒤부터. */
+function monthEndForecast(spent: number): number | null {
+  const now = new Date()
+  const day = now.getUTCDate()
+  const daysInMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate()
+  return day >= 3 ? (spent / day) * daysInMonth : null
+}
+
+/** AI 봇 하나의 이번 달 비용: 쓴 돈 / 한 달 상한, 지금 속도로 월말까지 쓸 돈. 달은 UTC로 센다. */
+function AiCostRow({ bot }: { bot: Bot }) {
+  const { byName } = useStrategies()
+  const { data } = useQuery({ queryKey: ['ai', bot.id], queryFn: () => botApi.ai(bot.id), staleTime: 60_000 })
+  if (!data) return null
+  const spent = Number(data.spent)
+  const budget = Number(data.budget)
+  const ratio = budget > 0 ? spent / budget : 0
+  const forecast = monthEndForecast(spent)
+  const level = ratio >= 1 ? 'bad' : ratio >= 0.8 ? 'warn' : ''
+  return (
+    <div className="ai-cost">
+      <div className="ai-cost-head">
+        <b>{byName[bot.strategy]?.nickname ?? bot.name}</b>
+        <span className={`tnum ${level}`}>
+          {money(data.spent)} / {money(data.budget)}
+        </span>
+      </div>
+      <div className="ai-cost-bar">
+        <i className={level} style={{ width: `${Math.min(100, ratio * 100)}%` }} />
+      </div>
+      <div className="faint small">
+        {ratio >= 1
+          ? '상한에 닿아서 이번 달 남은 날은 판단하지 않고 지금 그대로 둬요.'
+          : `상한의 ${Math.round(ratio * 100)}%를 썼어요.${forecast != null ? ` 이 속도면 월말에 약 ${money(String(forecast))}예요.` : ''}`}
+        {data.latest?.cost != null && ` 마지막 판단은 ${money(data.latest.cost)} 들었어요.`}
+      </div>
+    </div>
+  )
+}
+
+/** AI 비용: 봇이 몇 개 안 되니 설정에서 한눈에 본다. 80%를 넘으면 텔레그램으로도 알려 준다. */
+function AiCostSection({ bots }: { bots: Bot[] }) {
+  const ais = bots.filter(isAiBot)
+  if (!ais.length) return null
+  return (
+    <Section title="AI 비용" desc="AI 봇은 판단할 때마다 돈이 들어요. 봇마다 한 달 상한이 있고, 상한의 80%를 넘으면 알려 드려요.">
+      {ais.map((b) => (
+        <AiCostRow key={b.id} bot={b} />
+      ))}
+    </Section>
+  )
+}
+
+/** 설정 맨 위: 봇과 상관없이 하나인 것 (실제 계좌, AI 비용, 알림, 비상 중지). */
+function AccountAndNotify({ bots }: { bots: Bot[] }) {
   return (
     <>
       <div className="settings-head">
@@ -530,6 +582,7 @@ function AccountAndNotify() {
         <p className="muted small">봇과 상관없이 하나예요.</p>
       </div>
       <BrokerAccountSection />
+      <AiCostSection bots={bots} />
       <NotifySection />
       <HaltSection />
     </>
@@ -734,7 +787,7 @@ export function SettingsView({ bots }: { bots: Bot[] }) {
   return (
     <div className="settings">
       {/* 데모: 실제 계좌·알림이 없고, 봇 설정은 무엇을 고를 수 있는지 보기만 한다 (바꾸기 요청은 서버가 막는다) */}
-      {!demo && <AccountAndNotify />}
+      {!demo && <AccountAndNotify bots={bots} />}
       <div className="settings-head bots-head" ref={botsHead}>
         <Switcher bots={bots} current={selected} creating={creating} />
         <p className="muted small">
