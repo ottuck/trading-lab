@@ -293,6 +293,25 @@ uv run python -m trading_lab.worker
 npm --prefix frontend run dev
 ```
 
+자주 쓰는 CLI (`backend`에서, 2026-10-22 README에서 옮김):
+
+```bash
+uv run python -m trading_lab.cli sync-bars QQQ VOO                                # 토스 일봉 동기화 (처음 전체, 이후 증분)
+uv run python -m trading_lab.cli backtest QQQ --params deposit=1000,dip=15 --save  # 백테스트
+uv run python -m trading_lab.cli bot create my-copy QQQ --params deposit=1000      # DRY RUN 봇
+uv run python -m trading_lab.cli bot cmd <봇 ID> START                            # START·PAUSE·STOP·RUN_ONCE
+uv run python -m trading_lab.cli bot create-ai "시장분석 AI 봇"                   # 시장분석 AI 봇 (관심 10종목)
+uv run python -m trading_lab.cli ai-judge QQQ VOO GLD --show                      # AI에 넘길 입력 보기 (--show 빼면 실제로 1번 판단, 비용 듦)
+uv run python -m trading_lab.cli ai-judge QQQ VOO GLD --candle                    # 캔들분석 판단 1번 (--show면 익명 표, --effort low|medium|high)
+uv run python -m trading_lab.cli replay QQQ --start 2024-01-02 --end 2026-09-30   # 정기 평가 재생 vs 백테스트
+uv run python -m trading_lab.cli notify chat-id                                   # 텔레그램 채팅 ID 확인 (봇에게 먼저 메시지)
+uv run scripts/toss_probe.py                                                    # 토스 API 읽기 전용 탐색
+DATABASE_URL=postgresql+psycopg://quant:quant@localhost:5432/quant_lab_portfolio \
+  uv run python -m trading_lab.cli seed-demo                                      # 데모 DB에 예시 시세·예시 봇·예시 환율
+```
+
+비밀값(토스 키, Claude 키, 텔레그램 토큰 등)은 저장소 안 `.secrets/`(Git 제외)에 둔다. 처음에는 `cp .env.example .env`로 시작한다 (기본값은 토스를 부르지 않는다).
+
 ### 이전 계획 (Lightsail → OCI / 홈서버)
 
 - **서울로 옮기고 싶어지면** (계정 제약이 풀렸을 때) 같은 절차로 `region`·`availability_zone`·`bundle_id`만 바꿔 새로 만든다. 송신 IP가 바뀌므로 아래 순서를 따른다.
@@ -387,7 +406,7 @@ npm --prefix frontend run dev
 - **PR:** 한국어로 쓰고 변경 내용, 검증 방법과 결과, 제한 사항을 적는다. CI가 있으면 통과해야 한다.
 - **Merge 권한 (2026-10-01):** Claude가 작업 브랜치 → `dev`, `dev → main` 모두 merge할 수 있다. 단 **큰 문제가 있으면 merge하지 않고 사용자에게 묻는다.** 큰 문제의 예: CI 실패, 설계 원칙(3절) 위반이나 변경, 실거래 경로 추가, 비밀값·시세 데이터 노출 위험, 비용이 드는 리소스 생성, 되돌리기 어려운 DB 변경.
 - **계획은 언제든 바뀐다 (2026-10-09, 사용자):** 회사의 위에서 정한 계획이 아니라 개인 사이드 프로젝트다. 예전 결정과 새 결정이 겹치면 **최근 결정이 앞선다.** 예전 결정을 이유로 새 요청을 미루지 않고, 바뀐 결정은 이 문서에서 지우거나 고친다 (예: "마일스톤 4를 지켜보는 동안 AI 지침을 바꾸지 않는다"는 없앴다). 지침을 바꿔도 판단 기록의 지침 버전으로 언제부터인지 구분된다.
-- **문서:** 매 작업 전에 이 문서와 [roadmap.md](roadmap.md)의 현재 단계를 확인한다. 설계가 바뀌면 같은 PR에서 문서를 고친다. 단계가 끝나면 roadmap의 상태를 갱신한다. 날짜가 붙은 작업 일지(코드 목록·측정값 나열)는 적지 않고, 결정과 그 이유, 지금의 동작만 남긴다.
+- **문서:** 매 작업 전에 이 문서와 [roadmap.md](roadmap.md)의 현재 단계를 확인한다. 설계가 바뀌면 같은 PR에서 문서를 고친다. 단계가 끝나면 roadmap의 상태를 갱신한다. **README는 영어로, 앱을 처음 보는 사람에게 필요한 소개(무엇인지·화면·할 수 있는 것·짜임·주의)만 둔다 (2026-10-22, 사용자 결정).** 개발·운영(로컬 실행·CLI·설정·배포·설계 판단)은 이 문서가 맡는다. 날짜가 붙은 작업 일지(코드 목록·측정값 나열)는 적지 않고, 결정과 그 이유, 지금의 동작만 남긴다.
 - **커밋에 넣지 않는 것:** API 키, 토큰, 계좌 정보, 실제 토스 응답 데이터, `docs/references/` 이미지. 가짜 키도 넣지 않고 `.env.example`에는 변수 이름만 둔다.
 - **공급자 기능:** 공식 문서와 실제 호출로 확인하기 전에는 사실로 적지 않는다.
 
