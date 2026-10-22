@@ -45,6 +45,20 @@ class CandleBrief:
             "weekly": [[str(v) for v in row] for row in self.weekly],
         }
 
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> CandleBrief:
+        def rows(raw: list[list[str]]) -> tuple[Ohlc, ...]:
+            return tuple((Decimal(o), Decimal(h), Decimal(lo), Decimal(c)) for o, h, lo, c in raw)
+
+        lev = d.get("leverage")
+        return cls(
+            d["label"],
+            rows(d["daily"]),
+            rows(d["weekly"]),
+            Decimal(d["weight_now"]),
+            Decimal(lev) if lev is not None else None,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class CandleRequest:
@@ -63,6 +77,15 @@ class CandleRequest:
             "feedback": [c.as_dict() for c in self.feedback],
         }
 
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> CandleRequest:
+        return cls(
+            tuple(CandleBrief.from_dict(s) for s in d["symbols"]),
+            Decimal(d["cash_weight"]),
+            d.get("previous"),
+            tuple(PastCall.from_dict(c) for c in d.get("feedback", ())),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class MaskedCandles:
@@ -73,6 +96,10 @@ class MaskedCandles:
 
     def as_dict(self) -> dict[str, Any]:
         return {**self.request.as_dict(), "key": dict(self.key)}
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> MaskedCandles:
+        return cls(CandleRequest.from_dict(d), d["key"])
 
 
 def weekly(bars: Sequence[DailyBar]) -> list[Ohlc]:

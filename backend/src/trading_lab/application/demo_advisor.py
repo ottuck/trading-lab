@@ -17,6 +17,7 @@
 근거는 차트에서 본 것만 쓴다.
 """
 
+from collections.abc import Sequence
 from decimal import ROUND_DOWN, Decimal
 
 from trading_lab.application.messages import obj, subj
@@ -26,13 +27,18 @@ from trading_lab.domain.advisor import (
     AdviceRequest,
     AdviceResult,
     AdviceUsage,
+    Advisor,
     Basis,
     SymbolBrief,
+    Unmasking,
 )
 from trading_lab.domain.candles import CandleBrief, CandleRequest
+from trading_lab.persistence.models import AiJudgmentRow
 
 SOURCE = "demo"
-# 예시 판단의 문장을 바꾸면 올린다 (seed-demo가 예전 버전의 예시 AI 봇을 처음부터 다시 채운다)
+# 예시 판단 버전은 "규칙.문장"이다 (문장 번호가 없으면 처음 문장). seed-demo가 예전 버전을 고친다:
+# - 문장만 바꾸면 뒤 번호만 올린다 → 저장된 입력으로 문장만 다시 쓴다 (몇 초, 봇 번호 그대로)
+# - 비중 규칙을 바꾸면 앞을 올린다 → 그 예시 AI 봇을 지우고 1년치를 처음부터 다시 채운다
 PROMPT_VERSION = "demo-2"
 CANDLE_PROMPT_VERSION = "demo-candle-2"
 EXAMPLE_NEWS = "예시 뉴스"  # 근거의 출처 자리 (데모 가격에 맞춰 지어낸 소식)
@@ -348,3 +354,34 @@ def _chart_basis(
     if not out:
         out.append("뚜렷하게 오르거나 내리는 차트가 없어요.")
     return tuple(Basis(t) for t in out)
+
+
+def rules_of(version: str | None) -> str | None:
+    """버전의 규칙 부분: demo-2.3 → demo-2."""
+    return version.split(".")[0] if version else None
+
+
+def rewrite_text(rows: Sequence[AiJudgmentRow]) -> bool:
+    """예전 문장 버전의 예시 판단을 저장된 입력으로 다시 판단해 문장만 바꾼다.
+
+    규칙 버전이 다르거나 다시 낸 비중이 기록과 하나라도 다르면 아무것도 바꾸지 않고 False를 돌려준다
+    (거래가 달라지므로 그 봇은 처음부터 다시 채워야 한다).
+    """
+    redone = []
+    for row in rows:
+        if row.request is None:
+            return False
+        request = AdviceRequest.from_dict(row.request)
+        advisor: Advisor = Unmasking(DemoCandleAdvisor()) if request.candles else DemoAdvisor()
+        result = advisor.advise(request)
+        same_rules = rules_of(row.prompt_version) == rules_of(result.prompt_version)
+        if not same_rules or dict(result.advice.weights) != row.weights:
+            return False
+        redone.append((row, result))
+    for row, result in redone:
+        advice = result.advice
+        row.summary, row.reasons = advice.summary, dict(advice.reasons)
+        row.decision = advice.decision or None
+        row.basis = [b.as_dict() for b in advice.basis] or None
+        row.prompt_version = result.prompt_version
+    return True

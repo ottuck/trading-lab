@@ -1,9 +1,13 @@
-"""AI 판단 기록 (ai_judgments). 재현의 원본이라 고치거나 지우지 않는다."""
+"""AI 판단 기록 (ai_judgments). 재현의 원본이라 고치거나 지우지 않는다.
 
+예외는 데모 DB의 예시 판단뿐이다 (seed-demo가 예시 문장을 다시 쓰거나 예시 봇째 다시 채운다).
+"""
+
+from collections.abc import Collection
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from trading_lab.domain.advisor import Judgment
@@ -114,6 +118,23 @@ def latest_judgments(session: Session, bot_id: int, n: int) -> list[AiJudgmentRo
             .limit(n)
         )
     )
+
+
+def judgments_not_in(
+    session: Session, bot_id: int, versions: Collection[str]
+) -> list[AiJudgmentRow]:
+    """지침 버전이 versions에 없는 판단 (데모 예시 판단을 바꿨을 때 고칠 것)."""
+    return list(
+        session.scalars(
+            select(AiJudgmentRow).where(
+                AiJudgmentRow.bot_id == bot_id, AiJudgmentRow.prompt_version.not_in(versions)
+            )
+        )
+    )
+
+
+def delete_judgments(session: Session, bot_id: int) -> None:
+    session.execute(delete(AiJudgmentRow).where(AiJudgmentRow.bot_id == bot_id))
 
 
 def all_judgments(session: Session, bot_id: int) -> list[AiJudgmentRow]:

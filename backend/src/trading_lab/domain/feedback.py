@@ -39,6 +39,17 @@ class PastCall:
             out["session_date"] = self.session_date.isoformat()
         return out
 
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> PastCall:
+        day = d.get("session_date")
+        return cls(
+            date.fromisoformat(day) if day else None,
+            d["days_ago"],
+            d["weights"],
+            Decimal(d["result"]),
+            Decimal(d["even"]),
+        )
+
 
 def _pct(value: Decimal) -> Decimal:
     return (value * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
