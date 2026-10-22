@@ -179,16 +179,18 @@ def parallel_worlds(
 
     모든 나는 같은 날 같은 돈을 넣는다 (넣는 돈을 바꾸면 수익률 비교가 어려워 바꾸지 않는다).
     2배 종목을 산 나는 규칙이 아니라 종목을 바꾼 나라서 params가 없다 (그 나로 바꿀 수 없다).
+    1년이 안 되면 그래프를 날마다 그린다 (달마다면 갓 시작한 봇은 점이 한두 개라 일자가 된다).
     """
     me = DipSaver(**params)
     series = load_series(session, weights, me.warmup, start, end)
     base = run_backtest(series, me, initial_cash, costs, RiskLimits(), weights=weights)
-    worlds = [world("me", "나", me.params, base), dca_world(base)]
+    daily = (base.metrics.end - base.metrics.start).days < 365
+    worlds = [world("me", "나", me.params, base, daily), dca_world(base, daily=daily)]
     for key, title, other in variants(me.params, multi=len(weights) > 1):
         strategy = DipSaver(**other)
         result = run_backtest(series, strategy, initial_cash, costs, RiskLimits(), weights=weights)
-        worlds.append(world(key, title, strategy.params, result))
+        worlds.append(world(key, title, strategy.params, result, daily))
     double = {s: doubled(bars) for s, bars in series.items()}
     result = run_backtest(double, me, initial_cash, costs, RiskLimits(), weights=weights)
-    worlds.append(world("double", "2배로 움직이는 종목을 산 나", None, result))
+    worlds.append(world("double", "2배로 움직이는 종목을 산 나", None, result, daily))
     return worlds
