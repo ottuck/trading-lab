@@ -21,7 +21,7 @@ import { useDemo } from '../demo'
 import { FxNote } from './Currency'
 import { AccountCard } from './Live'
 import { Term } from './Help'
-import { JOURNAL_KEPT, goTo, openBot, openJournal, selectBot, startMeEdit, startMeQuestions, useSelectedBot } from '../selectedBot'
+import { JOURNAL_KEPT, goTo, openBot, openBotSettings, openJournal, selectBot, startMeEdit, startMeQuestions, useSelectedBot } from '../selectedBot'
 import { PriceChart } from './PriceChart'
 import { useDismiss } from '../useDismiss'
 import { activeOf, basketLabel, evenSplit } from '../basket'
@@ -160,7 +160,7 @@ function Controls({ bot, onSent }: { bot: Bot; onSent: (msg: string) => void }) 
       <button className="ghost" onClick={() => openJournal(bot.id)}>
         매매일지
       </button>
-      <button className="ghost" onClick={() => (location.hash = 'settings')}>
+      <button className="ghost" onClick={() => openBotSettings(bot.id)}>
         설정
       </button>
       <button className="ghost more" aria-label="더 보기" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>
@@ -1177,6 +1177,7 @@ export function MeHome({ bots }: { bots: Bot[] }) {
             <div className="me-more">
               <button onClick={() => openBot(bot.id)}>자세히 보기</button>
               <button onClick={() => openJournal(bot.id)}>매매일지</button>
+              <button onClick={() => openBotSettings(bot.id)}>설정</button>
               <span className="faint small">들고 있는 주식, 거래, 가격 그래프{demo ? '' : ', 매매 시작·멈춤'}</span>
             </div>
           </>

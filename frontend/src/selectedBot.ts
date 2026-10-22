@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import type { SymbolWeight } from './api'
 
-/** 홈과 설정이 같이 쓰는 "지금 보고 있는 봇". 이 브라우저에만 기억한다. */
+/** 홈과 봇 화면이 같이 쓰는 "지금 보고 있는 봇". 이 브라우저에만 기억한다. */
 const KEY = 'trading-lab:bot'
 const listeners = new Set<() => void>()
 
@@ -13,9 +13,9 @@ function read(): number | null {
   }
 }
 
-/** 봇 화면 주소 #bot/3 (매매일지 #journal/3) → 3. 주소가 봇을 가리키면 그 봇을 고른다 (뒤로 가기·링크). */
+/** 봇 화면 주소 #bot/3 (봇 설정 #bot/3/settings, 매매일지 #journal/3) → 3. 주소가 봇을 가리키면 그 봇을 고른다 (뒤로 가기·링크). */
 function fromHash(): number | null {
-  const m = /^#(?:bot|journal)\/(\d+)$/.exec(location.hash)
+  const m = /^#(?:bot|journal)\/(\d+)(?:\/settings)?$/.exec(location.hash)
   return m ? Number(m[1]) : null
 }
 
@@ -40,6 +40,12 @@ window.addEventListener('hashchange', () => {
 export function openBot(id: number) {
   selectBot(id)
   location.hash = `bot/${id}`
+}
+
+/** 봇 하나의 설정으로 이동 (#bot/3/settings). 앱 전체 설정(계좌·알림)은 설정 탭에 있다. */
+export function openBotSettings(id: number) {
+  selectBot(id)
+  location.hash = `bot/${id}/settings`
 }
 
 /** 봇의 매매일지로 이동 (#journal/3). */
@@ -70,7 +76,7 @@ export function useSelectedBot<T extends { id: number; strategy: string }>(bots:
   return bots.find((b) => b.id === id) ?? bots.find((b) => b.strategy === 'dip_saver') ?? bots[0]
 }
 
-/** "새 봇 만들기" 요청. 시험해 보기 결과에서 오면 종목·전략이 미리 채워진다. */
+/** "새 봇 만들기" 화면(#new) 요청. 시험해 보기 결과에서 오면 종목·전략이 미리 채워진다. */
 export type NewBotSeed = { symbol?: string; symbols?: SymbolWeight[]; strategy?: string; params?: Record<string, number>; cash?: string }
 let seed: NewBotSeed | null = null
 const seedListeners = new Set<() => void>()
@@ -78,7 +84,7 @@ const seedListeners = new Set<() => void>()
 export function startNewBot(next: NewBotSeed = {}) {
   seed = next
   seedListeners.forEach((l) => l())
-  location.hash = 'settings'
+  location.hash = 'new'
 }
 
 export function closeNewBot() {
