@@ -1,21 +1,39 @@
-MIT License
+Copyright (c) 2026 ottuck. All rights reserved.
 
-Copyright (c) 2026 ottuck
+This repository and everything in it (source code, documentation, designs,
+images, and data) is proprietary and confidential. It is the exclusive property
+of the copyright holder.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+No license or other right is granted, expressly or by implication. Without the
+copyright holder's prior written permission, you may not use, copy, modify,
+merge, publish, distribute, sublicense, sell, or create derivative works of any
+part of this repository, in whole or in part.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Being able to view this repository (for example as a collaborator, or through a
+public demo) does not grant any of these rights.
+
+Third-party services and data: this repository calls external services such as
+Toss Securities (토스증권) and Anthropic. Their APIs, market data, and other
+content belong to their respective owners and remain subject to those services'
+own terms. Nothing in this repository grants any right to them, and this
+repository must not be used to redistribute such data.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+IMPLIED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES
+OR OTHER LIABILITY ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR
+ITS USE. Nothing in this repository is investment advice.
+
+---
+
+저작권 (c) 2026 ottuck. 모든 권리 보유.
+
+이 저장소와 그 안의 모든 것(소스 코드, 문서, 설계, 이미지, 데이터)은 저작권자의
+독점 재산이며 비공개 자료입니다. 어떤 사용 허락도 주지 않습니다. 저작권자의 사전
+서면 허락 없이 이 저장소의 전부나 일부를 사용·복제·수정·배포·재허락·판매하거나
+이를 바탕으로 다른 저작물을 만들 수 없습니다. 이 저장소를 볼 수 있다는 것(협업자
+권한, 공개 데모 등)이 이런 권리를 뜻하지 않습니다.
+
+토스증권·Anthropic 등 외부 서비스의 API와 시세·데이터는 각 소유자의 것이며 각
+서비스의 약관을 따릅니다. 이 저장소는 그에 대한 어떤 권리도 주지 않으며, 그 데이터를
+다시 배포하는 데 쓸 수 없습니다. 이 소프트웨어는 있는 그대로 제공되며 투자 권유가
+아닙니다.
