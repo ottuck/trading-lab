@@ -1,6 +1,6 @@
 """Worker 진입점: `python -m trading_lab.worker`.
 
-한 프로세스만 동작한다 (DB advisory lock). 토스 토큰도 이 프로세스 하나가 보유한다.
+한 프로세스만 동작한다 (DB advisory lock). 증권사 토큰도 이 프로세스 하나가 보유한다.
 """
 
 import io
@@ -16,13 +16,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from trading_lab import __version__
+from trading_lab.adapters.brokers import BrokerSetupError, connect_broker, make_trader
 from trading_lab.adapters.claude.advisor import ClaudeAdvisor
 from trading_lab.adapters.claude.candles import ClaudeCandleAdvisor
 from trading_lab.adapters.heartbeat_ping import HeartbeatPinger
 from trading_lab.adapters.market_calendar import get_calendar
 from trading_lab.adapters.telegram import TelegramClient
-from trading_lab.adapters.toss.client import TossClient
-from trading_lab.adapters.toss.trader import TossTrader
 from trading_lab.application import notify_settings
 from trading_lab.application.ai_judge import AiConfig
 from trading_lab.application.live import LiveDesk
@@ -42,15 +41,14 @@ log = logging.getLogger("trading_lab.worker")
 
 def build_market(settings: Settings) -> MarketData:
     if settings.worker_market_source == "stored":
-        log.info("시세 공급원: DB 저장분 (토스 호출 없음)")
+        log.info("시세 공급원: DB 저장분 (증권사 호출 없음)")
         return StoredMarket()
-    if settings.toss_client_id is None or settings.toss_client_secret is None:
-        raise SystemExit("WORKER_MARKET_SOURCE=toss 인데 TOSS_CLIENT_ID/SECRET가 없습니다")
-    log.info("시세 공급원: 토스 Open API")
-    client = TossClient(
-        settings.toss_client_id.get_secret_value(), settings.toss_client_secret.get_secret_value()
-    )
-    return BrokerMarket(client, get_calendar())
+    try:
+        broker = connect_broker(settings.worker_market_source, settings)
+    except BrokerSetupError as e:
+        raise SystemExit(f"WORKER_MARKET_SOURCE={settings.worker_market_source}: {e}") from e
+    log.info("시세 공급원: %s", broker.source)
+    return BrokerMarket(broker, get_calendar())
 
 
 def build_notifier(settings: Settings, make_session: Callable[[], Session]) -> EventNotifier | None:
@@ -92,19 +90,22 @@ def run(stop: threading.Event) -> None:
     watchlist = [s.strip().upper() for s in settings.watchlist_symbols.split(",") if s.strip()]
     # 실시간 가격은 증권사 연결 모드에서만
     live = market if isinstance(market, BrokerMarket) else None
-    # 실제 토스 계좌 읽기 (실거래 R1). 시세와 같은 클라이언트라 토큰도 하나다 (원칙 6).
+    # 실제 계좌 읽기 (실거래 R1). 시세와 같은 클라이언트라 토큰도 하나다 (원칙 6).
     account = None
     if settings.toss_account_enabled and isinstance(market, BrokerMarket):
         account = market.broker.account_snapshot
-        log.info("토스 계좌 읽기 켜짐 (1시간 주기·주문 변화 뒤, 조회만)")
+        log.info("계좌 읽기 켜짐 (1시간 주기·주문 변화 뒤, 조회만)")
     # 실거래 스위치 (실거래 R2). 꺼져 있으면 주문 어댑터를 만들지 않아 실제 주문 경로가 없다.
     trader = None
     if settings.live_trading:
-        if not (isinstance(market, BrokerMarket) and isinstance(market.broker, TossClient)):
+        if not isinstance(market, BrokerMarket):
             raise SystemExit(
-                "LIVE_TRADING=true 인데 토스 연결(WORKER_MARKET_SOURCE=toss)이 없습니다"
+                "LIVE_TRADING=true 인데 증권사 연결이 없습니다 (WORKER_MARKET_SOURCE에 증권사 이름)"
             )
-        trader = TossTrader(market.broker)
+        try:
+            trader = make_trader(settings.worker_market_source, market.broker)
+        except BrokerSetupError as e:
+            raise SystemExit(f"LIVE_TRADING=true: {e}") from e
         log.warning(
             "실거래 스위치 켜짐: 한도 안의 실제 주문은 자동으로, 넘는 주문은 승인 뒤에 냅니다"
         )

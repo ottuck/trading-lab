@@ -160,6 +160,8 @@ class Broker(Protocol):
 
     def account_snapshot(self, since: date) -> AccountSnapshot: ...
 
+    def close(self) -> None: ...
+
 
 # --- 실제 주문 (실거래 R2) ---
 

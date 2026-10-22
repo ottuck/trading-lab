@@ -3,7 +3,6 @@
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -49,8 +48,9 @@ class Settings(BaseSettings):
     ai_candle_monthly_budget: Decimal = Decimal(5)  # 캔들분석 AI 봇의 한 달 비용 상한 (따로 센다)
 
     worker_heartbeat_interval_s: float = 15.0
-    # stored: DB에 저장된 봉만 사용 (토스 호출 없음, 로컬 기본값). toss: 운영 서버.
-    worker_market_source: Literal["stored", "toss"] = "stored"
+    # stored: DB에 저장된 봉만 사용 (증권사 호출 없음, 로컬 기본값). 증권사 이름(toss 등):
+    # 그 증권사에서 받는다 (운영 서버). 가능한 이름은 adapters/brokers.py의 BROKERS.
+    worker_market_source: str = "stored"
 
     # 포트폴리오 데모 (D2): 예시 시세만 있는 공개 데모. 서버 상태를 바꾸는 요청은 막고
     # 시험해 보기·평행세계 계산만 받는다. 토스·주문 키는 넣지 않는다.

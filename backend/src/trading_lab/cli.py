@@ -13,11 +13,11 @@ from decimal import Decimal
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from trading_lab.adapters.brokers import DEFAULT_BROKER, BrokerSetupError, connect_broker
 from trading_lab.adapters.claude.advisor import ClaudeAdvisor
 from trading_lab.adapters.claude.candles import ClaudeCandleAdvisor
 from trading_lab.adapters.market_calendar import get_calendar
 from trading_lab.adapters.telegram import TelegramClient
-from trading_lab.adapters.toss.client import TossClient
 from trading_lab.application.ai_judge import AiConfig, judge
 from trading_lab.application.backtesting import backtest_symbol
 from trading_lab.application.bar_sync import sync_daily_bars
@@ -30,7 +30,7 @@ from trading_lab.config import get_settings
 from trading_lab.domain.advisor import Advisor, Unmasking, make_request
 from trading_lab.domain.bars import DailyBar, outlier_limit
 from trading_lab.domain.bot import BotState, CommandKind
-from trading_lab.domain.broker import ExchangeRate, Instrument
+from trading_lab.domain.broker import Broker, ExchangeRate, Instrument
 from trading_lab.domain.portfolio import CostModel, RiskLimits
 from trading_lab.domain.strategy import STRATEGIES, AiCandle, AiJudge, is_ai
 from trading_lab.persistence.ai_judgments import save_judgment
@@ -58,17 +58,17 @@ from trading_lab.persistence.models import (
 )
 
 
-def _toss_client() -> TossClient:
+def _broker() -> Broker:
+    """CLI가 쓰는 증권사 (adapters/brokers.py의 DEFAULT_BROKER)."""
     settings = get_settings()
-    if settings.toss_client_id is None or settings.toss_client_secret is None:
-        raise SystemExit("TOSS_CLIENT_ID, TOSS_CLIENT_SECRET가 설정되지 않았습니다 (.env).")
-    return TossClient(
-        settings.toss_client_id.get_secret_value(), settings.toss_client_secret.get_secret_value()
-    )
+    try:
+        return connect_broker(DEFAULT_BROKER, settings)
+    except BrokerSetupError as e:
+        raise SystemExit(f"{e} (.env)") from e
 
 
 def cmd_sync_bars(args: argparse.Namespace) -> int:
-    client = _toss_client()
+    client = _broker()
     calendar = get_calendar()
     leverage = {s.symbol: s.leverage_factor for s in client.instruments(args.symbols)}
     exit_code = 0
