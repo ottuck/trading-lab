@@ -539,6 +539,7 @@ class JournalDayView(BaseModel):
     """매매일지 하루 (판단일). 주문은 다음 거래일 시가에 체결한다."""
 
     date: date
+    ai: bool  # 그날 AI가 판단했는지
     quiet: bool  # 주문·입금·비중 변화가 없는 날
     headline: str
     basis: list[BasisView]

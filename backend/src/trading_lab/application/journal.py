@@ -58,6 +58,7 @@ class JournalLine(TypedDict):
 
 class JournalDay(TypedDict):
     date: str  # 판단일 (미국 거래일). 주문은 다음 거래일 시가에 체결한다
+    ai: bool  # 그날 AI가 판단했는지 (봇의 전략은 바뀔 수 있어 날마다 적는다)
     quiet: bool  # 주문·입금·비중 변화가 없는 날 (화면이 묶어서 보여준다)
     headline: str  # 이날 한 일 한 문장
     basis: list[dict[str, str]]  # AI 봇: 그렇게 정한 근거 [{text, url, title}]
@@ -118,25 +119,31 @@ def _names(symbols: list[str]) -> str:
     return "·".join("현금" if s == CASH else s for s in symbols)
 
 
+# (방향, 체결 상태)마다 동사. 같은 날 같은 방향이어도 종목마다 체결 결과가 다를 수 있다
+_VERBS = {
+    ("SELL", "FILLED"): "팔았어요",
+    ("SELL", "PENDING"): "팔아요",
+    ("SELL", "UNFILLED"): "팔려 했지만 체결되지 않았어요",
+    ("BUY", "FILLED"): "샀어요",
+    ("BUY", "PENDING"): "사요",
+    ("BUY", "UNFILLED"): "사려 했지만 체결되지 않았어요",
+}
+_JOIN = {"팔았어요": "팔고", "팔아요": "팔고"}  # 같은 상태로 팔고 산 날은 한 문장으로
+
+
 def _trade_headline(trades: list[JournalTrade]) -> str:
-    """'QQQ를 샀어요', 'TQQQ를 팔고 QQQ·VOO를 샀어요', 다음 장 예정이면 '…사요'."""
-    parts = []
-    for side, past, plan, fail in (
-        ("SELL", "팔았어요", "팔아요", "팔려 했지만 체결되지 않았어요"),
-        ("BUY", "샀어요", "사요", "사려 했지만 체결되지 않았어요"),
-    ):
-        group = [t for t in trades if t["side"] == side]
-        if not group:
-            continue
-        status = group[0]["status"]
-        verb = past if status == "FILLED" else plan if status == "PENDING" else fail
-        parts.append((obj(_names([t["symbol"] for t in group])), verb))
-    if not parts:
-        return ""
-    if len(parts) == 2:  # 팔고 산 날
-        (sold, verb), (bought, buy) = parts
-        return f"{sold} {verb.removesuffix('았어요').removesuffix('아요')}고 {bought} {buy}"
-    return f"{parts[0][0]} {parts[0][1]}"
+    """'QQQ를 샀어요', 'TQQQ를 팔고 QQQ·VOO를 샀어요', 결과가 섞이면 'QQQ를 샀어요 · VOO를 사려
+    했지만 체결되지 않았어요'. 다음 장 예정이면 '…사요'."""
+    groups: dict[tuple[str, str], list[str]] = {}
+    for key in _VERBS:  # 팔기 먼저, 체결된 것 먼저
+        names = [t["symbol"] for t in trades if (t["side"], t["status"]) == key]
+        if names:
+            groups[key] = names
+    parts = [(obj(_names(names)), key) for key, names in groups.items()]
+    if len(parts) == 2 and parts[0][1][0] == "SELL" and parts[0][1][1] == parts[1][1][1]:
+        (sold, sell), (bought, buy) = parts
+        return f"{sold} {_JOIN.get(_VERBS[sell], _VERBS[sell])} {bought} {_VERBS[buy]}"
+    return " · ".join(f"{names} {_VERBS[key]}" for names, key in parts)
 
 
 def _rule_day(
@@ -167,6 +174,7 @@ def _rule_day(
     blocked = any(r.blocked for r in rows)
     return JournalDay(
         date=day.isoformat(),
+        ai=False,
         quiet=not trades and deposit is None and not blocked,
         headline=headline,
         basis=[],
@@ -246,6 +254,7 @@ def _ai_day(
     ]
     return JournalDay(
         date=day.isoformat(),
+        ai=True,
         quiet=bool(ok) and not trades and deposit is None and not changed,
         headline=headline.rstrip("."),
         basis=basis_items(judgment.basis) if judgment and ok else [],
@@ -255,6 +264,10 @@ def _ai_day(
         deposit=_str(deposit),
         sources=sources,
     )
+
+
+def _strategy_of(rows: list[DecisionRow], bot: BotRow) -> str:
+    return str((rows[0].strategy or {}).get("name") or bot.strategy)
 
 
 def journal_days(session: Session, bot: BotRow) -> list[JournalDay]:
@@ -268,19 +281,20 @@ def journal_days(session: Session, bot: BotRow) -> list[JournalDay]:
     for o in sim_orders_of(session, bot.id):
         orders[o.signal_date].append(_trade(o))
     deposits = {day: d.amount for day, d in deposits_by_date(session, bot.id).items()}
-    ai = is_ai(bot.strategy)
+    # 전략은 설정에서 바꿀 수 있으므로 그날 판단에 남은 전략으로 읽는다
+    ai_days = {day for day, rows in by_day.items() if is_ai(_strategy_of(rows, bot))}
     # 처음부터 다시 시작하기 전의 AI 판단은 그때의 보관 일지에 있다
     first = min(by_day)
     judgments = (
         {j.session_date: j for j in all_judgments(session, bot.id) if j.session_date >= first}
-        if ai
+        if ai_days
         else {}
     )
     days = []
     previous: dict[str, int] | None = None  # 지난 판단의 목표 비중
     for day in sorted(by_day):
         rows, trades, deposit = by_day[day], orders.get(day, []), deposits.get(day)
-        if ai:
+        if day in ai_days:
             judgment = judgments.get(day)
             days.append(_ai_day(day, rows, trades, deposit, judgment, previous))
             if judgment and judgment.status == JudgmentStatus.OK and judgment.weights:
@@ -339,5 +353,11 @@ def archived_journal(session: Session, archive_id: int) -> Journal:
     row = get_archive(session, archive_id)
     if row is None:
         raise NotFound("보관한 일지를 찾지 못했어요")
-    days = list(reversed(row.days))
+    ai = is_ai(row.strategy)
+    days = [_stored_day(d, ai) for d in reversed(row.days)]
     return Journal(row.bot_id, row.bot_name, row.strategy, days, [])
+
+
+def _stored_day(day: dict[str, Any], ai: bool) -> dict[str, Any]:
+    """보관할 때의 형식을 지금 형식으로 (예전 일지에는 ai가 없고 근거가 글자만 있다)."""
+    return {**day, "ai": day.get("ai", ai), "basis": basis_items(day.get("basis"))}

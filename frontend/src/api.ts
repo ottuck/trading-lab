@@ -317,6 +317,7 @@ export type JournalLine = {
 }
 export type JournalDay = {
   date: string
+  ai: boolean // 그날 AI가 판단했는지 (봇의 전략은 바뀔 수 있다)
   quiet: boolean // 주문·입금·비중 변화가 없는 날
   headline: string
   basis: Basis[]
