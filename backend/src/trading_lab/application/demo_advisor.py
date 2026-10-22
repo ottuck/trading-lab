@@ -290,7 +290,7 @@ class DemoCandleAdvisor:
         advice = Advice(
             {**weights, CASH: cash},
             reasons,
-            _candle_summary(request, rising, returns, kept, cash),
+            _candle_summary(request, rising, kept, cash),
             decision=_decision(kept, [f"종목 {b.label}" for b in rising], cash),
             basis=basis,
         )
@@ -302,7 +302,6 @@ class DemoCandleAdvisor:
 def _candle_summary(
     request: CandleRequest,
     rising: list[CandleBrief],
-    returns: dict[str, Decimal | None],
     kept: bool,
     cash: int,
 ) -> str:
@@ -317,9 +316,8 @@ def _candle_summary(
     else:
         out = ["종목마다 차트 흐름이 엇갈립니다."]
     if rising:
-        names = "·".join(f"종목 {b.label}" for b in rising)
-        gains = ", ".join(f"{returns[b.label] or 0:+.1f}%" for b in rising)
-        out.append(f"그중 {subj(names)} 최근 20일 동안 가장 힘 있게 올랐습니다 ({gains}).")
+        names = "·".join(f"종목 {b.label}" for b in rising)  # 몇 % 올랐는지는 근거에 있다
+        out.append(f"그중 {subj(names)} 최근 20일 동안 가장 힘 있게 올랐습니다.")
     weak = [b for b in plain if b not in above]
     if weak and share > 0.3:
         names = "·".join(f"종목 {b.label}" for b in weak[:3])
