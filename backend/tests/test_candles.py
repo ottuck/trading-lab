@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from tests.fakes import make_bars
 from trading_lab.application.demo_advisor import DemoCandleAdvisor
-from trading_lab.domain.advisor import Unmasking, check_advice, make_request
+from trading_lab.domain.advisor import AdviceRequest, Unmasking, check_advice, make_request
 from trading_lab.domain.candles import unmask_text
 
 HISTORIES = {
@@ -45,7 +45,9 @@ def test_masked_candles_hide_names_dates_and_prices() -> None:
     # 같은 판단일은 같은 표 (다시 만들어도 같다)
     again = make_request(HISTORIES, Decimal(1000), {}, Decimal(1000), Decimal(500), candles=True)
     assert again.candles is not None and again.candles.key == masked.key
-    json.dumps(request.as_dict())  # 대응표까지 그대로 기록할 수 있다
+    # 대응표까지 그대로 기록하고, 기록한 것을 다시 읽으면 같은 입력이다 (데모 문장 다시 쓰기)
+    stored = json.loads(json.dumps(request.as_dict()))
+    assert AdviceRequest.from_dict(stored) == request
 
     # 데모 예시 판단도 익명 표만 받고, 답은 종목으로 되돌아온다
     result = Unmasking(DemoCandleAdvisor()).advise(request)

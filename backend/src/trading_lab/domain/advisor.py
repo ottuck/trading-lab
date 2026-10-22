@@ -64,6 +64,15 @@ class SymbolBrief:
     def as_dict(self) -> dict[str, Any]:
         return {k: (str(v) if isinstance(v, Decimal) else v) for k, v in _fields(self).items()}
 
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> SymbolBrief:
+        fields: dict[str, Any] = {k: _dec(v) if k != "symbol" else v for k, v in d.items()}
+        return cls(**fields)
+
+
+def _dec(value: str | None) -> Decimal | None:
+    return Decimal(value) if value is not None else None
+
 
 def _fields(obj: object) -> dict[str, Any]:
     return {name: getattr(obj, name) for name in obj.__slots__}  # type: ignore[attr-defined]
@@ -141,6 +150,24 @@ class AdviceRequest:
         if self.candles is not None:
             out["candles"] = self.candles.as_dict()
         return out
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> AdviceRequest:
+        """기록한 입력(as_dict)을 다시 읽는다 (데모 예시 판단의 문장만 다시 쓸 때)."""
+        previous_date, as_of, candles = d.get("previous_date"), d.get("as_of"), d.get("candles")
+        return cls(
+            date.fromisoformat(d["session_date"]),
+            tuple(SymbolBrief.from_dict(s) for s in d["symbols"]),
+            Decimal(d["equity"]),
+            Decimal(d["cash_weight"]),
+            Decimal(d["contributed"]),
+            Decimal(d["monthly_deposit"]),
+            d.get("previous"),
+            date.fromisoformat(previous_date) if previous_date else None,
+            datetime.fromisoformat(as_of) if as_of else None,
+            MaskedCandles.from_dict(candles) if candles else None,
+            tuple(PastCall.from_dict(c) for c in d.get("feedback", ())),
+        )
 
 
 # --- 출력 ---

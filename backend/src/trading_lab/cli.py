@@ -27,6 +27,7 @@ from trading_lab.application.demo_advisor import (
     PROMPT_VERSION,
     DemoAdvisor,
     DemoCandleAdvisor,
+    rewrite_text,
 )
 from trading_lab.application.demo_prices import DEMO_START, DEMO_USD_KRW, LEVERAGE, demo_bars
 from trading_lab.application.dry_run import latest_completed_session
@@ -38,7 +39,11 @@ from trading_lab.domain.bot import BotState, CommandKind
 from trading_lab.domain.broker import Broker, ExchangeRate, Instrument
 from trading_lab.domain.portfolio import CostModel, RiskLimits
 from trading_lab.domain.strategy import STRATEGIES, AiCandle, AiJudge, is_ai
-from trading_lab.persistence.ai_judgments import save_judgment
+from trading_lab.persistence.ai_judgments import (
+    delete_judgments,
+    judgments_not_in,
+    save_judgment,
+)
 from trading_lab.persistence.bars import load_daily_bars, upsert_daily_bars
 from trading_lab.persistence.bots import (
     create_bot,
@@ -392,17 +397,14 @@ def _seed_demo_bots(end: date, now: datetime) -> None:
             if old.strategy not in STRATEGIES:
                 delete_bot(session, old.id)
                 print(f"  {old.name}: 없어진 전략({old.strategy})이라 지움")
-            elif session.scalar(  # 예시 판단 문장이 바뀌면 그 AI 봇은 처음부터 다시 채운다
-                select(AiJudgmentRow.id)
-                .where(
-                    AiJudgmentRow.bot_id == old.id,
-                    AiJudgmentRow.prompt_version.not_in(DEMO_PROMPTS),
-                )
-                .limit(1)
-            ):
-                session.execute(delete(AiJudgmentRow).where(AiJudgmentRow.bot_id == old.id))
-                delete_bot(session, old.id)
-                print(f"  {old.name}: 예시 판단 문장이 바뀌어 처음부터 다시 채움")
+            elif stale := judgments_not_in(session, old.id, DEMO_PROMPTS):
+                # 예시 판단 버전이 바뀜: 문장만 바뀌었으면 문장만, 비중 규칙이 바뀌었으면 봇째 다시
+                if rewrite_text(stale):
+                    print(f"  {old.name}: 예시 판단 문장 {len(stale)}건을 다시 씀")
+                else:
+                    delete_judgments(session, old.id)
+                    delete_bot(session, old.id)
+                    print(f"  {old.name}: 예시 판단 규칙이 바뀌어 처음부터 다시 채움")
         session.commit()
     for name, strategy_name, params, weights, cash in DEMO_BOTS:
         years = 1 if is_ai(strategy_name) else 2
