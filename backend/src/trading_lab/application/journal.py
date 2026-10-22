@@ -60,7 +60,7 @@ class JournalDay(TypedDict):
     date: str  # 판단일 (미국 거래일). 주문은 다음 거래일 시가에 체결한다
     quiet: bool  # 주문·입금·비중 변화가 없는 날 (화면이 묶어서 보여준다)
     headline: str  # 이날 한 일 한 문장
-    basis: list[str]  # AI 봇: 그렇게 정한 근거
+    basis: list[dict[str, str]]  # AI 봇: 그렇게 정한 근거 [{text, url, title}]
     summary: str | None  # AI 봇: 그날 시장(차트) 요약
     lines: list[JournalLine]
     trades: list[JournalTrade]
@@ -83,6 +83,17 @@ def weights_when_judged(request: dict[str, Any] | None) -> dict[str, str]:
         return {}
     out = {s["symbol"]: s["weight_now"] for s in request.get("symbols", [])}
     return out | {CASH: request.get("cash_weight", "0")}
+
+
+def basis_items(raw: list[Any] | None) -> list[dict[str, str]]:
+    """저장한 근거를 [{text, url, title}]로 (처음 지침의 판단은 글자만 있다)."""
+    out = []
+    for item in raw or []:
+        if isinstance(item, str):
+            out.append({"text": item, "url": "", "title": ""})
+        else:
+            out.append({k: str(item.get(k) or "") for k in ("text", "url", "title")})
+    return out
 
 
 def _str(value: Decimal | None) -> str | None:
@@ -237,7 +248,7 @@ def _ai_day(
         date=day.isoformat(),
         quiet=bool(ok) and not trades and deposit is None and not changed,
         headline=headline.rstrip("."),
-        basis=list(judgment.basis or []) if judgment and ok else [],
+        basis=basis_items(judgment.basis) if judgment and ok else [],
         summary=judgment.summary if judgment and ok else None,
         lines=lines,
         trades=trades,

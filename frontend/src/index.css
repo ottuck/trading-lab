@@ -2799,3 +2799,17 @@ button.line.jr-archive {
     display: none;
   }
 }
+.jr-cite {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+a.jr-cite {
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 2px;
+}
+a.jr-cite:hover {
+  color: var(--muted);
+}

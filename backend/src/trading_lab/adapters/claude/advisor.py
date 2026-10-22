@@ -23,12 +23,13 @@ from trading_lab.domain.advisor import (
     AdviceResult,
     AdviceUsage,
     AdvisorError,
+    Basis,
     Source,
 )
 
 SOURCE = "claude"
 MODEL = "claude-sonnet-5-5"  # 2026-10-06 사용자 결정
-PROMPT_VERSION = "2026-10-22.1"  # 지침(SYSTEM·입력 형식)을 바꾸면 올린다
+PROMPT_VERSION = "2026-10-22.2"  # 지침(SYSTEM·입력 형식)을 바꾸면 올린다
 MAX_SEARCHES = 5
 # 기본 웹 검색 도구. 결과를 서버에서 코드로 걸러 주는 web_search_20260209는 AI가 기사 주소를 거의
 # 보지 못해 근거 기사를 1개(늘 첫 결과)만 댔고 같은 검색을 반복했다. 기본 도구는 같은 날 비교에서
@@ -91,11 +92,15 @@ reason에 쓴 내용은 이 기사들에서 나와야 합니다. 읽기만 하�
 - decision은 오늘 무엇을 어떻게 했는지 한 문장입니다. 비중을 바꿨으면 무엇을 늘리고 줄였는지, \
 그대로 뒀으면 그렇다고 쓰세요 (예: "반도체 비중을 줄이고 현금을 늘렸어요", "지난 비중을 그대로 \
 유지했어요").
-- basis는 그렇게 정한 근거 2~4개입니다. 하나에 한 문장으로, 무엇을 봤고 그래서 어떻게 했는지가 \
-함께 드러나게 쓰세요 (예: "물가가 예상보다 높게 나와 금리 인하가 늦어질 수 있어요. 그래서 많이 \
-흔들리는 종목을 줄였어요"). 근거 기사(evidence)에서 확인한 사실만 쓰세요.
-- reason은 종목마다 한두 문장으로, 근거를 먼저 쓰고 비중을 어떻게 했는지로 끝내세요 (예: \
-"실적이 예상보다 좋았고 200일 평균 위에서 오르고 있어 20%에서 25%로 늘려요").
+- basis는 그렇게 정한 근거가 된 소식 2~4개입니다. 이 봇의 근거는 뉴스입니다: 하나마다 기사에서 \
+확인한 소식(금리·물가·실적·정책·큰 사건) 하나와 그것이 이 투자자의 종목에 어떤 뜻인지를 한두 \
+문장으로 쓰고, url에 그 소식이 나온 기사 주소(evidence에 넣은 것 중 하나)를 그대로 넣으세요 \
+(예: "9월 물가가 예상보다 높게 나와 금리 인하가 늦어질 수 있다는 전망이 커졌어요. 많이 흔들리는 \
+기술주에는 부담이에요"). 200일 평균 대비·수익률 같은 가격 지표만으로 된 근거는 basis에 쓰지 \
+말고 reason에 쓰세요. 무엇을 했는지는 decision에 있으니 근거마다 "그래서 ~했어요"를 붙이지 \
+말고, 문장 모양을 매번 똑같이 쓰지 마세요.
+- reason은 종목마다 한두 문장으로, 그 종목에 관한 소식이나 지표를 먼저 쓰고 비중을 어떻게 \
+했는지로 끝내세요 (예: "실적이 예상보다 좋았고 오르는 흐름도 이어져 20%에서 25%로 늘려요").
 - summary는 오늘 시장을 두세 문장으로 요약합니다. 모두 한국어로 씁니다.
 - 주식을 잘 모르는 사람도 알아듣게 쉬운 말로 쓰고, 전문 용어와 영어 약어는 피하세요.
 - 확실하지 않은 것을 사실처럼 쓰지 마세요."""
@@ -107,7 +112,15 @@ def _schema(symbols: Sequence[str]) -> dict[str, Any]:
         "properties": {
             "summary": {"type": "string"},
             "decision": {"type": "string"},
-            "basis": {"type": "array", "items": {"type": "string"}},
+            "basis": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {"text": {"type": "string"}, "url": {"type": "string"}},
+                    "required": ["text", "url"],
+                    "additionalProperties": False,
+                },
+            },
             "evidence": {"type": "array", "items": {"type": "string"}},
             "allocations": {
                 "type": "array",
@@ -210,15 +223,33 @@ class ClaudeAdvisor:
         except (ValueError, KeyError, TypeError) as e:
             raise AdvisorError(f"AI 답 형식 오류: {e}", usage) from e
         sources, queries = _research(responses, evidence)
+        basis = _cite(basis, sources)
         advice = Advice(weights, reasons, summary, sources, queries, decision, basis)
         assert usage is not None
         return AdviceResult(advice, usage, PROMPT_VERSION)
 
 
-def _rationale(data: dict[str, Any]) -> tuple[str, tuple[str, ...]]:
-    """매매일지용 한 문장(decision)과 근거(basis). 빠져도 판단은 쓴다 (비중이 본체)."""
-    basis = tuple(str(b).strip() for b in data.get("basis") or () if str(b).strip())
-    return str(data.get("decision") or "").strip(), basis
+def _rationale(data: dict[str, Any]) -> tuple[str, tuple[Basis, ...]]:
+    """매매일지용 한 문장(decision)과 근거(basis). 빠져도 판단은 쓴다 (비중이 본체).
+
+    근거는 {text, url}(시장분석) 또는 글(캔들분석)이다. 기사 주소는 _cite가 검색 결과로 맞춘다.
+    """
+    basis = []
+    for item in data.get("basis") or ():
+        text, url = (item.get("text"), item.get("url")) if isinstance(item, dict) else (item, "")
+        if str(text or "").strip():
+            basis.append(Basis(str(text).strip(), str(url or "").strip()))
+    return str(data.get("decision") or "").strip(), tuple(basis)
+
+
+def _cite(basis: Sequence[Basis], sources: Sequence[Source]) -> tuple[Basis, ...]:
+    """근거의 기사 주소를 실제 검색 결과의 주소·제목으로 맞춘다. 결과에 없는 주소는 비운다."""
+    by_key = {_url_key(s.url): s for s in sources}
+    out = []
+    for b in basis:
+        found = by_key.get(_url_key(b.url)) if b.url else None
+        out.append(Basis(b.text, found.url, found.title) if found else Basis(b.text))
+    return tuple(out)
 
 
 def _usage(responses: Sequence[BetaMessage]) -> AdviceUsage | None:

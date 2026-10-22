@@ -20,6 +20,7 @@ from trading_lab.domain.advisor import (
     AdviceRequest,
     AdviceResult,
     AdviceUsage,
+    Basis,
     JudgmentStatus,
     Unmasking,
     make_request,
@@ -90,6 +91,12 @@ ANSWER = {
     "summary": "금리 걱정이 줄었어요.",
     # 근거로 쓴 기사: 검색 결과에 없는 주소는 버린다
     "evidence": ["https://b.example/2", "https://made-up.example/x"],
+    # 근거마다 기사 주소: 검색 결과에 있으면 그 제목까지, 없는 주소는 비운다
+    "decision": "기술주를 늘렸어요.",
+    "basis": [
+        {"text": "금리 인하 기대가 커졌어요.", "url": "http://www.b.example/2/"},
+        {"text": "실적이 좋았어요.", "url": "https://made-up.example/x"},
+    ],
     "allocations": [
         {"symbol": "QQQ", "weight": 60, "reason": "실적이 좋아요."},
         {"symbol": "GLD", "weight": 10, "reason": "조금만 들고 가요."},
@@ -130,6 +137,10 @@ def test_claude_advisor_reads_weights_sources_and_cost_across_pause() -> None:
 
     assert result.advice.weights == {"QQQ": 60, "GLD": 10, "CASH": 30}
     assert result.advice.queries == ("Fed rate",)
+    assert result.advice.basis == (
+        Basis("금리 인하 기대가 커졌어요.", "https://b.example/2", "B"),
+        Basis("실적이 좋았어요."),
+    )
     # 근거로 쓴 기사(검색 결과에 있는 것만)가 앞, 나머지 검색 결과는 뒤
     assert [(s.url, s.used) for s in result.advice.sources] == [
         ("https://b.example/2", True),
@@ -150,7 +161,7 @@ def test_claude_candle_advisor_sends_masked_charts_without_search() -> None:
     answer = {
         "summary": f"종목 {a.label}가 더 강해요.",
         "decision": f"종목 {b.label}를 모두 팔았어요.",
-        "basis": [f"종목 {b.label}가 고점을 낮추며 내려와요. 그래서 팔았어요."],
+        "basis": [f"종목 {b.label}가 고점을 낮추며 내려와요."],
         "allocations": [
             {"symbol": a.label, "weight": 70, "reason": f"종목 {b.label}보다 꾸준히 올라요."},
             {"symbol": b.label, "weight": 0, "reason": "쉬어 가요."},
@@ -174,7 +185,7 @@ def test_claude_candle_advisor_sends_masked_charts_without_search() -> None:
     assert result.advice.reasons[first] == f"{second}보다 꾸준히 올라요."
     # 매매일지용 한 문장·근거도 종목 이름으로 되돌린다
     assert result.advice.decision == f"{second}를 모두 팔았어요."
-    assert result.advice.basis == (f"{second}가 고점을 낮추며 내려와요. 그래서 팔았어요.",)
+    assert result.advice.basis == (Basis(f"{second}가 고점을 낮추며 내려와요."),)
     assert result.prompt_version.endswith("/medium")  # 생각하는 양도 기록한다
     assert result.usage.cost == Decimal("0.2") + Decimal("0.1")  # 입력 10만·출력 1만 토큰
 

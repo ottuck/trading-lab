@@ -154,6 +154,21 @@ class Source:
 
 
 @dataclass(frozen=True, slots=True)
+class Basis:
+    """판단 근거 한 줄. 시장분석 AI 봇은 근거 기사(url·title)를 함께 단다.
+
+    캔들분석 AI 봇은 차트만 보므로 출처가 없다. 데모 예시 판단은 url 없이 title만 ("예시 뉴스").
+    """
+
+    text: str
+    url: str = ""
+    title: str = ""
+
+    def as_dict(self) -> dict[str, str]:
+        return {"text": self.text, "url": self.url, "title": self.title}
+
+
+@dataclass(frozen=True, slots=True)
 class AdviceUsage:
     """판단 한 번에 든 것. cost는 달러 (공급자 요금표로 어댑터가 계산)."""
 
@@ -175,7 +190,7 @@ class Advice:
     queries: tuple[str, ...] = ()  # AI가 검색한 말
     # 매매일지용: 오늘 한 일 한 문장과 그렇게 정한 근거 몇 줄 (지침 2026-10-22 전 판단에는 없다)
     decision: str = ""
-    basis: tuple[str, ...] = ()
+    basis: tuple[Basis, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,7 +231,7 @@ def unmask(advice: Advice, key: Mapping[str, str]) -> Advice:
         sources=advice.sources,
         queries=advice.queries,
         decision=unmask_text(advice.decision, key),
-        basis=tuple(unmask_text(b, key) for b in advice.basis),
+        basis=tuple(Basis(unmask_text(b.text, key), b.url, b.title) for b in advice.basis),
     )
 
 

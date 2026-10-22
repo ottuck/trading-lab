@@ -274,6 +274,9 @@ export type World = {
 }
 export type Parallel = { start: string | null; end: string | null; worlds: World[]; note: string | null }
 
+/** AI 판단 근거 한 줄. 시장분석 AI 봇은 근거 기사(url·title), 데모는 title만("예시 뉴스"), 캔들분석은 출처 없음. */
+export type Basis = { text: string; url: string; title: string }
+
 // AI 봇 (마일스톤 4): 하루 한 번 AI가 정한 목표 비중과 이유·출처. 현금은 CASH 키
 export type AiDay = {
   session_date: string
@@ -289,7 +292,7 @@ export type AiDay = {
   error: string | null
   created_at: string
   decision?: string | null // 오늘 한 일 한 문장 (2026-10-22 전 판단은 없음)
-  basis?: string[] // 그렇게 정한 근거
+  basis?: Basis[] // 그렇게 정한 근거
 }
 export type AiOverview = { latest: AiDay | null; history: AiDay[]; spent: Money; budget: Money }
 // 매매일지: 판단일마다 무엇을 근거로 어떻게 했고 주문이 어떻게 체결됐는지 (최근 날부터)
@@ -316,7 +319,7 @@ export type JournalDay = {
   date: string
   quiet: boolean // 주문·입금·비중 변화가 없는 날
   headline: string
-  basis: string[]
+  basis: Basis[]
   summary: string | null
   lines: JournalLine[]
   trades: JournalTrade[]

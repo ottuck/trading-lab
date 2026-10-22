@@ -4,6 +4,7 @@ import { botApi, type Bot, type Journal, type JournalArchive, type JournalDay, t
 import { money, shares, signedMoney, tone } from '../format'
 import { openArchive, openBot, openJournal, useSelectedBot } from '../selectedBot'
 import { isAiBot } from '../strategies'
+import { BasisList } from './AiBot'
 import { BotSide, BotTabs } from './Dashboard'
 
 /* 매매일지 (#journal/3): 판단일마다 무엇을 근거로 어떻게 했고 주문이 어떻게 체결됐는지.
@@ -138,13 +139,7 @@ function Entry({ day, ai, compact = false }: { day: JournalDay; ai: boolean; com
           {day.headline}
         </div>
         {day.deposit != null && <div className="faint small">입금 {money(day.deposit)}</div>}
-        {day.basis.length > 0 && (
-          <ul className="jr-basis">
-            {day.basis.map((b) => (
-              <li key={b}>{b}</li>
-            ))}
-          </ul>
-        )}
+        {day.basis.length > 0 && <BasisList items={day.basis} />}
         {/* 근거가 따로 없던 예전 AI 판단은 시장 요약이 근거다 */}
         {day.summary && !day.basis.length && <p className="jr-summary">{day.summary}</p>}
         {day.trades.length > 0 && (

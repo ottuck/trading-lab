@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { api, botApi, type AiDay, type Bot, type Order, type World } from '../api'
+import { api, botApi, type AiDay, type Basis, type Bot, type Order, type World } from '../api'
 import { activeOf } from '../basket'
 import { useDemo } from '../demo'
 import { money, percent } from '../format'
@@ -95,6 +95,28 @@ function SourceList({ items }: { items: AiDay['sources'] }) {
   )
 }
 
+const host = (url: string) => new URL(url).hostname.replace(/^www\./, '')
+
+/** 판단 근거: 줄마다 근거가 된 기사(시장분석), 데모는 "예시 뉴스", 캔들분석은 출처 없이. */
+export function BasisList({ items }: { items: Basis[] }) {
+  return (
+    <ul className="jr-basis">
+      {items.map((b) => (
+        <li key={b.text}>
+          {b.text}
+          {b.url ? (
+            <a className="jr-cite" href={b.url} target="_blank" rel="noopener noreferrer" title={b.title}>
+              {host(b.url)}
+            </a>
+          ) : (
+            b.title && <span className="jr-cite">{b.title}</span>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 /** AI가 참고한 것: 판단에 쓴 기사를 먼저, 검색해서 받아 보기만 한 결과는 접어 둔다. */
 function Sources({ day }: { day: AiDay }) {
   const [open, setOpen] = useState(false)
@@ -166,13 +188,7 @@ export function AiToday({ bot }: { bot: Bot }) {
       ) : (
         <>
           {day.decision && <div className="ai-decision">{day.decision}</div>}
-          {!!day.basis?.length && (
-            <ul className="jr-basis">
-              {day.basis.map((b) => (
-                <li key={b}>{b}</li>
-              ))}
-            </ul>
-          )}
+          {!!day.basis?.length && <BasisList items={day.basis} />}
           {day.summary && <p className={day.decision ? 'decision-why small' : 'decision-why'}>{day.summary}</p>}
           <div className="ai-rows">
             {(all ? rows : held).map((r) => (
