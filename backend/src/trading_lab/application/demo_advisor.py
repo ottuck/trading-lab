@@ -1,7 +1,8 @@
 """포트폴리오 데모의 예시 AI 판단 (데모에는 AI 키가 없다, project.md 11-1절).
 
 실제 AI가 아니라 정해진 규칙으로 domain/advisor.py 규약에 맞는 판단을 만든다. 같은 입력이면
-늘 같은 판단이고 비용은 0이다. 화면은 "예시 판단"이라고 알린다.
+늘 같은 판단이고 비용은 0이다. 화면은 "예시 판단"이라고 한 번만 알리고, 판단 문장(summary)은
+실제 봇과 같은 말투로 쓴다 (시장 분위기 지수도 데모 가격으로 만든 예시, 2026-10-22 사용자 결정).
 
 규칙: 레버리지가 아닌 종목 중 200일 평균 위에 있고 3개월 수익이 플러스인 종목을 3개월 수익이 큰
 순서로 5개까지 담는다. 변동성이 작을수록 많이 담되 한 종목은 30%까지, 현금은 20% 이상 남긴다
@@ -31,6 +32,9 @@ from trading_lab.domain.advisor import (
 from trading_lab.domain.candles import CandleBrief, CandleRequest
 
 SOURCE = "demo"
+# 예시 판단의 문장을 바꾸면 올린다 (seed-demo가 예전 버전의 예시 AI 봇을 처음부터 다시 채운다)
+PROMPT_VERSION = "demo-2"
+CANDLE_PROMPT_VERSION = "demo-candle-2"
 EXAMPLE_NEWS = "예시 뉴스"  # 근거의 출처 자리 (데모 가격에 맞춰 지어낸 소식)
 MAX_PICKS = 5
 MAX_WEIGHT = 30  # 한 종목에 담는 최대 비중 (%)
@@ -96,23 +100,78 @@ class DemoAdvisor:
             kept = False
         reasons = {b.symbol: _reason(b, weights[b.symbol]) for b in request.symbols}
         reasons[CASH] = "갑자기 떨어질 때와 다음 달 사기를 위해 남겨 둬요."
-        names = ", ".join(b.symbol for b in rising)
-        summary = (
-            "예시 판단이에요 (실제 AI가 아니라 정해진 규칙으로 만들고, 뉴스도 데모 가격에 맞춘 "
-            "예시예요). "
-            + (f"오르는 흐름의 종목({names})을 담고 " if rising else "오르는 종목이 없어 ")
-            + f"현금 {cash}%를 남겨요."
-            + (" 지난 판단과 같아 비중을 그대로 둬요." if kept else "")
-        )
         basis = tuple(Basis(t, title=EXAMPLE_NEWS) for t in _news(request, rising))
         advice = Advice(
             {**weights, CASH: cash},
             reasons,
-            summary,
+            _summary(request, rising, kept, cash),
             decision=_decision(kept, [b.symbol for b in rising], cash),
             basis=basis,
         )
-        return AdviceResult(advice, AdviceUsage("demo-rules", 0, 0, 0, Decimal(0)), "demo-1")
+        return AdviceResult(advice, AdviceUsage("demo-rules", 0, 0, 0, Decimal(0)), PROMPT_VERSION)
+
+
+def _plain(request: AdviceRequest) -> list[SymbolBrief]:
+    return [b for b in request.symbols if not (b.leverage and b.leverage > 1)]
+
+
+def _month(request: AdviceRequest) -> float:
+    """레버리지 아닌 종목의 한 달 평균 수익 (%) = 예시 시장 분위기."""
+    month = [b.return_1m for b in _plain(request) if b.return_1m is not None]
+    return float(sum(month, Decimal(0)) / len(month)) if month else 0.0
+
+
+def _fear_greed(request: AdviceRequest) -> int:
+    """예시 시장 분위기 지수 (0 겁먹음 ~ 100 욕심): 한 달 수익과 200일 평균과의 거리로 만든다."""
+    trend = [b.vs_sma200 for b in _plain(request) if b.vs_sma200 is not None]
+    t = float(sum(trend, Decimal(0)) / len(trend)) if trend else 0.0
+    return max(5, min(95, round(50 + 3 * _month(request) + t)))
+
+
+_FEAR_WORDS = ((25, "몹시 겁먹은"), (45, "겁먹은"), (56, "중립에 가까운"), (75, "욕심 쪽으로 기운"))
+_MARKET_BRIEF = {
+    "up": "증시는 한 달 새 {m:+.1f}% 오르며 오르는 쪽에 무게가 실려 있습니다.",
+    "down": "증시는 한 달 새 {m:.1f}% 내리며 흔들리고 있습니다.",
+    "flat": "증시는 한 달 동안 큰 방향 없이 움직였습니다 ({m:+.1f}%).",
+}
+
+
+def _ro(n: int) -> str:
+    """숫자 뒤 조사: 23으로, 25로 (끝자리 0·3·6만 받침이 'ㄹ'이 아니다)."""
+    return "으로" if n % 10 in (0, 3, 6) else "로"
+
+
+def _summary(request: AdviceRequest, rising: list[SymbolBrief], kept: bool, cash: int) -> str:
+    """실제 시장분석 봇처럼: 시장 분위기 지수 → 시장 흐름 → 눈에 띄는 종목 → 한 일."""
+    fg = _fear_greed(request)
+    word = next((w for limit, w in _FEAR_WORDS if fg < limit), "욕심이 몹시 커진")
+    out = [
+        f"시장 분위기 지수는 약 {fg}{_ro(fg)} {word} 편입니다.",
+        _MARKET_BRIEF[_mood(request)].format(m=_month(request)),
+    ]
+    weak = [b for b in _plain(request) if b.vs_sma200 is not None and b.vs_sma200 < 0]
+    if rising:
+        r = float(rising[0].return_3m or 0)
+        out.append(f"{subj(rising[0].symbol)} 석 달 동안 {r:+.1f}% 올라 가장 강합니다.")
+    if weak:
+        names = "·".join(b.symbol for b in weak[:3])
+        out.append(f"반면 {subj(names)} 200일 평균 아래로 내려와 약합니다.")
+    if kept:
+        out.append(
+            f"지난 판단을 바꿀 분명한 이유가 없어 비중을 그대로 유지하고, 현금 {cash}%로 변동에 "
+            "대비합니다."
+        )
+    elif rising:
+        names = ", ".join(b.symbol for b in rising)
+        out.append(f"오르는 흐름의 {obj(names)} 담고 현금 {cash}%로 변동에 대비합니다.")
+    else:
+        out.append("오르는 종목이 없어 모두 현금으로 두고 기다립니다.")
+    return " ".join(out)
+
+
+def _mood(request: AdviceRequest) -> str:
+    m = _month(request)
+    return "up" if m > 2 else "down" if m < -2 else "flat"
 
 
 # 예시 뉴스: 시장 분위기(레버리지 아닌 종목의 한 달 평균 수익)마다 두 가지 중 판단일로 고른다
@@ -141,12 +200,9 @@ _WEAK_NEWS = "{s} 쪽 전망이 어두워졌다는 소식에 200일 평균 아�
 
 def _news(request: AdviceRequest, rising: list[SymbolBrief]) -> list[str]:
     """데모 가격 흐름에 맞춘 예시 뉴스 2~3개: 시장 분위기, 가장 강한 종목, 약해진 종목."""
-    plain = [b for b in request.symbols if not (b.leverage and b.leverage > 1)]
-    month = [b.return_1m for b in plain if b.return_1m is not None]
-    m = float(sum(month, Decimal(0)) / len(month)) if month else 0.0
-    mood = "up" if m > 2 else "down" if m < -2 else "flat"
+    plain = _plain(request)
     pick = request.session_date.toordinal() % 2
-    out = [_MARKET_NEWS[mood][pick].format(m=m)]
+    out = [_MARKET_NEWS[_mood(request)][pick].format(m=_month(request))]
     if rising:
         out.append(_PICK_NEWS[pick].format(s=rising[0].symbol, r=float(rising[0].return_3m or 0)))
     weak = [b for b in plain if b.vs_sma200 is not None and b.vs_sma200 < 0]
@@ -230,22 +286,50 @@ class DemoCandleAdvisor:
             b.label: _candle_reason(b, weights[b.label], returns[b.label]) for b in request.symbols
         }
         reasons[CASH] = "갑자기 떨어질 때와 다음 달 사기를 위해 남겨 둬요."
-        names = ", ".join(f"종목 {b.label}" for b in rising)
-        summary = (
-            "예시 판단이에요 (실제 AI가 아니라 정해진 규칙으로 만들어요). "
-            + (f"최근 차트가 가장 강한 {names}를 담고 " if rising else "오르는 차트가 없어 ")
-            + f"현금 {cash}%를 남겨요."
-            + (" 지난 판단과 같아 비중을 그대로 둬요." if kept else "")
-        )
         basis = _chart_basis(request, rising, returns)
         advice = Advice(
             {**weights, CASH: cash},
             reasons,
-            summary,
+            _candle_summary(request, rising, kept, cash),
             decision=_decision(kept, [f"종목 {b.label}" for b in rising], cash),
             basis=basis,
         )
-        return AdviceResult(advice, AdviceUsage("demo-rules", 0, 0, 0, Decimal(0)), "demo-candle-1")
+        return AdviceResult(
+            advice, AdviceUsage("demo-rules", 0, 0, 0, Decimal(0)), CANDLE_PROMPT_VERSION
+        )
+
+
+def _candle_summary(
+    request: CandleRequest,
+    rising: list[CandleBrief],
+    kept: bool,
+    cash: int,
+) -> str:
+    """실제 캔들분석 봇처럼: 전체 차트 모양 → 강한 종목 → 약한 종목 → 한 일 (차트만)."""
+    plain = [b for b in request.symbols if not _leveraged(b)]
+    above = [b for b in plain if _above_average(b)]
+    share = len(above) / len(plain) if plain else 0
+    if share >= 0.6:
+        out = ["대부분 종목이 90일 평균 위에서 오름 흐름을 이어 가고 있습니다."]
+    elif share <= 0.3:
+        out = ["대부분 종목이 90일 평균 아래로 내려와 쉬어 가는 모습입니다."]
+    else:
+        out = ["종목마다 차트 흐름이 엇갈립니다."]
+    if rising:
+        names = "·".join(f"종목 {b.label}" for b in rising)  # 몇 % 올랐는지는 근거에 있다
+        out.append(f"그중 {subj(names)} 최근 20일 동안 가장 힘 있게 올랐습니다.")
+    weak = [b for b in plain if b not in above]
+    if weak and share > 0.3:
+        names = "·".join(f"종목 {b.label}" for b in weak[:3])
+        out.append(f"반면 {subj(names)} 평균 아래로 내려와 약한 흐름이 뚜렷합니다.")
+    if kept:
+        out.append("지난 판단을 바꿀 분명한 이유가 없어 비중을 그대로 유지합니다.")
+    elif rising:
+        names = ", ".join(f"종목 {b.label}" for b in rising)
+        out.append(f"{obj(names)} 담고 현금 {cash}%를 남깁니다.")
+    else:
+        out.append("오르는 차트가 없어 모두 현금으로 둡니다.")
+    return " ".join(out)
 
 
 def _chart_basis(

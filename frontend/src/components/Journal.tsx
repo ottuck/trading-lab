@@ -4,6 +4,7 @@ import { botApi, type Bot, type Journal, type JournalArchive, type JournalDay, t
 import { money, shares, signedMoney, tone } from '../format'
 import { openArchive, openBot, openJournal, useSelectedBot } from '../selectedBot'
 import { isAiBot } from '../strategies'
+import { demoAiNote, useDemo } from '../demo'
 import { BasisList } from './AiBot'
 import { BotSide, BotTabs } from './Dashboard'
 
@@ -258,6 +259,7 @@ function BotJournal({ bots }: { bots: Bot[] }) {
   const deleted = useQuery({ queryKey: ['journal', 'deleted'], queryFn: botApi.deletedJournals })
   const pick = (b: Bot) => openJournal(b.id)
   const ai = isAiBot(bot)
+  const demo = useDemo()
   return (
     <div className="home">
       <div className="home-main" key={bot.id}>
@@ -273,6 +275,7 @@ function BotJournal({ bots }: { bots: Bot[] }) {
               : '날마다 어떤 가격이라 사거나 기다렸는지, 그래서 무엇을 샀는지 남겨요.'}
           </p>
           <div className="strategy-meta">{NOTE}</div>
+          {ai && demo && <div className="strategy-meta">{demoAiNote(bot.strategy === 'ai_candle')}</div>}
         </div>
         {error ? (
           <div className="line-empty">불러오지 못했어요: {error.message}</div>

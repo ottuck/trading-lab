@@ -52,7 +52,7 @@ def test_masked_candles_hide_names_dates_and_prices() -> None:
     advice = result.advice
     assert check_advice(advice, list(HISTORIES)) is None
     assert advice.weights["QQQ"] > 0 and advice.weights["TQQQ"] == 0  # 오르는 1배 종목만
-    assert "QQQ를" in advice.summary and "종목 " not in advice.summary
+    assert "QQQ가" in advice.summary and "종목 " not in advice.summary
 
 
 def test_unmask_text_fixes_particles() -> None:
