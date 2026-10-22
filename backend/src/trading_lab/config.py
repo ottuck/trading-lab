@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     # 외부 감시(Healthchecks.io 등) ping URL. Worker·PC가 멈추면 외부 서비스가 알린다.
     heartbeat_ping_url: str | None = None
 
+    # 예상 못 한 오류를 보내는 Sentry (운영 api·worker만). 비우면 꺼진다 (project.md 6절).
+    # 릴리스는 이미지를 만들 때 넣은 커밋 해시다 (Dockerfile의 GIT_SHA).
+    sentry_dsn: str | None = None
+    sentry_release: str | None = None
+
     # 매일 일봉을 갱신할 관심 종목 (백테스트용, 쉼표 구분). 봇 종목은 평가 때 따로 갱신된다.
     watchlist_symbols: str = "QQQ,VOO,QLD,TQQQ,SOXL,NVDA,GLD,MAGS,EWY,EWJ"
 

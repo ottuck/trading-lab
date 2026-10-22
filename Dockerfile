@@ -26,6 +26,9 @@ COPY --from=web /web/dist /app/frontend
 ENV PATH=/app/.venv/bin:$PATH \
     FRONTEND_DIST=/app/frontend \
     MPLCONFIGDIR=/tmp/matplotlib
+# 이 이미지를 만든 커밋. 오류 보고(Sentry)가 어느 배포에서 난 오류인지 알려 준다.
+ARG GIT_SHA=unknown
+ENV SENTRY_RELEASE=$GIT_SHA
 RUN useradd --system --uid 10001 app
 USER app
 EXPOSE 8000
