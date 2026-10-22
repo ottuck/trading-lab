@@ -128,7 +128,7 @@ def _fear_greed(request: AdviceRequest) -> int:
     return max(5, min(95, round(50 + 3 * _month(request) + t)))
 
 
-_FEAR_WORDS = ((25, "몹시 겁먹은"), (45, "겁먹은"), (56, "중립에 가까운"), (75, "욕심이 커진"))
+_FEAR_WORDS = ((25, "몹시 겁먹은"), (45, "겁먹은"), (56, "중립에 가까운"), (75, "욕심 쪽으로 기운"))
 _MARKET_BRIEF = {
     "up": "증시는 한 달 새 {m:+.1f}% 오르며 오르는 쪽에 무게가 실려 있습니다.",
     "down": "증시는 한 달 새 {m:.1f}% 내리며 흔들리고 있습니다.",
@@ -144,7 +144,7 @@ def _ro(n: int) -> str:
 def _summary(request: AdviceRequest, rising: list[SymbolBrief], kept: bool, cash: int) -> str:
     """실제 시장분석 봇처럼: 시장 분위기 지수 → 시장 흐름 → 눈에 띄는 종목 → 한 일."""
     fg = _fear_greed(request)
-    word = next((w for limit, w in _FEAR_WORDS if fg < limit), "몹시 욕심이 커진")
+    word = next((w for limit, w in _FEAR_WORDS if fg < limit), "욕심이 몹시 커진")
     out = [
         f"시장 분위기 지수는 약 {fg}{_ro(fg)} {word} 편입니다.",
         _MARKET_BRIEF[_mood(request)].format(m=_month(request)),
