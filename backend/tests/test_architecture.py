@@ -44,7 +44,8 @@ def test_domain_has_no_forbidden_imports() -> None:
     assert violations == []
 
 
-# 증권사(토스)·AI 공급자(Claude)를 직접 아는 곳은 어댑터와 조립 지점(Worker 진입점·CLI)뿐이다
+# 증권사(토스)를 아는 곳은 어댑터뿐이고 (adapters/brokers.py가 이름으로 골라 준다),
+# AI 공급자(Claude)는 어댑터와 조립 지점(Worker 진입점·CLI)도 안다
 # (domain/broker.py·domain/advisor.py 규약).
 BROKER_ASSEMBLY = {"cli.py", "worker/__main__.py"}
 PROVIDERS = ("toss", "claude", "anthropic")
@@ -56,9 +57,12 @@ def test_only_assembly_points_know_the_broker() -> None:
         str(path.relative_to(root))
         for path in root.rglob("*.py")
         if "adapters" not in path.relative_to(root).parts
-        and path.relative_to(root).as_posix() not in BROKER_ASSEMBLY
         and any(
-            n.startswith(("trading_lab.adapters.toss", "trading_lab.adapters.claude"))
+            n.startswith("trading_lab.adapters.toss")
+            or (
+                n.startswith("trading_lab.adapters.claude")
+                and path.relative_to(root).as_posix() not in BROKER_ASSEMBLY
+            )
             for n in imported_modules(path)
         )
     ]
