@@ -788,8 +788,11 @@ function DemoLock({ children }: { children: React.ReactNode }) {
 
 /** 봇 하나의 설정 (#bot/3/settings): 봇 화면의 [설정]으로 들어온다. */
 export function BotSettingsView({ bots }: { bots: Bot[] }) {
-  // 주소의 봇 번호는 selectedBot이 골라 둔다 (다른 봇 설정으로 바로 옮겨 가도 다시 그린다)
-  const bot = useSelectedBot(bots) as Bot | undefined
+  // 주소의 봇만 쓴다: 지운 봇의 주소로 와도 다른 봇 설정을 열지 않는다.
+  // useSelectedBot은 주소가 바뀔 때(다른 봇 설정으로 바로 옮겨 갈 때) 다시 그리려고 부른다.
+  useSelectedBot(bots)
+  const id = Number(/^#bot\/(\d+)\/settings$/.exec(location.hash)?.[1])
+  const bot = bots.find((b) => b.id === id)
   const line = useBotLine()
   if (!bot) return <div className="line-empty">이 봇을 찾을 수 없어요. 지워졌을 수 있어요.</div>
   return (
