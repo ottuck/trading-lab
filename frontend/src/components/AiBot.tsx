@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, botApi, type AiDay, type Basis, type Bot, type Order, type World } from '../api'
 import { activeOf } from '../basket'
-import { useDemo } from '../demo'
+import { demoAiNote, useDemo } from '../demo'
 import { money, percent } from '../format'
 import { isCandleBot, isMeBot } from '../strategies'
 import { Chart } from './Parallel'
@@ -217,7 +217,7 @@ export function AiToday({ bot, journal = false }: { bot: Bot; journal?: boolean 
         <div className="strategy-meta">AI는 종목 이름과 날짜를 가린 가격 차트만 보고 판단해요. 뉴스는 보지 않아요.</div>
       )}
       {data && demo && (
-        <div className="strategy-meta">예시 판단이에요. 데모는 실제 AI가 아니라 정해진 규칙으로 판단을 만들어요 (비용 없음).</div>
+        <div className="strategy-meta">{demoAiNote(candle)}</div>
       )}
       {data && !demo && (
         <div className="strategy-meta">

@@ -22,7 +22,12 @@ from trading_lab.application.ai_judge import AiConfig, judge
 from trading_lab.application.backtesting import backtest_symbol
 from trading_lab.application.bar_sync import sync_daily_bars
 from trading_lab.application.bots import ONE_PER_STRATEGY
-from trading_lab.application.demo_advisor import DemoAdvisor, DemoCandleAdvisor
+from trading_lab.application.demo_advisor import (
+    CANDLE_PROMPT_VERSION,
+    PROMPT_VERSION,
+    DemoAdvisor,
+    DemoCandleAdvisor,
+)
 from trading_lab.application.demo_prices import DEMO_START, DEMO_USD_KRW, LEVERAGE, demo_bars
 from trading_lab.application.dry_run import latest_completed_session
 from trading_lab.application.replay import replay_bot
@@ -344,6 +349,7 @@ def _clear_demo(session: Session) -> None:
     session.flush()
 
 
+DEMO_PROMPTS = (PROMPT_VERSION, CANDLE_PROMPT_VERSION)
 DEMO_AI_SYMBOLS = ("QQQ", "VOO", "QLD", "TQQQ", "SOXL", "NVDA", "GLD", "MAGS", "EWY", "EWJ")
 
 # 데모 홈에 미리 돌고 있는 예시 봇: (이름, 전략, 파라미터, 종목·비율, 시작 금액)
@@ -386,6 +392,17 @@ def _seed_demo_bots(end: date, now: datetime) -> None:
             if old.strategy not in STRATEGIES:
                 delete_bot(session, old.id)
                 print(f"  {old.name}: 없어진 전략({old.strategy})이라 지움")
+            elif session.scalar(  # 예시 판단 문장이 바뀌면 그 AI 봇은 처음부터 다시 채운다
+                select(AiJudgmentRow.id)
+                .where(
+                    AiJudgmentRow.bot_id == old.id,
+                    AiJudgmentRow.prompt_version.not_in(DEMO_PROMPTS),
+                )
+                .limit(1)
+            ):
+                session.execute(delete(AiJudgmentRow).where(AiJudgmentRow.bot_id == old.id))
+                delete_bot(session, old.id)
+                print(f"  {old.name}: 예시 판단 문장이 바뀌어 처음부터 다시 채움")
         session.commit()
     for name, strategy_name, params, weights, cash in DEMO_BOTS:
         years = 1 if is_ai(strategy_name) else 2
