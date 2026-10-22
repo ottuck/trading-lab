@@ -9,6 +9,7 @@ from typing import Any, cast
 from zoneinfo import ZoneInfo
 
 from trading_lab.domain.events import (
+    AiBudgetNearData,
     AiJudgmentData,
     CommandData,
     ConfigChange,
@@ -506,6 +507,14 @@ def event_message(
             return Message("💸", "AI 비용 상한에 닿았어요", body, level, level == "WARN")
         body = "오늘은 사고팔지 않고 지금 그대로 둬요. 다음 거래일에 다시 판단해요."
         return Message("🤖", "AI가 오늘 판단하지 못했어요", body, "WARN", True)
+    if kind == EventKind.AI_BUDGET_NEAR:
+        near = cast(AiBudgetNearData, d)
+        body = (
+            f"이 봇의 이번 달 AI 비용이 {_usd(near.get('spent', 0))}로 "
+            f"상한({_usd(near.get('budget', 0))})의 80%를 넘었어요. "
+            "상한에 닿으면 그달 남은 날은 판단하지 않고 지금 그대로 둬요."
+        )
+        return Message("💸", "AI 비용이 상한에 가까워요", body, "WARN", True)
     if kind == EventKind.NOTIFY_TEST:
         return Message("🔔", "알림 테스트", "텔레그램 알림이 잘 와요.", "INFO", True)
     if kind == EventKind.LIVE_CONTROL:

@@ -1602,6 +1602,33 @@ button.switcher-btn:hover:not(:disabled) {
   background: var(--ink);
   transition: width 0.2s ease;
 }
+.ai-cost + .ai-cost {
+  margin-top: 18px;
+}
+.ai-cost-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.ai-cost-bar {
+  height: 4px;
+  margin: 8px 0 6px;
+  border-radius: 2px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.ai-cost-bar i {
+  display: block;
+  height: 100%;
+  background: var(--ink);
+}
+.ai-cost-bar i.warn {
+  background: var(--warn);
+}
+.ai-cost-bar i.bad {
+  background: var(--bad);
+}
 .me-q {
   margin: 8px 0 0;
   font-size: clamp(22px, 4vw, 28px);
