@@ -11,8 +11,8 @@ import {
   type Time,
 } from 'lightweight-charts'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, type Bar, type Bot } from '../api'
-import { shares } from '../format'
+import { api, type Bar, type Bot, type Decision, type Order } from '../api'
+import { dollars, shares, signedMoney, tone } from '../format'
 import { sourceLabel } from '../source'
 import { cssVar, useTheme } from '../theme'
 
@@ -65,12 +65,52 @@ function symbolOptions(bot: Bot) {
   return [...held.map((symbol) => ({ symbol, held: true })), ...rest.map((symbol) => ({ symbol, held: false }))]
 }
 
+/** 차트에서 누른 날의 판단과 체결. */
+function DayTrades({ day, symbol, decisions, orders }: { day: string; symbol: string; decisions: Decision[]; orders: Order[] }) {
+  const fills = orders.filter((o) => o.status === 'FILLED' && o.fill_date === day && o.symbol === symbol)
+  const signals = decisions.filter((d) => d.session_date === day && d.symbol === symbol && d.action !== 'HOLD')
+  return (
+    <div className="chart-day">
+      <div className="chart-day-head">
+        {symbol} · {day}
+      </div>
+      {fills.map((o) => {
+        const buy = o.side === 'BUY'
+        return (
+          <div key={`o${o.id}`} className="chart-day-row">
+            <span className={`side-tag ${buy ? 'rise' : 'fall'}`}>{buy ? '샀어요' : '팔았어요'}</span>
+            <span>
+              {shares(o.qty)}주 · 한 주 {dollars(o.price)}
+              {!buy && o.realized_pnl != null && (
+                <>
+                  {' · 확정 손익 '}
+                  <span className={tone(o.realized_pnl)}>{signedMoney(o.realized_pnl)}</span>
+                </>
+              )}
+            </span>
+          </div>
+        )
+      })}
+      {signals.map((d) => {
+        const buy = d.action === 'BUY'
+        return (
+          <div key={`d${d.id}`} className="chart-day-row">
+            <span className={`side-tag ${buy ? 'rise' : 'fall'}`}>{buy ? '사기로 판단' : '팔기로 판단'}</span>
+            <span>{d.plain_reason || '장이 끝난 뒤 정했고, 다음 장에 주문해요'}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export function PriceChart({ bot }: { bot: Bot }) {
   const el = useRef<HTMLDivElement>(null)
   const [days, setDays] = useState(252)
   // 여러 종목 봇은 위에서 종목을 골라 본다. 처음엔 가장 많이 들고 있는 종목 (없으면 대표 종목).
   const [picked, setPicked] = useState(() => biggestHolding(bot) ?? bot.symbol)
   const symbol = bot.symbols.some((s) => s.symbol === picked) ? picked : bot.symbol
+  const [day, setDay] = useState<string>()
   const { theme } = useTheme()
   const bars = useQuery({ queryKey: ['bars', symbol], queryFn: () => api.bars(symbol) })
   const decisions = useQuery({ queryKey: ['decisions', bot.id], queryFn: () => api.decisions(bot.id) })
@@ -137,7 +177,8 @@ export function PriceChart({ bot }: { bot: Bot }) {
         color: Number(b.close) >= Number(b.open) ? `${up}40` : `${down}40`,
       })),
     )
-    // 판단(BUY/SELL 신호)과 모의 체결을 표시한다.
+    // 판단(BUY/SELL 신호)은 사는 쪽 빨강·파는 쪽 파랑 점, 모의 체결은 같은 색 화살표로 표시한다.
+    // 글자는 붙이지 않는다 (가까운 날끼리 겹쳐 읽을 수 없다). 자세한 내용은 누르면 아래에 보인다.
     const markers: SeriesMarker<Time>[] = []
     for (const d of decisions.data ?? []) {
       if (d.action === 'HOLD' || d.session_date < from || d.symbol !== symbol) continue
@@ -145,8 +186,8 @@ export function PriceChart({ bot }: { bot: Bot }) {
         time: d.session_date as Time,
         position: d.action === 'BUY' ? 'belowBar' : 'aboveBar',
         shape: 'circle',
-        color: cssVar('--muted'),
-        size: 0.6,
+        color: d.action === 'BUY' ? up : down,
+        size: 0.8,
       })
     }
     for (const o of orders.data ?? []) {
@@ -156,11 +197,17 @@ export function PriceChart({ bot }: { bot: Bot }) {
         position: o.side === 'BUY' ? 'belowBar' : 'aboveBar',
         shape: o.side === 'BUY' ? 'arrowUp' : 'arrowDown',
         color: o.side === 'BUY' ? up : down,
-        text: `${o.side === 'BUY' ? '산' : '판'} ${shares(o.qty, 2)}주`,
+        size: 1.2,
       })
     }
     markers.sort((a, b) => String(a.time).localeCompare(String(b.time)))
     createSeriesMarkers(candles, markers)
+    // 점이 작아 정확히 누르기 어려우니, 그 날짜의 봉 어디를 눌러도 그날 기록을 보여준다.
+    const markedDays = new Set(markers.map((m) => String(m.time)))
+    chart.subscribeClick((param) => {
+      const t = typeof param.time === 'string' ? param.time : undefined
+      setDay(t && markedDays.has(t) ? t : undefined)
+    })
     series.current = { candles, volume, up, down }
     if (liveRef.current) drawLive(series.current, liveRef.current)
     chart.timeScale().fitContent()
@@ -208,6 +255,12 @@ export function PriceChart({ bot }: { bot: Bot }) {
         </div>
       </div>
       <div ref={el} className="chart" />
+      <div className="chart-legend">
+        <span className="side-tag rise">샀어요</span>
+        <span className="side-tag fall">팔았어요</span>
+        <span>▲▼ 체결 · ● 판단 · 누르면 자세히 봐요</span>
+      </div>
+      {day && <DayTrades day={day} symbol={symbol} decisions={decisions.data ?? []} orders={orders.data ?? []} />}
       <div className="chart-foot">
         마지막 장 마감 {last?.date ?? '—'} · {last ? `$${Number(last.close).toFixed(2)}` : '—'} · 가격 출처{' '}
         {sourceLabel(bot.data_source)}
