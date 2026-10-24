@@ -318,11 +318,19 @@ function EquityChart({
         </svg>
       )}
       {idx != null && (
-        <div className="date" style={{ left: Math.min(Math.max(x(idx), 110), width - 110) }}>
-          {md(points[idx].date)}
-          {points[idx].live && ' · 지금'}
-          {fillsAt.map((o) => ` · ${o.side === 'BUY' ? '샀어요' : '팔았어요'} ${shares(o.qty)}주`)}
-          {` · 그냥 보유 ${money(points[idx].benchmark)}`}
+        // 커서 반대쪽 모서리에 둬서 짚은 점을 가리지 않는다
+        <div className={`eq-tip ${x(idx) > width / 2 ? 'left' : 'right'}`}>
+          <div className="eq-tip-date">
+            {md(points[idx].date)}
+            {points[idx].live && ' · 지금'}
+          </div>
+          {fillsAt.map((o) => (
+            <div key={o.id} className="eq-tip-row">
+              <span className={`side-tag ${o.side === 'BUY' ? 'rise' : 'fall'}`}>{o.side === 'BUY' ? '샀어요' : '팔았어요'}</span>
+              {o.symbol} {shares(o.qty, 2)}주
+            </div>
+          ))}
+          <div className="eq-tip-row muted">그냥 보유 {money(points[idx].benchmark)}</div>
         </div>
       )}
     </div>
