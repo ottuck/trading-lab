@@ -1,7 +1,7 @@
 # 로컬 개발용. 운영 구성은 deploy/compose.prod.yaml (Phase 4)에 둔다.
 services:
   db:
-    image: postgres:17
+    image: postgres:17.11
     environment:
       POSTGRES_USER: quant
       POSTGRES_PASSWORD: quant

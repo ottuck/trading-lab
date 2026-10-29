@@ -207,7 +207,7 @@ compose.yaml         # 로컬 개발용 (PostgreSQL)
 | 데이터 처리 | 순수 Python·Decimal, pandas·matplotlib | 지표·체결 계산은 순수 로직, pandas는 거래소 달력 어댑터, matplotlib는 익명 캔들 차트 생성 |
 | 시장 달력 | `exchange_calendars` (XNYS) + 토스 캘린더 | 토스는 3영업일만 제공 |
 | 테스트·품질 | pytest, respx(HTTP 목, Phase 2), ruff, mypy(strict) | Windows에서는 `python -m mypy`로 실행 |
-| DB | PostgreSQL 17 (로컬·운영 모두 컨테이너) | 같은 버전으로 개발·운영 |
+| DB | PostgreSQL 17.11 (로컬·운영·CI 모두 컨테이너, 이미지 태그를 부 버전까지 고정) | 같은 버전으로 개발·운영. `postgres:17`처럼 열어 두면 배포 때 새 이미지를 받아 DB가 예고 없이 재시작된다(2026-10-29). 올릴 때는 세 곳(compose.yaml, deploy/compose.prod.yaml, ci.yml)을 함께 바꾼다 |
 | 프론트엔드 | React, TypeScript, Vite, oxlint, TanStack Query·Lightweight Charts(Phase 4) | polling·캐시, 금융 차트 |
 | 실행 | Docker Compose | 로컬 → Lightsail → OCI/홈서버로 그대로 이동 |
 | 접근 | **`https://app.trading-lab.me`** (Cloudflare Tunnel + Access, 본인 이메일만, 2026-10-03~). Tailscale(`tailscale serve`)은 관리용·예비 경로로 남긴다 (6절) | 앱·DB 공개 포트 0개, MWP에 로그인 구현 불필요 |
