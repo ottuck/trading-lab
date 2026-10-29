@@ -168,7 +168,11 @@ def run(stop: threading.Event) -> None:
             errors.ok()
         stop.wait(interval)
 
-    release_worker_lock(lock_conn)
+    try:
+        release_worker_lock(lock_conn)
+    except SQLAlchemyError:
+        # 배포 중 db가 먼저 재생성되면 연결이 끊긴 채 여기 온다. 잠금은 연결과 함께 이미 풀렸다.
+        log.warning("DB 연결이 이미 끊겨 worker 잠금 해제를 건너뜀")
     lock_conn.close()
     log.info("worker 종료")
 
