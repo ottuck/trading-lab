@@ -4,7 +4,8 @@ from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, select, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 from tests.fakes import WeekdayCalendar, make_bars
@@ -102,6 +103,18 @@ def test_only_one_worker_gets_the_lock(engine: Engine) -> None:
         assert not try_acquire_worker_lock(second)
         release_worker_lock(first)
         assert try_acquire_worker_lock(second)  # 잠금을 풀면 다른 Worker가 넘겨받는다
+        release_worker_lock(second)
+
+        # 배포 중 db가 먼저 재생성돼 연결이 끊기면 해제는 실패하지만 잠금은 함께 풀린다
+        # (worker 종료 때 해제 실패를 경고로만 남기는 근거).
+        assert try_acquire_worker_lock(first)
+        pid = first.execute(text("SELECT pg_backend_pid()")).scalar()
+        first.commit()
+        second.execute(text("SELECT pg_terminate_backend(:pid)"), {"pid": pid})
+        second.commit()
+        with pytest.raises(OperationalError):
+            release_worker_lock(first)
+        assert try_acquire_worker_lock(second)
         release_worker_lock(second)
 
 
