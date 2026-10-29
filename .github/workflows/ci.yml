@@ -26,7 +26,7 @@ jobs:
         working-directory: backend
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:17.11-alpine
         env:
           POSTGRES_USER: quant
           POSTGRES_PASSWORD: quant
