@@ -46,7 +46,7 @@ export const isCandleBot = (b: { strategy: string }) => b.strategy === 'ai_candl
 
 /** AI 봇 종류 (전략마다 하나씩 만들 수 있다). */
 export const AI_KINDS = {
-  ai_judge: { name: '시장분석 AI 봇', short: '시장분석', desc: '뉴스·금리를 조사해 비중을 정해요', cost: '$0.1' },
-  ai_candle: { name: '캔들분석 AI 봇', short: '캔들분석', desc: '가격 차트만 보고 비중을 정해요', cost: '$0.06' },
+  ai_judge: { name: '시장분석 AI 봇', short: '시장분석', desc: '뉴스·금리를 조사해 비중을 정해요', cost: '$0.2' },
+  ai_candle: { name: '캔들분석 AI 봇', short: '캔들분석', desc: '가격 차트만 보고 비중을 정해요', cost: '$0.07' },
 } as const
 export type AiKind = keyof typeof AI_KINDS
