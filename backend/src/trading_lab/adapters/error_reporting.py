@@ -41,10 +41,14 @@ _SCRUBS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 # SQLAlchemy의 오류 메시지는 뒤에 실행한 SQL과 바인딩 값을 붙인다.
 _SQL_TAIL = re.compile(r"\s*\[(SQL|parameters):.*", re.DOTALL)
+# PostgreSQL 제약 오류는 DETAIL 줄에 실제 값을 담는다 ("Key (...)=(...)",
+# "Failing row contains (...)"). psycopg의 원래 예외에는 SQL 꼬리가 없어 따로 지운다.
+_DB_DETAIL = re.compile(r"^(\s*DETAIL:).*$", re.MULTILINE)
 
 
 def clean(text: str) -> str:
     text = _SQL_TAIL.sub("", text)
+    text = _DB_DETAIL.sub(r"\1 [removed]", text)
     for pattern, replacement in _SCRUBS:
         text = pattern.sub(replacement, text)
     return text[:TEXT_LIMIT]
@@ -84,11 +88,19 @@ class ErrorReportFilter:
     def _due(self, key: str) -> bool:
         now = self._now()
         with self._lock:
-            if len(self._last_sent) >= MAX_KEYS:
-                self._last_sent.clear()
             previous = self._last_sent.get(key)
             if previous is not None and now - previous < REPEAT_WINDOW_S:
                 return False
+            # 기록은 보낸 순서대로 둔다. 한 시간 지난 것, 그래도 가득하면 오래된 것부터 지운다.
+            self._last_sent.pop(key, None)
+            while self._last_sent:
+                oldest = next(iter(self._last_sent))
+                if (
+                    len(self._last_sent) < MAX_KEYS
+                    and now - self._last_sent[oldest] < REPEAT_WINDOW_S
+                ):
+                    break
+                del self._last_sent[oldest]
             self._last_sent[key] = now
             return True
 

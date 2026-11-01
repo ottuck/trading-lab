@@ -7,7 +7,12 @@ import pytest
 import sentry_sdk
 from sentry_sdk.transport import Transport
 
-from trading_lab.adapters.error_reporting import ErrorReportFilter, clean, init_error_reporting
+from trading_lab.adapters.error_reporting import (
+    MAX_KEYS,
+    ErrorReportFilter,
+    clean,
+    init_error_reporting,
+)
 
 LOG = logging.getLogger("test.error_reporting")
 DSN = "https://key@o1.ingest.us.sentry.io/1"
@@ -91,9 +96,12 @@ def test_an_error_log_is_sent_without_locals_breadcrumbs_or_secrets(sent: Captur
 def test_what_leaves_is_cleaned() -> None:
     sql = (
         "(psycopg.errors.UniqueViolation) duplicate key\n"
+        "DETAIL:  Key (symbol, price)=(QQQ, 653.7439) already exists.\n"
         "[SQL: INSERT INTO orders VALUES (%(price)s)]\n[parameters: {'price': 'secret-value'}]"
     )
-    assert clean(sql) == "(psycopg.errors.UniqueViolation) duplicate key"
+    assert clean(sql) == "(psycopg.errors.UniqueViolation) duplicate key\nDETAIL: [removed]"
+    # psycopg의 원래 예외에는 SQL 꼬리가 없다
+    assert "653" not in clean("new row violates check\nDETAIL:  Failing row contains (7, 653.74).")
     scrubbed = clean(
         "Bearer abc.def-1 eyJhbGciOi.eyJzdWIi.c2ln sk-ant-api03-xyz token=hunter2"
         " postgresql://quant:pw@db/x user@example.com 계좌 12345678901"
@@ -122,6 +130,14 @@ def test_the_same_error_is_sent_once_an_hour() -> None:
     assert only(event("TossError", 10), {}) is None
     now[0] = 3600
     assert only(event("TossError", 10), {}) is not None
+    # 기록이 가득해도 이미 보낸 오류는 막고, 새 오류가 오면 가장 오래된 것만 지운다
+    full = ErrorReportFilter(now=lambda: 0.0)
+    for line in range(MAX_KEYS):
+        assert full(event("E", line), {}) is not None
+    assert full(event("E", MAX_KEYS - 1), {}) is None
+    assert full(event("E", MAX_KEYS), {}) is not None
+    assert full(event("E", 1), {}) is None
+    assert full(event("E", 0), {}) is not None
     # 예외 없이 남긴 로그는 로거와 문장 틀로 구분한다
     log_only = {"logger": "a", "logentry": {"message": "디스크 가득 %s", "params": ["/x"]}}
     sent = only(dict(log_only), {})
