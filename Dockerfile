@@ -23,6 +23,8 @@ RUN uv sync --locked --no-dev
 COPY --from=web /web/dist /app/frontend
 # 이미지를 내려받는 사람에게도 라이선스(AGPL-3.0) 원문이 함께 가야 한다
 COPY LICENSE /app/LICENSE
+# 서버의 update.sh가 배포 스크립트·compose 파일을 이 이미지에서 꺼내 쓴다 (서버 저장소 폴더를 git으로 갱신하지 않는다)
+COPY deploy/ /app/deploy/
 
 # 캔들분석 AI 봇의 차트 그림(matplotlib): 홈 폴더 없는 app 사용자라 설정·글꼴 캐시는 /tmp에 둔다
 ENV PATH=/app/.venv/bin:$PATH \

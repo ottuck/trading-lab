@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # CI가 만들어 GHCR(ghcr.io/ottuck/trading-lab)에 올린 이미지를 받아서 띄운다 (서버에서 빌드하지 않는다).
-#   bash deploy/deploy.sh                  # 운영 (latest). main에 합쳐지면 Actions가 서버 러너에서 TAG=커밋 해시로 부른다
-#   TAG=<커밋 해시> bash deploy/deploy.sh   # 그 버전으로 (롤백)
-#   bash deploy/deploy.sh demo             # 포트폴리오 데모 (D3). Actions가 운영 다음에 부른다. 운영 Postgres가 먼저 떠 있어야 한다
-#   PULL=0 TAG=<태그> bash deploy/deploy.sh demo   # 서버에 이미 받아 둔 이미지로 (GHCR 로그인 없이, reset-demo.sh)
-# 비공개 이미지라 받기 전에 docker login ghcr.io가 되어 있어야 한다 (Actions는 작업 안에서 로그인한다).
+#   bash deploy/deploy.sh                  # 운영 (latest). 자동 배포는 서버의 update.sh가 이미지 안의 이 파일을 TAG=커밋 해시로 부른다
+#   SRC=. TAG=<커밋 해시> bash deploy/deploy.sh   # 서버에서 그 버전으로 (롤백. 먼저 touch .deploy/hold로 자동 배포를 멈춘다, update.sh)
+#   bash deploy/deploy.sh demo             # 포트폴리오 데모 (D3). update.sh가 운영 다음에 부른다. 운영 Postgres가 먼저 떠 있어야 한다
+#   PULL=0 TAG=<태그> bash deploy/deploy.sh demo   # 서버에 이미 받아 둔 이미지로 (reset-demo.sh)
 # 작업 폴더의 브랜치는 건드리지 않는다: SRC가 없으면 origin/main을 .deploy/src에 꺼내 그 compose 파일을 쓴다.
-# Actions는 이미 받아 둔 코드(SRC)와 비밀값 폴더(SECRETS_DIR)를 넘긴다.
+# update.sh는 이미지의 deploy/를 서버 폴더에 맞춘 뒤 그 폴더(SRC), 커밋 해시(REV), 비밀값 폴더(SECRETS_DIR)를 넘긴다.
 set -euo pipefail
 
 target=${1:-prod}
@@ -17,7 +16,7 @@ root=$(here)
 
 if [ -n "${SRC:-}" ]; then
   src=$(cd "$SRC" && here)
-  rev=$(git -C "$src" rev-parse --short HEAD)
+  rev=${REV:-$(git -C "$src" rev-parse --short HEAD 2> /dev/null || echo unknown)}
 else
   git fetch --quiet origin main
   rm -rf .deploy/src

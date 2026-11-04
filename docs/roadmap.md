@@ -202,8 +202,17 @@
 - [x] 운영 자동 배포 러너를 새 서버에 다시 등록 (Linux systemd 서비스, 2026-10-08)
 - [x] 로컬 Worker 정지 → `pg_dump` → 서버에서 `pg_restore` → 서버 Worker 시작 (Worker를 두 곳에서 동시에 돌리지 않는다)
 
+### 배포를 pull 방식으로 (2026-11-04)
+
+서버 러너를 없애고 서버가 GHCR에서 새 이미지를 가져가 띄운다 (project.md 6절 "배포"). 저장소를 공개해도 GitHub가 운영 서버에서 코드를 실행할 길이 없게 하려는 것이다.
+
+- [x] 코드: `deploy.yml`에서 서버 러너 작업을 빼고, 이미지에 `deploy/`와 커밋 해시 라벨을 넣고, 서버 업데이터(`deploy/update.sh`, `trading-lab-update.service`·`.timer`)를 만든다
+- [ ] **(사용자)** GHCR 패키지 `trading-lab`을 공개로 바꾼다 (Package settings → Change visibility)
+- [ ] 서버에 업데이터를 설치하고 켠다. 첫 자동 배포와 텔레그램 알림 확인
+- [ ] 서버 러너 `sydney-server`를 없앤다 (서비스 해제, GitHub 등록 삭제). 저장소 변수 `DEPLOY_SECRETS_DIR` 삭제
+
 ## 이미 끝낸 운영 항목
 
-- **배포 자동화:** 운영은 `main` CI 통과 뒤 GitHub Actions가 이미지를 빌드해 GHCR에 올리고, 운영 서버의 self-hosted 러너가 받아서 배포한다 (앱·DB 공개 포트 0개 유지, 판단 중이면 끝나기를 기다림, 롤백은 `TAG=<커밋 해시>`). 운영 다음에 데모도 같은 커밋 이미지로 자동 배포한다 (2026-10-09). 데모 배포 실패는 운영에 영향을 주지 않아 결과를 따로 확인한다. DB는 운영 Postgres 컨테이너 하나에 데이터베이스 둘(`quant_lab`, `quant_lab_demo`)이다 (2026-10-08). 서버를 옮기면 그 서버에 러너를 다시 등록한다 (현재 Lightsail 등록 완료).
+- **배포 자동화:** 운영은 `main`에 push되면 GitHub Actions가 이미지를 빌드해 GHCR에 올리고, 운영 서버의 업데이터(`update.sh`, 1분마다)가 받아서 배포한다 (pull 방식, 2026-11-04. 그 전에는 self-hosted 러너) (앱·DB 공개 포트 0개 유지, 판단 중이면 끝나기를 기다림, 롤백은 `.deploy/hold`를 만들고 `SRC=. TAG=<커밋 해시>`). 운영 다음에 데모도 같은 커밋 이미지로 자동 배포한다 (2026-10-09). 데모 배포 실패는 운영에 영향을 주지 않아 결과를 따로 확인한다. DB는 운영 Postgres 컨테이너 하나에 데이터베이스 둘(`quant_lab`, `quant_lab_demo`)이다 (2026-10-08). 서버를 옮기면 `bootstrap.sh`가 업데이터를 설치한다.
 - **알림:** 설정 → 계좌와 알림에서 끄기 / 실제 주문만 / 모의 투자 소식까지, 테스트 메시지. 외부 heartbeat(Healthchecks)는 유지.
 - **공개 서비스화:** 하지 않는다 (2026-10-03 결정). 시세 계약(최소 월 $250), 자문·일임 규제, 멀티유저 구조가 걸림돌이다 (project.md 12절).

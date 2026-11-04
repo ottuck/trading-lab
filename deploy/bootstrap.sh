@@ -61,6 +61,14 @@ cat > /etc/cron.d/quant-lab-backup <<EOF
 0 3 * * * root bash ${REPO_DIR}/deploy/backup.sh >> /var/log/quant-lab-backup.log 2>&1
 EOF
 
+echo "== 자동 배포 (pull 방식: 1분마다 GHCR의 새 이미지 확인, deploy/update.sh) =="
+# 업데이터와 유닛은 여기서 한 번 설치하고, 이후에도 손으로만 바꾼다 (update.sh 머리말). 켜는 것은 비밀값을 채운 뒤다.
+install -m 755 -o "$OWNER" "$REPO_DIR/deploy/update.sh" "$REPO_DIR/update.sh"
+for unit in trading-lab-update.service trading-lab-update.timer; do
+  sed -e "s#/home/ubuntu/quant-lab#${REPO_DIR}#g" -e "s#^User=ubuntu#User=${OWNER}#"     "$REPO_DIR/deploy/$unit" > "/etc/systemd/system/$unit"
+done
+systemctl daemon-reload
+
 public_ip=$(curl -fsS https://api.ipify.org || echo "확인 실패")
 cat <<EOF
 
@@ -69,7 +77,7 @@ cat <<EOF
   2) sudo tailscale serve --bg 8000     # tailnet 안에서만 https로 화면 제공
   3) nano ${ENV_DIR}/worker.env           # 토스 키, 텔레그램, HEARTBEAT_PING_URL 입력
   4) 토스 WTS > 설정 > Open API > 허용 IP에 송신 IP 추가: ${public_ip}
-  5) 로컬 PC의 토스 탐색 스크립트·Worker를 멈춘 뒤 (토큰은 client당 1개)
-     bash ${REPO_DIR}/deploy/deploy.sh
+  5) 로컬 PC의 토스 탐색 스크립트·Worker를 멈춘 뒤 (토큰은 client당 1개) 자동 배포를 켠다 (1분 안에 첫 배포)
+     sudo systemctl enable --now trading-lab-update.timer     # 기록: journalctl -u trading-lab-update
   6) Lightsail 방화벽에서 SSH(22)까지 닫기 (이후 접속은 tailscale ssh)
 EOF

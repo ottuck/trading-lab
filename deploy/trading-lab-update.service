@@ -1,0 +1,11 @@
+[Unit]
+Description=Trading Lab: GHCR에 새 이미지가 있으면 배포 (deploy/update.sh)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+# 봇 판단이 끝나기를 최대 60분 기다리고 배포 전 백업도 하므로 넉넉히 둔다.
+TimeoutStartSec=2h
+ExecStart=/usr/bin/flock -n /tmp/trading-lab-update.lock /bin/bash /home/ubuntu/quant-lab/update.sh

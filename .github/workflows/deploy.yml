@@ -1,7 +1,8 @@
 name: deploy
 
-# main에 push되면 (CI는 작업 PR에서 이미 돌았으므로 다시 돌지 않는다, 2026-10-14) ① GitHub 호스팅 러너가 이미지를 빌드해 GHCR에 올리고 ② 운영 서버(Lightsail 시드니)의 러너가
-# 그 이미지를 받아 띄운다. 서버 러너는 밖으로만 연결한다 (공개 포트 0개). 운영 다음에 데모도 같은 이미지로 띄운다 (2026-10-09, 사용자 결정)
+# main에 push되면 (CI는 작업 PR에서 이미 돌았으므로 다시 돌지 않는다, 2026-10-14) GitHub 호스팅 러너가 이미지를 빌드해 GHCR에 올린다.
+# 배포는 서버가 한다 (pull 방식, 2026-11-04): 서버의 update.sh가 1분마다 latest를 받아 보고 바뀌었으면 운영 → 데모 순서로 띄운다
+# (deploy/update.sh). GitHub는 서버에서 아무것도 실행하지 않는다 (서버 러너 없음). 결과는 서버가 텔레그램으로 알린다.
 on:
   push:
     branches: [main]
@@ -46,67 +47,19 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:${{ env.SHA }}
             ${{ env.IMAGE }}:latest
-          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          # source: 서버가 이 저장소의 옛 이미지만 지울 때 쓴다 (deploy.sh). revision: update.sh가 커밋 해시 태그로 띄울 때 쓴다.
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ env.SHA }}
           build-args: GIT_SHA=${{ env.SHA }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  prod:
-    needs: image
-    runs-on: [self-hosted, trading-lab, Linux]
-    permissions:
-      contents: read
-      packages: read
-    timeout-minutes: 150
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ env.SHA }}
-
-      # 봇이 판단 중(AI 판단 포함)이면 deploy.sh가 Worker를 다시 띄우기 직전에 끝나기를 기다린다 (최대 60분).
-      - name: 운영 배포
-        env:
-          SRC: ${{ github.workspace }}
-          SECRETS_DIR: ${{ vars.DEPLOY_SECRETS_DIR }}
-          TAG: ${{ env.SHA }}
-          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REGISTRY_USER: ${{ github.actor }}
-        run: |
-          [ -n "$SECRETS_DIR" ] || { echo '저장소 변수 DEPLOY_SECRETS_DIR(운영 .secrets 폴더)가 없습니다'; exit 1; }
-          echo "$REGISTRY_TOKEN" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
-          trap 'docker logout ghcr.io' EXIT
-          bash deploy/deploy.sh
-
-      - name: 확인
-        run: |
-          for i in $(seq 1 20); do
-            curl -fsS http://127.0.0.1:8000/api/health && exit 0
-            sleep 5
-          done
-          echo '배포 뒤 api가 응답하지 않습니다'; exit 1
-
-      # 데모도 같은 이미지로 다시 띄운다 (demo.env가 있을 때만). 서버에는 GHCR 로그인이 없어 손으로 하면 이미지를 못 받는다.
-      # 데모가 실패해도 운영 배포 결과는 그대로 둔다.
-      - name: 데모 배포
-        continue-on-error: true
-        env:
-          SRC: ${{ github.workspace }}
-          SECRETS_DIR: ${{ vars.DEPLOY_SECRETS_DIR }}
-          TAG: ${{ env.SHA }}
-          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REGISTRY_USER: ${{ github.actor }}
-        run: |
-          [ -f "$SECRETS_DIR/demo.env" ] || { echo '데모 비밀값(demo.env)이 없어 데모는 건너뜁니다'; exit 0; }
-          echo "$REGISTRY_TOKEN" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
-          trap 'docker logout ghcr.io' EXIT
-          bash deploy/deploy.sh demo
-
   # 오래된 이미지를 정리한다. 배포마다 GHCR에 버전이 3개쯤(태그 붙은 목록, 이미지, 출처 증명) 쌓이므로 최근 30개(약 10번 배포, 롤백 가능 범위)만 둔다.
   # 정리가 실패해도 배포 결과는 그대로 둔다.
-  # API 호출만 하므로 서버 러너에서 돌려 GitHub 호스팅 분을 쓰지 않는다 (2026-10-14).
   cleanup:
-    needs: prod
-    runs-on: [self-hosted, trading-lab, Linux]
+    needs: image
+    runs-on: ubuntu-latest
     continue-on-error: true
     permissions:
       packages: write
