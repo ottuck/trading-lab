@@ -122,6 +122,6 @@ How it is built and run: [`docs/project.md`](docs/project.md) (design, operation
 
 ## License
 
-[AGPL-3.0](LICENSE). If you run a modified version as a network service, you must offer its source to its users.
+Copyright (C) 2026 ottuck. Licensed under the GNU Affero General Public License v3.0 only ([LICENSE](LICENSE)). If you run a modified version as a network service, you must offer its source to its users.
 
 The license covers this repository only. It grants no rights to third-party services or data the app uses, such as Toss Securities (토스증권) market data or the Anthropic API; those stay under their own terms, and this repository must not be used to redistribute such data. Nothing here is investment advice.
