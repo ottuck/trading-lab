@@ -74,7 +74,7 @@ resource "aws_lightsail_static_ip_attachment" "server" {
 
 # 인바운드: Lightsail 콘솔의 브라우저 SSH와 Puny Chat의 80·443뿐이다.
 # Trading Lab 화면은 Cloudflare Tunnel·Access, 관리 SSH는 Tailscale을 쓰므로 공개 인바운드 포트가 필요 없다.
-# 80·443은 같은 서버의 Puny Chat(Caddy, api.puny-chat.com, 인증서 자동 발급)이 쓴다. 콘솔에서 먼저 열었고
+# 80·443은 같은 서버의 Puny Chat(Caddy, 인증서 자동 발급)이 쓴다. 콘솔에서 먼저 열었고
 # 2026-10-21에 코드를 실제에 맞췄다. 이 블록에서 빼고 apply하면 Puny Chat이 끊긴다.
 resource "aws_lightsail_instance_public_ports" "server" {
   instance_name = aws_lightsail_instance.server.name
