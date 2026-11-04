@@ -209,7 +209,7 @@
 - [x] 코드: `deploy.yml`에서 서버 러너 작업을 빼고, 이미지에 `deploy/`와 커밋 해시 라벨을 넣고, 서버 업데이터(`deploy/update.sh`, `trading-lab-update.service`·`.timer`)를 만든다
 - [x] **(사용자)** GHCR 패키지 `trading-lab`을 공개로 바꾼다 (2026-11-04. 저장소는 비공개로 둔다, puny-chat과 같은 구성)
 - [x] 서버에 업데이터를 설치하고 켠다 (2026-11-04). 첫 자동 배포(`1db4c01`) 운영·데모 성공, 다음 분 실행은 바뀐 것이 없어 그대로 끝남
-- [x] 서버 러너 `sydney-server`를 없앤다 (2026-11-04: 서비스 해제, GitHub 등록 삭제, 저장소 변수 `DEPLOY_SECRETS_DIR` 삭제. 서버의 `~/actions-runner` 폴더는 남아 있다)
+- [x] 서버 러너 `sydney-server`를 없앤다 (2026-11-04: 서비스 해제, GitHub 등록 삭제, 저장소 변수 `DEPLOY_SECRETS_DIR` 삭제. 서버의 `~/actions-runner` 폴더도 지웠다)
 
 ## 이미 끝낸 운영 항목
 
