@@ -207,9 +207,9 @@
 서버 러너를 없애고 서버가 GHCR에서 새 이미지를 가져가 띄운다 (project.md 6절 "배포"). 저장소를 공개해도 GitHub가 운영 서버에서 코드를 실행할 길이 없게 하려는 것이다.
 
 - [x] 코드: `deploy.yml`에서 서버 러너 작업을 빼고, 이미지에 `deploy/`와 커밋 해시 라벨을 넣고, 서버 업데이터(`deploy/update.sh`, `trading-lab-update.service`·`.timer`)를 만든다
-- [ ] **(사용자)** GHCR 패키지 `trading-lab`을 공개로 바꾼다 (Package settings → Change visibility)
-- [ ] 서버에 업데이터를 설치하고 켠다. 첫 자동 배포와 텔레그램 알림 확인
-- [ ] 서버 러너 `sydney-server`를 없앤다 (서비스 해제, GitHub 등록 삭제). 저장소 변수 `DEPLOY_SECRETS_DIR` 삭제
+- [x] **(사용자)** GHCR 패키지 `trading-lab`을 공개로 바꾼다 (2026-11-04. 저장소는 비공개로 둔다, puny-chat과 같은 구성)
+- [x] 서버에 업데이터를 설치하고 켠다 (2026-11-04). 첫 자동 배포(`1db4c01`) 운영·데모 성공, 다음 분 실행은 바뀐 것이 없어 그대로 끝남
+- [x] 서버 러너 `sydney-server`를 없앤다 (2026-11-04: 서비스 해제, GitHub 등록 삭제, 저장소 변수 `DEPLOY_SECRETS_DIR` 삭제. 서버의 `~/actions-runner` 폴더는 남아 있다)
 
 ## 이미 끝낸 운영 항목
 
