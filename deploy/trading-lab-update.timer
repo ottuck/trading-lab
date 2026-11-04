@@ -1,0 +1,10 @@
+[Unit]
+Description=Trading Lab: 1분마다 새 이미지 확인
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target
